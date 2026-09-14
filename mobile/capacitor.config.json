@@ -1,0 +1,11 @@
+{
+  "appId": "com.morethanmodes.escritura",
+  "appName": "MTM Escritura",
+  "webDir": "www",
+  "backgroundColor": "#0b0b0c",
+  "android": {
+    "backgroundColor": "#0b0b0c",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
