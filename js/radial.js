@@ -149,6 +149,9 @@ const Radial = (() => {
     };
     mk(`<span class="gl">${GLYPH.dot}</span>`, 'Puntillo', !!state.dots, () => fire('dot'));
     if (state.kind === 'note') {
+      mk('⌒', 'Ligar con la siguiente', !!state.tie, () => fire('tie'));
+    }
+    if (state.kind === 'note') {
       mk(`<span class="gl">${GLYPH.flat}</span>`, 'Bemol', state.acc === 'b', () => fire('acc', 'b'));
       mk(`<span class="gl">${GLYPH.natural}</span>`, 'Becuadro', state.acc === 'n', () => fire('acc', 'n'));
       mk(`<span class="gl">${GLYPH.sharp}</span>`, 'Sostenido', state.acc === '#', () => fire('acc', '#'));

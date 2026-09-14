@@ -29,8 +29,66 @@ const Sound = (() => {
     o.start(at); o.stop(at + 0.08);
   }
 
+  /* ---------- Piano de muestras ----------
+     Las muestras viven en sonidos/piano (una por semitono, de La0 a Sol#6).
+     Se cargan a demanda y se guardan en memoria; si algo falla, la nota
+     suena con el oscilador de siempre y la partitura no se queda muda.   */
+  const NOTE_FILES = ['C', 'Cs', 'D', 'Ds', 'E', 'F', 'Fs', 'G', 'Gs', 'A', 'As', 'B'];
+  const SAMPLE_MIN = 21, SAMPLE_MAX = 92;          // A0 … G#6
+  const samples = new Map();                        // midi -> AudioBuffer
+  const loading = new Map();                        // midi -> Promise
+  let samplesBroken = false;
+
+  const sampleUrl = (midi) => `sonidos/piano/${NOTE_FILES[midi % 12]}${Math.floor(midi / 12) - 1}.opus`;
+
+  /** Muestra más cercana disponible y a qué velocidad hay que tocarla. */
+  function nearestSample(midi) {
+    const m = Math.max(SAMPLE_MIN, Math.min(SAMPLE_MAX, Math.round(midi)));
+    return { midi: m, rate: Math.pow(2, (midi - m) / 12) };
+  }
+
+  function loadSample(midi) {
+    if (samplesBroken) return Promise.resolve(null);
+    if (samples.has(midi)) return Promise.resolve(samples.get(midi));
+    if (loading.has(midi)) return loading.get(midi);
+    const job = fetch(sampleUrl(midi))
+      .then((r) => { if (!r.ok) throw new Error('404'); return r.arrayBuffer(); })
+      .then((buf) => ac().decodeAudioData(buf))
+      .then((audio) => { samples.set(midi, audio); return audio; })
+      .catch(() => { samplesBroken = samples.size === 0; return null; })
+      .finally(() => loading.delete(midi));
+    loading.set(midi, job);
+    return job;
+  }
+
+  /** Deja listas las notas que se van a tocar. */
+  function preload(midis) {
+    const wanted = [...new Set(midis.map((m) => nearestSample(m).midi))].slice(0, 60);
+    return Promise.all(wanted.map(loadSample));
+  }
+
+  function playSample(at, midi, dur) {
+    const { midi: sm, rate } = nearestSample(midi);
+    const buf = samples.get(sm);
+    if (!buf) return false;
+    const c = ac();
+    const src = c.createBufferSource();
+    const g = c.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const end = at + Math.max(0.12, dur);
+    g.gain.setValueAtTime(0.9, at);
+    g.gain.setValueAtTime(0.9, Math.max(at, end - 0.12));
+    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.22);   // suelta la tecla
+    src.connect(g).connect(c.destination);
+    src.start(at);
+    src.stop(end + 0.3);
+    return true;
+  }
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur) {
+    if (playSample(at, midi, dur)) return;
     const c = ac();
     const f = 440 * Math.pow(2, (midi - 69) / 12);
     const o = c.createOscillator();
@@ -79,18 +137,35 @@ const Sound = (() => {
   const metroOrigin = () => (metro ? metro.origin : null);
 
   /* ---------- Reproducción de la partitura ---------- */
-  function play(score, { onNote, onEnd } = {}) {
+  async function play(score, { onNote, onEnd } = {}) {
     stop();
     const c = ac();
+    // las muestras del piano se piden antes de empezar, para que no entre
+    // media melodía con oscilador y la otra media con piano
+    try {
+      const midis = [];
+      score.measures.forEach((m) => m.events.forEach((ev) => {
+        if (ev.kind === 'note') midis.push(Model.midiOf(ev, score.key));
+      }));
+      if (midis.length) await preload(midis);
+    } catch (e) { /* se sigue con el oscilador */ }
     const secPerTick = (60 / score.tempo) / Model.Q;
     const items = [];
     let t = 0;
+    let carry = null;                      // nota ligada que sigue sonando
     score.measures.forEach((m) => {
       const cap = Model.capacity(score.time);
       let used = 0;
       m.events.forEach((ev) => {
         const d = Model.evTicks(ev) * secPerTick;
-        items.push({ ev, at: t, dur: d });
+        if (carry) {
+          carry.dur += d;                  // la ligadura alarga la misma nota
+          carry.tail.push(ev);
+        } else {
+          carry = { ev, at: t, dur: d, tail: [] };
+          items.push(carry);
+        }
+        if (!(ev.kind === 'note' && ev.tie)) carry = null;
         t += d; used += Model.evTicks(ev);
       });
       t += Math.max(0, cap - used) * secPerTick;   // silencios automáticos
@@ -255,6 +330,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+  return { ac, click, tone, preload, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

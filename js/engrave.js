@@ -9,7 +9,7 @@ const Engrave = (() => {
   'use strict';
 
   const VF = window.VexFlow || {};
-  const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot } = VF;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot, StaveTie } = VF;
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
   const PAGE = { w: 1150, h: 1626 };
@@ -24,6 +24,7 @@ const Engrave = (() => {
   };
 
   let hits = [];
+  let refs = new Map();        // id del evento -> { note, system }
 
   const durStr = (ev) => ev.dur + (ev.kind === 'rest' ? 'r' : '');
 
@@ -51,6 +52,7 @@ const Engrave = (() => {
   function render(score, root, opts = {}) {
     root.innerHTML = '';
     hits = [];
+    refs = new Map();
     const compact = !!opts.compact || document.body.classList.contains('embed');
     const visualPer = opts.measuresPerSystem || score.measuresPerSystem;
     const pages = Model.pages(score, visualPer);
@@ -98,6 +100,7 @@ const Engrave = (() => {
       systems.forEach((sys, sysIndex) => {
         drawSystem(score, sys, {
           ctx, svg, pageIndex,
+          systemKey: pageIndex + ':' + sysIndex,
           y: top + sysIndex * systemHeight,
           x: marginLeft,
           width: pageWidth - marginLeft - marginRight,
@@ -112,6 +115,7 @@ const Engrave = (() => {
       console.warn('VexFlow no pudo dibujar; usando pentagrama compatible.', error);
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
     }
+    drawTies(score);
     return hits;
   }
 
@@ -174,7 +178,21 @@ const Engrave = (() => {
         });
       });
     });
+
     return hits;
+  }
+
+  /** Ligaduras de unión: se dibujan cuando las dos notas caen en el mismo
+     sistema; si la ligadura salta de línea, cada mitad se lee por su figura. */
+  function drawTies(score) {
+    score.measures.forEach((m) => m.events.forEach((ev) => {
+      if (!ev.tie || ev.kind !== 'note') return;
+      const next = Model.nextEvent(score, ev.id);
+      if (!next) return;
+      const a = refs.get(ev.id), b = refs.get(next.ev.id);
+      if (!a || !b || a.system !== b.system) return;
+      new StaveTie({ firstNote: a.note, lastNote: b.note }).setContext(a.ctx).draw();
+    }));
   }
 
   function drawSystem(score, sys, o) {
@@ -229,6 +247,10 @@ const Engrave = (() => {
           if (el) el.classList.add('ink-auto');
         });
       }
+
+      all.forEach((ev, idx) => {
+        if (!ev.auto) refs.set(ev.id, { note: notes[idx], system: o.systemKey, ctx: o.ctx });
+      });
 
       hits.push({
         mi: sys.from + i,
