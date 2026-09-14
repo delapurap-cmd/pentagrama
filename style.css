@@ -38,6 +38,23 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   overflow-x: auto; scrollbar-width: none;
 }
 .bar::-webkit-scrollbar { display: none; }
+.bar-tools { display: contents; }
+.embed-only { display: none !important; }
+
+body.embed .standalone-only { display: none !important; }
+body.embed .embed-only { display: inline-flex !important; }
+body.embed .bar { overflow: visible; padding: 8px 10px; }
+body.embed .bar-tools {
+  position: absolute; left: 8px; right: 8px; top: calc(100% + 6px);
+  display: none; align-items: center; gap: 6px; padding: 7px;
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(18,18,21,.98); box-shadow: var(--shadow);
+}
+body.embed.tools-open .bar-tools { display: flex; }
+body.embed #btnTools.on { border-color: var(--gold); color: var(--gold); }
+body.embed .stage { height: calc(100dvh - 55px); }
+body.embed .sheets { padding: 3px 4px 24px; gap: 8px; }
+body.embed .sheet-head { display: none; }
 
 
 .btn {

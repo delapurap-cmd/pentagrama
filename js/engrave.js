@@ -51,15 +51,22 @@ const Engrave = (() => {
   function render(score, root, opts = {}) {
     root.innerHTML = '';
     hits = [];
-    const pages = Model.pages(score);
+    const compact = !!opts.compact || document.body.classList.contains('embed');
+    const visualPer = opts.measuresPerSystem || score.measuresPerSystem;
+    const pages = Model.pages(score, visualPer);
+    const pageWidth = compact ? 760 : PAGE.w;
+    const marginLeft = compact ? 34 : M.left;
+    const marginRight = compact ? 24 : M.right;
+    const systemHeight = compact ? 108 : SYSTEM_H;
 
     pages.forEach((systems, pageIndex) => {
+      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight) : PAGE.h;
       const pageEl = document.createElement('div');
       pageEl.className = 'sheet';
-      pageEl.style.aspectRatio = `${PAGE.w} / ${PAGE.h}`;
+      pageEl.style.aspectRatio = `${pageWidth} / ${pageHeight}`;
       root.appendChild(pageEl);
 
-      if (pageIndex === 0) {
+      if (pageIndex === 0 && !compact) {
         const head = document.createElement('div');
         head.className = 'sheet-head';
         head.innerHTML =
@@ -69,27 +76,28 @@ const Engrave = (() => {
       }
 
       const renderer = new Renderer(pageEl, Renderer.Backends.SVG);
-      renderer.resize(PAGE.w, PAGE.h);
+      renderer.resize(pageWidth, pageHeight);
       const ctx = renderer.getContext();
       ctx.setFillStyle(COLORS.ink);
       ctx.setStrokeStyle(COLORS.ink);
 
       const svg = pageEl.querySelector('svg');
-      svg.setAttribute('viewBox', `0 0 ${PAGE.w} ${PAGE.h}`);
+      svg.setAttribute('viewBox', `0 0 ${pageWidth} ${pageHeight}`);
       svg.removeAttribute('width');
       svg.removeAttribute('height');
       svg.style.width = '100%';
       svg.style.height = 'auto';
       svg.classList.add('sheet-svg');
 
-      const top = pageIndex === 0 ? M.topFirst : M.top;
+      const top = compact ? 13 : (pageIndex === 0 ? M.topFirst : M.top);
 
       systems.forEach((sys, sysIndex) => {
         drawSystem(score, sys, {
           ctx, svg, pageIndex,
-          y: top + sysIndex * SYSTEM_H,
-          x: M.left,
-          width: PAGE.w - M.left - M.right,
+          y: top + sysIndex * systemHeight,
+          x: marginLeft,
+          width: pageWidth - marginLeft - marginRight,
+          systemHeight,
           isFirstSystemOfScore: pageIndex === 0 && sysIndex === 0,
           selectedId: opts.selectedId,
           playingId: opts.playingId,
@@ -157,6 +165,7 @@ const Engrave = (() => {
         mi: sys.from + i,
         pageIndex: o.pageIndex,
         svg: o.svg,
+        systemHeight: o.systemHeight,
         x0: stave.getNoteStartX(),
         x1: stave.getNoteEndX(),
         yTop: stave.getYForLine(0),
@@ -177,7 +186,8 @@ const Engrave = (() => {
 
   function pageGeom(svg) {
     const r = svg.getBoundingClientRect();
-    return { r, k: r.width / PAGE.w };
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    return { r, k: r.width / ((vb && vb.width) || PAGE.w) };
   }
 
   /**
@@ -197,7 +207,7 @@ const Engrave = (() => {
       const mid = (h.yTop + h.yBottom) / 2;
       const dy = Math.abs(p.y - mid);
       const inX = p.x >= h.x0 - 16 && p.x <= h.x1 + 8;
-      if (inX && dy < SYSTEM_H / 2 && dy < bestDy) { best = h; bestDy = dy; bestP = p; }
+      if (inX && dy < (h.systemHeight || SYSTEM_H) / 2 && dy < bestDy) { best = h; bestDy = dy; bestP = p; }
     }
     if (!best) return null;
 

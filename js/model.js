@@ -101,7 +101,7 @@ const Model = (() => {
       key: opts.key || 'C',
       time: opts.time || { num: 4, den: 4 },
       tempo: opts.tempo || 90,
-      measuresPerSystem: opts.measuresPerSystem || 4,
+      measuresPerSystem: opts.measuresPerSystem || 2,
       systemsPerPage: opts.systemsPerPage || 10,
       measures: []
     };
@@ -118,15 +118,17 @@ const Model = (() => {
     return addSystem(score, score.systemsPerPage);
   }
 
-  /** Quita los compases vacíos del final, dejando siempre sistemas completos. */
+  /** Quita vacíos sobrantes, conservando dos compases iniciales y una salida para seguir escribiendo. */
   function trimEmptyTail(score) {
-    const per = score.measuresPerSystem;
-    while (score.measures.length > per) {
-      const tail = score.measures.slice(-per);
-      if (tail.every((m) => m.events.length === 0) && score.measures.length - per >= per) {
-        score.measures.length -= per;
-      } else break;
-    }
+    while (score.measures.length > 2 &&
+           score.measures.at(-1).events.length === 0 &&
+           score.measures.at(-2).events.length === 0) score.measures.pop();
+  }
+
+  /** Siempre deja un compás vacío a la derecha; así la partitura crece al escribir. */
+  function ensureWritingTail(score) {
+    while (score.measures.length < 2) score.measures.push(emptyMeasure());
+    if (score.measures.at(-1).events.length) score.measures.push(emptyMeasure());
   }
 
   /** Reparte el desbordamiento de cada compás al siguiente (tiempos automáticos). */
@@ -137,13 +139,11 @@ const Model = (() => {
       let guard = 0;
       while (measureTicks(m) > cap && m.events.length > 1 && guard++ < 200) {
         const moved = m.events.pop();
-        if (i + 1 >= score.measures.length) addSystem(score, 1);
+        if (i + 1 >= score.measures.length) score.measures.push(emptyMeasure());
         score.measures[i + 1].events.unshift(moved);
       }
     }
-    // asegura sistemas completos
-    const per = score.measuresPerSystem;
-    while (score.measures.length % per !== 0) score.measures.push(emptyMeasure());
+    ensureWritingTail(score);
     return score;
   }
 
@@ -207,8 +207,8 @@ const Model = (() => {
   }
 
   /** Compases agrupados en sistemas y páginas para el grabado. */
-  function pages(score) {
-    const per = score.measuresPerSystem;
+  function pages(score, visualMeasuresPerSystem) {
+    const per = Math.max(1, visualMeasuresPerSystem || score.measuresPerSystem);
     const systems = [];
     for (let i = 0; i < score.measures.length; i += per) {
       systems.push({ from: i, measures: score.measures.slice(i, i + per) });
@@ -237,7 +237,7 @@ const Model = (() => {
     durById, durTicks, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, uid,
-    newScore, addSystem, addPage, trimEmptyTail, reflow, autoRests,
+    newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,
     insertEvent, removeEvent, findEvent, pages, flatten, clone
   };
 })();

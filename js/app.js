@@ -11,7 +11,12 @@
   const LS_CURRENT = 'mtm-score:v1:current';
   const LS_LIB = 'mtm-score:v1:library';
   const LS_ZOOM = 'mtm-score:v1:zoom';
-  const ZOOMS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  const ZOOMS = [0.4, 0.5, 0.65, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  const PARAMS = new URLSearchParams(location.search);
+  const EMBED = PARAMS.get('embed') === '1';
+  const BLOCK_ID = PARAMS.get('id') || '';
+  let parentLoaded = !EMBED;
+  if (EMBED) document.body.classList.add('embed');
 
   const state = {
     score: null,
@@ -27,17 +32,19 @@
 
   /* ---------------- Arranque ---------------- */
   function boot() {
-    const saved = load();
-    state.score = saved || Model.newScore();
+    const saved = EMBED ? null : load();
+    state.score = saved || Model.newScore({ systems: EMBED ? 1 : 4 });
     Model.reflow(state.score);
-    state.zoom = parseFloat(localStorage.getItem(LS_ZOOM)) || 0.75;
+    state.zoom = EMBED ? Math.max(0.43, Math.min(1.05, (innerWidth - 12) / 820))
+      : (parseFloat(localStorage.getItem(LS_ZOOM)) || 0.75);
     applyZoom();
     bindBar();
     bindStage();
     bindPanel();
     bindKeys();
     render();
-    if (!saved) setTimeout(() => toast('Toca el pentagrama para escribir tu primera nota'), 700);
+    if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
+    else if (!saved) setTimeout(() => toast('Toca el pentagrama para escribir tu primera nota'), 700);
   }
 
   /* ---------------- Render ---------------- */
@@ -47,13 +54,16 @@
     renderRaf = requestAnimationFrame(() => {
       Engrave.render(state.score, $('#stage'), {
         selectedId: state.selectedId,
-        playingId: state.playingId
+        playingId: state.playingId,
+        compact: EMBED,
+        measuresPerSystem: EMBED && innerWidth < 600 ? 1 : Math.max(2, state.score.measuresPerSystem || 2)
       });
       bindHeadFields();
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
       $('#btnUndo').disabled = state.undo.length === 0;
+      $('#btnRedo').disabled = state.redo.length === 0;
       save();
     });
   }
@@ -65,7 +75,7 @@
   function applyZoom() {
     $('#stage').style.setProperty('--sheet-w', Math.round(SHEET_BASE * state.zoom) + 'px');
     $('#chipZoom').textContent = Math.round(state.zoom * 100) + '%';
-    try { localStorage.setItem(LS_ZOOM, String(state.zoom)); } catch (e) { /* ignora */ }
+    if (!EMBED) try { localStorage.setItem(LS_ZOOM, String(state.zoom)); } catch (e) { /* ignora */ }
   }
 
   function stepZoom(dir) {
@@ -115,6 +125,10 @@
 
   /* ---------------- Persistencia ---------------- */
   function save() {
+    if (EMBED) {
+      if (parentLoaded) parent.postMessage({ type: 'reper-change', id: BLOCK_ID, score: Model.clone(state.score) }, '*');
+      return;
+    }
     try { localStorage.setItem(LS_CURRENT, JSON.stringify(state.score)); } catch (e) { /* sin espacio */ }
   }
   function load() {
@@ -368,6 +382,17 @@
   function closeMenus() { $$('.menu').forEach((m) => m.remove()); }
 
   function bindBar() {
+    if (EMBED) {
+      $('#btnTools').addEventListener('click', (e) => {
+        const open = !document.body.classList.contains('tools-open');
+        document.body.classList.toggle('tools-open', open);
+        e.currentTarget.classList.toggle('on', open);
+      });
+      $('#btnEmbedClose').addEventListener('click', () => {
+        Sound.stop(); Sound.metroStop();
+        parent.postMessage({ type: 'reper-close', id: BLOCK_ID }, '*');
+      });
+    }
     $('#btnNew').addEventListener('click', (e) => menu([
       { label: 'Nota rápida', hint: 'un solo sistema', fn: () => newScore(1) },
       { sep: true },
@@ -421,8 +446,12 @@
     $('#btnZoomIn').addEventListener('click', () => stepZoom(1));
     $('#btnZoomOut').addEventListener('click', () => stepZoom(-1));
     let rt = 0;
-    window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(applyZoom, 140); });
+    window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
+      if (EMBED) state.zoom = Math.max(0.43, Math.min(1.05, (innerWidth - 12) / SHEET_BASE));
+      applyZoom(); render();
+    }, 140); });
     $('#btnUndo').addEventListener('click', undo);
+    $('#btnRedo').addEventListener('click', redo);
     $('#btnTap').addEventListener('click', () => togglePanel());
     $('#btnPlay').addEventListener('click', togglePlay);
     if (Native.isApp()) $('#btnPrint').hidden = true;
@@ -451,12 +480,17 @@
       state.playingId = null;
       $('#btnPlay').classList.remove('on');
       render();
+      if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
       return;
     }
+    if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
     $('#btnPlay').classList.add('on');
     Sound.play(state.score, {
       onNote: (ev) => { state.playingId = ev.id; render(); },
-      onEnd: () => { state.playingId = null; $('#btnPlay').classList.remove('on'); render(); }
+      onEnd: () => {
+        state.playingId = null; $('#btnPlay').classList.remove('on'); render();
+        if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
+      }
     });
   }
 
@@ -727,6 +761,25 @@
       setTimeout(() => { if (!state.score) go(); }, 2500);
     } else go();
   }
+
+  if (EMBED) window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.type === 'reper-stop' && d.id === BLOCK_ID) {
+      Sound.stop(); Sound.metroStop();
+      state.playingId = null;
+      if ($('#btnPlay')) $('#btnPlay').classList.remove('on');
+      render();
+      return;
+    }
+    if (d.type !== 'reper-load' || d.id !== BLOCK_ID || !d.score) return;
+    Sound.stop(); Sound.metroStop();
+    state.score = Model.clone(d.score);
+    Model.reflow(state.score);
+    state.selectedId = null; state.playingId = null;
+    state.undo.length = 0; state.redo.length = 0;
+    parentLoaded = true;
+    render();
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
