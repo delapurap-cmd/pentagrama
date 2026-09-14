@@ -11,7 +11,7 @@ const out = resolve(here, 'www');
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
-for (const item of ['index.html', 'style.css', 'js', 'vendor', 'manifest.json']) {
+for (const item of ['index.html', 'style.css', 'js', 'vendor', 'sonidos', 'manifest.json']) {
   await cp(resolve(root, item), resolve(out, item), { recursive: true });
 }
 

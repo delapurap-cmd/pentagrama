@@ -83,7 +83,7 @@ const Model = (() => {
   }
 
   /* ---------- Eventos y compases ---------- */
-  const note = (di, dur = 'q', dots = 0, acc = null) => ({ kind: 'note', di, dur, dots, acc, id: uid() });
+  const note = (di, dur = 'q', dots = 0, acc = null) => ({ kind: 'note', di, dur, dots, acc, tie: false, id: uid() });
   const rest = (dur = 'q', dots = 0) => ({ kind: 'rest', di: MIDDLE_LINE_DI, dur, dots, acc: null, id: uid() });
   const emptyMeasure = () => ({ events: [] });
 
@@ -129,16 +129,47 @@ const Model = (() => {
     }
   }
 
-  /** Reparte el desbordamiento de cada compás al siguiente (tiempos automáticos). */
+  /** Valor exacto (figura y puntillo) para una duración, si existe. */
+  function exactFigure(ticks) {
+    for (const d of DURS) {
+      for (const dots of [0, 1]) {
+        if (d.ticks * (dots ? 1.5 : 1) === ticks) return { dur: d.id, dots };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Reparte el desbordamiento de cada compás al siguiente.
+   * Si la nota se puede partir en dos valores escribibles, se parte y se
+   * liga por encima de la barra —como en cualquier edición—; si no, pasa
+   * entera al compás siguiente.
+   */
   function reflow(score) {
     const cap = capacity(score.time);
     for (let i = 0; i < score.measures.length; i++) {
       const m = score.measures[i];
       let guard = 0;
-      while (measureTicks(m) > cap && m.events.length > 1 && guard++ < 200) {
-        const moved = m.events.pop();
+      while (measureTicks(m) > cap && m.events.length && guard++ < 200) {
+        const last = m.events[m.events.length - 1];
+        const before = measureTicks(m) - evTicks(last);
+        const room = cap - before;
+        const rest = evTicks(last) - room;
+        const head = room > 0 ? exactFigure(room) : null;
+        const tail = rest > 0 ? exactFigure(rest) : null;
+
         if (i + 1 >= score.measures.length) addSystem(score, 1);
-        score.measures[i + 1].events.unshift(moved);
+        const nextM = score.measures[i + 1];
+
+        if (head && tail && m.events.length >= 1) {
+          last.dur = head.dur; last.dots = head.dots;
+          const cont = Object.assign({}, last, { id: uid(), dur: tail.dur, dots: tail.dots, tie: false });
+          if (last.kind === 'note') last.tie = true;      // ligadura sobre la barra
+          nextM.events.unshift(cont);
+        } else {
+          m.events.pop();
+          nextM.events.unshift(last);
+        }
       }
     }
     // asegura sistemas completos
@@ -198,6 +229,18 @@ const Model = (() => {
     reflow(score);
   }
 
+  /** Evento que sigue a `id` en el orden de lectura, o null. */
+  function nextEvent(score, id) {
+    const found = findEvent(score, id);
+    if (!found) return null;
+    const m = score.measures[found.mi];
+    if (found.index + 1 < m.events.length) return { mi: found.mi, index: found.index + 1, ev: m.events[found.index + 1] };
+    for (let i = found.mi + 1; i < score.measures.length; i++) {
+      if (score.measures[i].events.length) return { mi: i, index: 0, ev: score.measures[i].events[0] };
+    }
+    return null;
+  }
+
   function findEvent(score, id) {
     for (let mi = 0; mi < score.measures.length; mi++) {
       const idx = score.measures[mi].events.findIndex((e) => e.id === id);
@@ -238,7 +281,7 @@ const Model = (() => {
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, uid,
     newScore, addSystem, addPage, trimEmptyTail, reflow, autoRests,
-    insertEvent, removeEvent, findEvent, pages, flatten, clone
+    insertEvent, removeEvent, findEvent, nextEvent, exactFigure, pages, flatten, clone
   };
 })();
 

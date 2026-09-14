@@ -159,6 +159,7 @@
       dur: ev.dur,
       dots: ev.dots,
       acc: ev.acc,
+      tie: !!ev.tie,
       pitch: ev.kind === 'note' ? pitchName(ev) : ''
     };
   }
@@ -219,6 +220,16 @@
       state.selectedId = null;
       Radial.close();
       render();
+    },
+    tie() {
+      const found = currentEvent();
+      if (!found || found.ev.kind !== 'note') return;
+      const next = Model.nextEvent(state.score, found.ev.id);
+      if (!found.ev.tie && (!next || next.ev.kind !== 'note' || next.ev.di !== found.ev.di)) {
+        toast('La ligadura une dos notas de la misma altura');
+        return;
+      }
+      mutate((ev) => { ev.tie = !ev.tie; });
     },
     next() { hop(1); },
     prev() { hop(-1); },
@@ -303,8 +314,22 @@
         scroller.scrollTop = (gest.st + gest.c0.y - r.top) * ratio - (c.y - r.top);
         return;
       }
-      if (cand && e.pointerId === cand.id &&
-          Math.hypot(e.clientX - cand.x, e.clientY - cand.y) > 12) cand = null;
+      if (!cand || e.pointerId !== cand.id) return;
+      const dx = Math.abs(e.clientX - cand.x), dy = e.clientY - cand.y;
+
+      // arrastrar una nota existente hacia arriba o abajo cambia su altura
+      if (cand.hit.hitEvent && cand.hit.hitEvent.ev.kind === 'note' &&
+          (cand.dragging || (Math.abs(dy) > 8 && Math.abs(dy) > dx))) {
+        if (!cand.dragging) { cand.dragging = true; snapshot(); state.selectedId = cand.hit.hitEvent.ev.id; }
+        const found = Model.findEvent(state.score, cand.hit.hitEvent.ev.id);
+        const probe = Engrave.hitTest(cand.x, e.clientY);
+        if (found && probe && probe.di !== found.ev.di) {
+          found.ev.di = probe.di;
+          render();
+        }
+        return;
+      }
+      if (Math.hypot(dx, dy) > 12) cand = null;
     });
 
     const finish = (e, write) => {
@@ -314,6 +339,7 @@
       if (!cand || e.pointerId !== cand.id) return;
       const c = cand;
       cand = null;
+      if (c.dragging) { e.preventDefault(); render(); return; }   // se arrastró la altura
       if (write && pts.size === 0) { e.preventDefault(); writeAt(c.hit); }
     };
     scroller.addEventListener('pointerup', (e) => finish(e, true));
@@ -402,7 +428,9 @@
       const items = [
         { head: 'Partitura' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
+        { label: 'Abrir MusicXML o MIDI', hint: 'MuseScore, Sibelius…', fn: importScore },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
+        { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
         { label: 'Importar copia', hint: '.json', fn: importJSON },
       ];
@@ -617,10 +645,10 @@
   }
 
   /* ---------------- Exportar ---------------- */
-  async function download(name, text, type) {
+  async function download(name, data, type) {
     // En la app de Android el archivo se guarda y se comparte con el sistema.
-    if (await Native.saveFile(name, text, type)) return;
-    const blob = new Blob([text], { type });
+    if (typeof data === 'string' && await Native.saveFile(name, data, type)) return;
+    const blob = new Blob([data], { type });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -630,6 +658,46 @@
 
   function exportJSON() {
     download(slug(state.score.title) + '.json', JSON.stringify(state.score, null, 2), 'application/json');
+  }
+
+  /** Abre MusicXML (.musicxml, .xml, .mxl) o MIDI (.mid) y lo traduce. */
+  function importScore() {
+    pickFile('.musicxml,.xml,.mxl,.mid,.midi', async (file) => {
+      try {
+        const isMidi = /\.midi?$/i.test(file.name);
+        const result = isMidi
+          ? Midi.read(await file.arrayBuffer())
+          : MusicXML.parse(await MusicXML.readAny(file));
+        snapshot();
+        state.score = result.score;
+        if (!state.score.title || state.score.title === 'Sin título') {
+          state.score.title = file.name.replace(/\.[^.]+$/, '');
+        }
+        state.selectedId = null;
+        Radial.close();
+        render();
+        const info = isMidi
+          ? `${result.report.notes} notas leídas del MIDI`
+          : MusicXML.reportText(result.report);
+        toast(info);
+        state.lastReport = info;
+      } catch (err) {
+        toast(err.message || 'No se pudo abrir el archivo');
+      }
+    });
+  }
+
+  function pickFile(accept, fn) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = accept;
+    inp.addEventListener('change', () => { if (inp.files[0]) fn(inp.files[0]); });
+    inp.click();
+  }
+
+  function exportMIDI() {
+    const data = Midi.write(state.score);
+    download(slug(state.score.title) + '.mid', data, 'audio/midi');
   }
 
   function importJSON() {
@@ -667,6 +735,7 @@
       '  <part-list><score-part id="P1"><part-name>Música</part-name></score-part></part-list>\n' +
       '  <part id="P1">\n';
 
+    let tiedFrom = false;
     s.measures.forEach((m, i) => {
       xml += `    <measure number="${i + 1}">\n`;
       if (i === 0) {
@@ -688,12 +757,18 @@
         } else {
           const letter = Model.diLetter(ev.di);
           const alter = ev.acc == null ? Model.keyAlter(s.key, letter) : (ALT[ev.acc] || 0);
+          const prev = tiedFrom;
+          tiedFrom = !!ev.tie;
           xml += '      <note><pitch>' +
             `<step>${letter.toUpperCase()}</step>` +
             (alter ? `<alter>${alter}</alter>` : '') +
             `<octave>${Model.diOctave(ev.di)}</octave></pitch>` +
+            (prev ? '<tie type="stop"/>' : '') + (ev.tie ? '<tie type="start"/>' : '') +
             `<duration>${d}</duration><type>${type}</type>${ev.dots ? '<dot/>' : ''}` +
             (ev.acc ? `<accidental>${({ '#': 'sharp', b: 'flat', n: 'natural' })[ev.acc]}</accidental>` : '') +
+            (prev || ev.tie
+              ? '<notations>' + (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') + '</notations>'
+              : '') +
             '</note>\n';
         }
       });
