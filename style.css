@@ -43,17 +43,18 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 
 body.embed .standalone-only { display: none !important; }
 body.embed .embed-only { display: inline-flex !important; }
-body.embed .bar { overflow: visible; padding: 8px 10px; }
+body.embed { display: flex; flex-direction: column; }
+body.embed .bar { position: relative; flex: 0 0 auto; flex-wrap: wrap; overflow: visible; padding: 5px 7px; }
 body.embed .bar-tools {
-  position: absolute; left: 8px; right: 8px; top: calc(100% + 6px);
-  display: none; align-items: center; gap: 6px; padding: 7px;
-  overflow-x: auto; border: 1px solid var(--line); border-radius: 12px;
-  background: rgba(18,18,21,.98); box-shadow: var(--shadow);
+  position: static; order: 20; flex: 1 0 100%;
+  display: none; align-items: center; gap: 4px; padding: 4px 0 0;
+  overflow-x: auto; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none;
 }
 body.embed.tools-open .bar-tools { display: flex; }
 body.embed #btnTools.on { border-color: var(--gold); color: var(--gold); }
-body.embed .stage { height: calc(100dvh - 55px); }
-body.embed .sheets { padding: 3px 4px 24px; gap: 8px; }
+body.embed .stage { flex: 1 1 auto; min-height: 0; height: auto; }
+body.embed .sheets { padding: 0 2px 14px; gap: 4px; }
 body.embed .sheet-head { display: none; }
 
 

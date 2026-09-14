@@ -11,7 +11,7 @@
   const LS_CURRENT = 'mtm-score:v1:current';
   const LS_LIB = 'mtm-score:v1:library';
   const LS_ZOOM = 'mtm-score:v1:zoom';
-  const ZOOMS = [0.4, 0.5, 0.65, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  const ZOOMS = [0.25, 0.32, 0.4, 0.5, 0.65, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
   const PARAMS = new URLSearchParams(location.search);
   const EMBED = PARAMS.get('embed') === '1';
   const BLOCK_ID = PARAMS.get('id') || '';
@@ -56,7 +56,7 @@
         selectedId: state.selectedId,
         playingId: state.playingId,
         compact: EMBED,
-        measuresPerSystem: EMBED && innerWidth < 600 ? 1 : Math.max(2, state.score.measuresPerSystem || 2)
+        measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
       });
       bindHeadFields();
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
