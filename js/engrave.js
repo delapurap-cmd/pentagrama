@@ -8,7 +8,7 @@
 const Engrave = (() => {
   'use strict';
 
-  const VF = window.VexFlow;
+  const VF = window.VexFlow || {};
   const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot } = VF;
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
@@ -59,7 +59,11 @@ const Engrave = (() => {
     const marginRight = compact ? 24 : M.right;
     const systemHeight = compact ? 108 : SYSTEM_H;
 
-    pages.forEach((systems, pageIndex) => {
+    if (!Renderer || !Stave || !StaveNote || !Voice || !Formatter) {
+      return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
+    }
+
+    try { pages.forEach((systems, pageIndex) => {
       const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight) : PAGE.h;
       const pageEl = document.createElement('div');
       pageEl.className = 'sheet';
@@ -102,6 +106,71 @@ const Engrave = (() => {
           selectedId: opts.selectedId,
           playingId: opts.playingId,
           lastSystem: pageIndex === pages.length - 1 && sysIndex === systems.length - 1
+        });
+      });
+    }); } catch (error) {
+      console.warn('VexFlow no pudo dibujar; usando pentagrama compatible.', error);
+      return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
+    }
+    return hits;
+  }
+
+  /* Respaldo SVG sin dependencias: mantiene visibles y editables los sistemas
+     incluso en WebViews que no pueden inicializar la fuente de VexFlow. */
+  function renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight) {
+    root.innerHTML = '';
+    hits = [];
+    const NS = 'http://www.w3.org/2000/svg';
+    const make = (tag, attrs = {}) => {
+      const node = document.createElementNS(NS, tag);
+      Object.keys(attrs).forEach((key) => node.setAttribute(key, attrs[key]));
+      return node;
+    };
+    const compact = !!opts.compact || document.body.classList.contains('embed');
+
+    pages.forEach((systems, pageIndex) => {
+      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight) : PAGE.h;
+      const pageEl = document.createElement('div');
+      pageEl.className = 'sheet';
+      pageEl.style.aspectRatio = pageWidth + ' / ' + pageHeight;
+      const svg = make('svg', { viewBox: `0 0 ${pageWidth} ${pageHeight}`, class: 'sheet-svg' });
+      pageEl.appendChild(svg); root.appendChild(pageEl);
+      const top = compact ? 13 : (pageIndex === 0 ? M.topFirst : M.top);
+
+      systems.forEach((sys, sysIndex) => {
+        const y = top + sysIndex * systemHeight;
+        const x0 = marginLeft, x1 = pageWidth - marginRight;
+        for (let line = 0; line < 5; line++) svg.appendChild(make('line', {
+          x1: x0, y1: y + line * 10, x2: x1, y2: y + line * 10,
+          stroke: COLORS.ink, 'stroke-width': 1
+        }));
+        const clef = make('text', { x: x0 + 4, y: y + 35, fill: COLORS.ink, 'font-size': 43, 'font-family': 'serif' });
+        clef.textContent = '𝄞'; svg.appendChild(clef);
+        if (pageIndex === 0 && sysIndex === 0) {
+          const time = make('text', { x: x0 + 48, y: y + 27, fill: COLORS.ink, 'font-size': 17, 'font-weight': 700, 'text-anchor': 'middle' });
+          time.textContent = score.time.num + '\n' + score.time.den; svg.appendChild(time);
+        }
+        const lead = 68, usable = x1 - x0 - lead, measureW = usable / Math.max(1, sys.measures.length);
+        sys.measures.forEach((measure, mi) => {
+          const mx0 = x0 + lead + mi * measureW, mx1 = mx0 + measureW;
+          svg.appendChild(make('line', { x1: mx1, y1: y, x2: mx1, y2: y + 40, stroke: COLORS.ink, 'stroke-width': 1 }));
+          const all = measure.events.concat(Model.autoRests(measure, score.time));
+          const noteMap = [];
+          all.forEach((ev, i) => {
+            const x = mx0 + (i + 1) * measureW / (all.length + 1);
+            const noteY = y + 20 - ((ev.di == null ? Model.MIDDLE_LINE_DI : ev.di) - Model.MIDDLE_LINE_DI) * 5;
+            const color = ev.id === opts.selectedId ? COLORS.selected : ev.id === opts.playingId ? COLORS.playing : COLORS.ink;
+            if (ev.kind === 'rest') {
+              const rest = make('rect', { x: x - 5, y: y + 17, width: 10, height: 5, rx: 1, fill: color, opacity: ev.auto ? .34 : 1 });
+              svg.appendChild(rest);
+            } else {
+              svg.appendChild(make('ellipse', { cx: x, cy: noteY, rx: 6, ry: 4.5, fill: color, transform: `rotate(-18 ${x} ${noteY})` }));
+              svg.appendChild(make('line', { x1: x + 5, y1: noteY, x2: x + 5, y2: noteY - 30, stroke: color, 'stroke-width': 2 }));
+            }
+            noteMap.push({ ev, index: i, real: i < measure.events.length, x });
+          });
+          hits.push({ mi: sys.from + mi, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
+            yTop: y, yBottom: y + 40, spacing: 10, notes: noteMap });
         });
       });
     });

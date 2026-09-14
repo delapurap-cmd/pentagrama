@@ -62,7 +62,12 @@
 
 <div class="toast" id="toast"></div>
 
-<script>window.structuredClone=window.structuredClone||function(v){return JSON.parse(JSON.stringify(v))};</script>
+<script>
+window.structuredClone=window.structuredClone||function(v){return JSON.parse(JSON.stringify(v))};
+Promise.allSettled=Promise.allSettled||function(items){return Promise.all(Array.from(items,p=>Promise.resolve(p).then(
+  value=>({status:'fulfilled',value}),reason=>({status:'rejected',reason}))));};
+if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)i+=this.length;return this[i]};
+</script>
 <script src="vendor/vexflow.js"></script>
 <script src="js/native.js"></script>
 <script src="js/model.js"></script>
