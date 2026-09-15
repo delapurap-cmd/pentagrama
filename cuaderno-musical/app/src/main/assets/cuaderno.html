@@ -203,10 +203,23 @@ body[data-lock="1"] #addPage,body[data-lock="1"] #voiceRecord{display:none!impor
   font-family:"Iowan Old Style","Palatino Linotype",Palatino,Charter,Georgia,serif;font-size:19px;line-height:1.72}
 .lyrics-pane:empty::before,.chord-lyric:empty::before{content:attr(data-ph);opacity:.28;font-style:italic}
 .chords-pane{padding:12px 12px 16px 40px;display:flex;flex-direction:column;justify-content:flex-start;min-height:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.chord-tools{position:sticky;bottom:7px;top:auto;z-index:9;display:flex;align-items:center;gap:5px;padding:5px;border-radius:11px;
-  background:#181a1ff2;color:#f3f1eb;box-shadow:0 5px 16px #0005;overflow-x:auto;scrollbar-width:none}
-.chord-tools::-webkit-scrollbar{display:none}
+/* Estaba pegada abajo pero metida en la columna, con scroll horizontal: los
+   últimos botones —«＋ Línea»— se salían por la derecha y había que rascar la
+   barra para verlos. Ahora flota, se despliega entera en varias filas si hace
+   falta, y se puede arrastrar de la agarradera a donde estorbe menos. */
+.chord-tools{position:fixed;z-index:46;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:5px;padding:5px;
+  max-width:calc(100vw - 16px);border-radius:13px;touch-action:none;
+  background:#181a1ff2;color:#f3f1eb;box-shadow:0 8px 22px #0006;backdrop-filter:blur(10px)}
+.chord-tools.free{left:auto;right:auto;top:auto;transform:none}
+body.player-open .chord-tools:not(.free){bottom:172px}
+body.panel-abierto .chord-tools,body.score-editing .chord-tools{display:none}
+/* Cuelga del body, así que se esconde sola cuando no estamos en el cifrado. */
+body:not([data-view="chords"]) .chord-tools,body[data-lock="1"] .chord-tools{display:none}
+.chord-grip{flex:0 0 auto;width:26px;height:30px;display:grid;place-items:center;border-radius:7px;
+  color:#d6b36a;font-size:13px;cursor:grab;touch-action:none}
 .chord-tools>button,.chord-step{flex:0 0 auto;height:30px;border:1px solid #ffffff16;border-radius:7px;background:#ffffff09}
+.chord-tools>button.chord-grip{border:0;background:none}
 .chord-tools>button{padding:0 9px;font:700 10px/1 ui-monospace,monospace}
 .chord-step{display:flex;align-items:center;overflow:hidden}
 .chord-step button{width:28px;height:30px;color:#d6b36a;font-size:16px}
@@ -290,18 +303,22 @@ body.player-open #player{display:block}
 #playerPanel{position:absolute;left:6px;right:6px;bottom:calc(100% + 5px);display:none;max-height:46vh;overflow:hidden;border:1px solid #ffffff16;border-radius:11px;background:#111318f7;color:#f2efe7;box-shadow:0 -12px 30px #0008;backdrop-filter:blur(18px)}
 #playerPanel.open{display:block}.player-pane{display:none;padding:7px;max-height:46vh;overflow:auto}.player-pane.on{display:block}.panehead{display:flex;align-items:center;gap:5px;min-height:26px}.panehead strong{flex:1;font-size:10px;color:#d6b36a;letter-spacing:.06em;text-transform:uppercase}.panehead button{height:30px;padding:0 12px;border-radius:9px;background:#ffffff09;font:700 10px/1 ui-monospace,monospace}.panehead button.on{background:#d6b36a;color:#17130b}
 #idxSearchRow{display:flex;align-items:center;gap:6px;margin:2px 0 8px}
-#idxSearch{flex:1;height:40px;padding:0 12px;border:1px solid #ffffff1c;border-radius:11px;background:#ffffff0a;color:#f2efe7;font:600 13px/1 ui-sans-serif,sans-serif}
-#idxSearch::placeholder{color:#ffffff5c}
-#idxSearch:focus{outline:none;border-color:#d6b36a88}
-#idxClear{width:38px;height:40px;border-radius:11px;background:#ffffff0c;color:#ffffffa0;font-size:18px}
+/* El índice es una hoja clara. Esto estaba pintado para fondo oscuro —letra
+   casi blanca, borde blanco al 11%— y sobre el papel no se veía ni la caja ni
+   lo que se escribía: sólo aparecía al tocarla, porque el foco pone el borde
+   dorado. Va con los colores del papel. */
+#idxSearch{flex:1;height:40px;padding:0 12px;border:1px solid var(--soft);border-radius:11px;background:transparent;color:var(--ink);font:600 13px/1 ui-sans-serif,sans-serif}
+#idxSearch::placeholder{color:var(--soft)}
+#idxSearch:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px #d6b36a2e}
+#idxClear{width:38px;height:40px;border-radius:11px;border:1px solid var(--soft);color:var(--soft);font-size:18px}
 .idx-empty{padding:18px 4px;text-align:center;color:#ffffff7a;font:500 12px/1.5 ui-sans-serif,sans-serif}
 #queueList,#voiceList{max-height:34vh;overflow:auto}.queue-row,.voice-row{display:flex;align-items:center;gap:6px;min-height:31px;padding:3px 4px;border-top:1px solid #ffffff0b}.queue-row.on{color:#d6b36a}.queue-row button:first-child,.voice-row button:first-child{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.voice-row .trash{width:24px;color:#ffaaaa}
 /* El editor A–B de la página de bases de More Than Modes, tal cual: onda oscura,
    franja ámbar entre las dos marcas y dos banderitas con letra negra sobre un
    carril bajo. Las banderas van en el carril y no sobre la onda para que la
    mano que arrastra no tape justo lo que se quiere ver. */
-#abStage{position:relative;height:104px;margin-top:6px;border:1px solid #ffffff14;border-radius:10px;background:#0c0e12;overflow:hidden;touch-action:none;user-select:none}
-#abWave{width:100%;height:104px;display:block}
+#abStage{position:relative;height:132px;margin-top:6px;border:1px solid #ffffff14;border-radius:10px;background:#0c0e12;overflow:hidden;touch-action:none;user-select:none}
+#abWave{width:100%;height:132px;display:block}
 .ab-lane{position:absolute;left:0;right:0;bottom:0;height:22px;background:#0006;border-top:1px solid #ffffff14;pointer-events:none}
 .ab-handle{position:absolute;top:0;bottom:0;width:0;display:none}
 #abStage.armed .ab-handle{display:block}
@@ -312,13 +329,11 @@ body.player-open #player{display:block}
 .ab-handle[data-h="a"] .ab-flag{left:0;border-top-left-radius:0;border-bottom-right-radius:0}
 .ab-handle[data-h="b"] .ab-flag{left:-34px;border-top-right-radius:0;border-bottom-left-radius:0}
 .ab-handle.grab .ab-flag{box-shadow:0 0 0 2px #d6b36a66,0 3px 8px #000a}
-.ab-grid{display:grid;gap:6px;margin-top:6px}
-.ab-point{display:flex;align-items:center;gap:6px}
-.ab-point .ab-tag{width:26px;height:32px;display:grid;place-items:center;border-radius:8px;background:#d6b36a;color:#17130b;font:800 12px/1 ui-monospace,monospace}
-.ab-point output{min-width:58px;height:32px;display:grid;place-items:center;border-radius:8px;background:#ffffff0b;color:#f2efe7;font:700 12px/1 ui-monospace,monospace}
-.ab-point button{height:32px;padding:0 10px;border-radius:8px;background:#ffffff0d;color:#e9e6dd;font:700 10px/1 ui-monospace,monospace}
-.ab-point button:active{background:#ffffff1e}
-.ab-readout{display:flex;align-items:center;gap:5px;margin-top:6px;font:10px/1 ui-monospace,monospace;color:#ffffffa0}.ab-readout span{padding:5px 7px;border-radius:5px;background:#ffffff08}.ab-readout .spacer{flex:1;background:none}.ab-readout button{height:30px;min-width:34px;padding:0 8px;border-radius:8px;background:#ffffff0b;color:#d6b36a;font-weight:800}
+.ab-readout{display:flex;align-items:center;gap:6px;margin-top:7px;font:10px/1 ui-monospace,monospace;color:#ffffffa0}
+.ab-readout .ab-tag{width:22px;height:26px;display:grid;place-items:center;border-radius:7px;background:#d6b36a;color:#17130b;font:800 11px/1 ui-monospace,monospace}
+.ab-readout output{min-width:52px;height:26px;display:grid;place-items:center;border-radius:7px;background:#ffffff0b;color:#f2efe7;font:700 12px/1 ui-monospace,monospace}
+.ab-readout .spacer{flex:1}
+.ab-readout #abLen{height:26px;display:grid;place-items:center;padding:0 9px;border-radius:7px;background:#ffffff08;color:#d6b36a;font:700 11px/1 ui-monospace,monospace}
 #voiceRecord.recording{background:#b33;color:#fff}.voice-status{font:9px/1.3 ui-monospace,monospace;color:#ffffff88;padding:5px 1px}
 .pmain{display:flex;align-items:center;gap:10px;height:60px}
 .wavebox{position:relative;flex:1;min-width:0;height:46px;border-radius:10px;background:#ffffff07;touch-action:none}
@@ -378,22 +393,17 @@ body.player-open #player{display:block}
 <div id="player">
   <div id="playerPanel">
     <section class="player-pane" data-pane="queue"><div class="panehead"><strong>Lista descargada</strong><button id="repeatTrack" class="on">↻ CANCIÓN</button><button id="repeatList">↻ LISTA</button></div><div id="queueList"></div></section>
-    <section class="player-pane" data-pane="ab"><div class="panehead"><strong>Bucle A–B</strong><button id="abPanelToggle">ACTIVAR</button></div>
+    <section class="player-pane" data-pane="ab">
       <div id="abStage">
         <canvas id="abWave"></canvas>
         <div class="ab-lane"></div>
         <div class="ab-handle" data-h="a"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">A</b></div>
         <div class="ab-handle" data-h="b"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">B</b></div>
       </div>
-      <div class="ab-grid">
-        <div class="ab-point" data-point="a"><span class="ab-tag">A</span><output id="aRead">0:00</output><button data-ab="a-set">AQUÍ</button><button data-ab="a-back">−0,1</button><button data-ab="a-fwd">+0,1</button></div>
-        <div class="ab-point" data-point="b"><span class="ab-tag">B</span><output id="bRead">0:00</output><button data-ab="b-set">AQUÍ</button><button data-ab="b-back">−0,1</button><button data-ab="b-fwd">+0,1</button></div>
-      </div>
-      <div class="ab-readout"><span id="abLen">Tramo 0:00</span><span class="spacer"></span><button data-ab="whole" title="Todo el tema">TODO</button><button id="waveZoomOut">−</button><span id="waveZoomRead">1×</span><button id="waveZoomIn">＋</button></div>
-      <div class="voice-status">Arrastra las banderas A y B sobre la onda, o fíjalas con AQUÍ mientras suena.</div></section>
+      <div class="ab-readout"><span class="ab-tag">A</span><output id="aRead">0:00</output><span class="ab-tag">B</span><output id="bRead">0:00</output><span class="spacer"></span><span id="abLen">0:00</span></div></section>
     <section class="player-pane" data-pane="voice"><div class="panehead"><strong>Notas de voz</strong><button id="voiceRecord">● GRABAR</button></div><div id="voiceStatus" class="voice-status">Grabación AAC · 48 kHz · alta calidad</div><div id="voiceList"></div></section>
   </div>
-  <div class="phead"><div id="nowTitle">Selecciona una canción</div><span id="queuePos">0 / 0</span><button class="ptab" data-player-tab="queue" title="Lista">☷</button><button class="ptab" data-player-tab="ab" title="Bucle A–B">AB</button><button class="ptab" data-player-tab="voice" title="Notas de voz">●</button><button id="pageAction" disabled>Sin audio</button></div>
+  <div class="phead"><div id="nowTitle">Selecciona una canción</div><span id="queuePos">0 / 0</span><button class="ptab" data-player-tab="queue" title="Lista">☷</button><button class="ptab" data-player-tab="voice" title="Notas de voz">●</button><button id="pageAction" disabled>Sin audio</button></div>
   <div class="pmain"><button id="prevTrack" class="trackskip" title="Anterior" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M18 5.6v12.8L9.2 12z"/><rect x="5.4" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><button id="playToggle" aria-label="Reproducir o pausar"><svg class="i-play" viewBox="0 0 24 24"><path d="M8.4 5.3v13.4L19 12z"/></svg><svg class="i-pause" viewBox="0 0 24 24"><rect x="7.6" y="5.4" width="3.4" height="13.2" rx="1.3"/><rect x="13" y="5.4" width="3.4" height="13.2" rx="1.3"/></svg></button><button id="nextTrack" class="trackskip" title="Siguiente" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M6 5.6v12.8L14.8 12z"/><rect x="16" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><div class="wavebox"><canvas id="wave"></canvas><div class="ptime"><span id="posTime">0:00</span><span id="durTime">0:00</span></div></div><button id="loopToggle">A–B</button></div>
   <div class="adjust"><div class="stepper"><button id="pitchDown">‹</button><output id="pitchOut">TONO 0</output><button id="pitchUp">›</button></div>
     <div class="stepper"><button id="speedDown">‹</button><output id="speedOut">VEL 1×</output><button id="speedUp">›</button></div></div>
@@ -1157,40 +1167,54 @@ playToggle.onclick=()=>{
 };
 let prevTap=0;
 prevTrack.onclick=()=>{
-  const fresh=Date.now()-prevTap<1400;   // dos toques seguidos: pista anterior
+  const seguido=Date.now()-prevTap<900;
   prevTap=Date.now();
-  // Un toque manda la aguja al principio; dos seguidos saltan a la anterior.
-  // Se mira la posición **viva**, no la del último aviso del motor: entre
-  // aviso y aviso pasan cien milisegundos y `now.position` se queda corta,
-  // asi que justo al empezar una canción el primer toque se comportaba como
-  // si ya estuviera en el principio y saltaba de pista.
-  if(!fresh&&now.id&&livePosition()>1200){
+  // Este botón, primero, devuelve la canción a su principio. Antes hacía lo
+  // contrario de lo que uno espera: dos toques seguidos se tomaban como «a la
+  // anterior», así que darle dos veces para volver a empezar te sacaba de la
+  // canción. Ahora los toques seguidos siempre rebobinan —dar dos veces no
+  // castiga— y a la pista anterior se va con un toque aparte, ya estando en
+  // el principio.
+  // Se mira la posición **viva** y no la del último aviso del motor: entre
+  // aviso y aviso pasan cien milisegundos y `now.position` se queda corta.
+  if(now.id&&(seguido||livePosition()>1200)){
     saltarA(0);return;
   }
   playlistStep(-1,undefined,true);
 };
 nextTrack.onclick=()=>playlistStep(1,undefined,true);
+// Habia tres maneras de llegar al A-B —la pestaña, este boton y un ACTIVAR
+// dentro del panel—. Queda una: esto enciende el bucle y abre el editor a la
+// vez, porque nadie enciende un bucle sin querer ponerle los marcadores.
 loopToggle.onclick=()=>{
   if(!now.id||!now.duration)return toast('Reproduce una canción primero');
   loopOn=!loopOn;
-  if(loopOn&&pointB<=pointA){pointA=now.position;pointB=Math.min(now.duration,pointA+30000)}
-  if(loopOn&&pointA===0&&pointB===now.duration){pointA=now.position;pointB=Math.min(now.duration,pointA+30000)}
-  loopToggle.classList.toggle('on',loopOn);abPanelToggle.classList.toggle('on',loopOn);abPanelToggle.textContent=loopOn?'ACTIVO':'ACTIVAR';Native.setLoop(pointA,pointB,loopOn);drawWave();refreshAB();
+  if(loopOn&&(pointB<=pointA||(pointA===0&&pointB===now.duration))){
+    pointA=now.position;pointB=Math.min(now.duration,pointA+30000);
+  }
+  loopToggle.classList.toggle('on',loopOn);
+  Native.setLoop(pointA,pointB,loopOn);
+  mostrarPanel(loopOn?'ab':'');
+  drawWave();refreshAB();
 };
-abPanelToggle.onclick=()=>loopToggle.click();
 
 function syncRepeatButtons(){
   repeatTrack.classList.toggle('on',repeatMode==='track');repeatList.classList.toggle('on',repeatMode==='list');
 }
 function setRepeat(mode){repeatMode=mode;localStorage.setItem('player.repeat',mode);syncRepeatButtons();toast(mode==='track'?'Repetir canción actual':'Repetir lista completa')}
 repeatTrack.onclick=()=>setRepeat('track');repeatList.onclick=()=>setRepeat('list');syncRepeatButtons();
-document.querySelectorAll('[data-player-tab]').forEach(b=>b.onclick=()=>{
-  const name=b.dataset.playerTab;
-  if(activePlayerPane===name&&playerPanel.classList.contains('open')){activePlayerPane='';playerPanel.classList.remove('open');b.classList.remove('on');sincronizarPanel();return}
-  activePlayerPane=name;playerPanel.classList.add('open');sincronizarPanel();
+/** Enseña un panel del reproductor, o ninguno si se le pasa vacío. */
+function mostrarPanel(name){
+  activePlayerPane=name;
+  playerPanel.classList.toggle('open',!!name);
   document.querySelectorAll('[data-player-tab]').forEach(x=>x.classList.toggle('on',x.dataset.playerTab===name));
   document.querySelectorAll('.player-pane').forEach(x=>x.classList.toggle('on',x.dataset.pane===name));
+  sincronizarPanel();
   if(name==='queue')renderQueue();if(name==='voice')renderVoiceNotes();if(name==='ab')refreshAB();
+}
+document.querySelectorAll('[data-player-tab]').forEach(b=>b.onclick=()=>{
+  const name=b.dataset.playerTab;
+  mostrarPanel(activePlayerPane===name&&playerPanel.classList.contains('open')?'':name);
 });
 function renderQueue(){
   if(!window.queueList)return;const ready=downloadedPages();queueList.innerHTML='';
@@ -1254,9 +1278,18 @@ tPlayer.onclick=()=>{
 };
 document.body.classList.toggle('player-open',localStorage.getItem('player.open')!=='0');
 tPlayer.classList.toggle('on',document.body.classList.contains('player-open'));
-/** Pinta la onda en un lienzo. `carrilCss` son los píxeles de abajo que no le
- *  tocan: en el editor grande ahí va el carril de las banderas. */
-function pintarOnda(cv,ctx,carrilCss){
+/** Pinta la onda en un lienzo.
+ *
+ *  `carrilCss` son los píxeles de abajo que no le tocan: en el editor grande
+ *  ahí van las banderas. `maciza` cambia el dibujo: la tira chica se pinta con
+ *  barritas separadas, que a ese tamaño se leen bien, pero el visor grande
+ *  necesitaba otra cosa. Con 180 muestras repartidas en 380 puntos las
+ *  barritas salían de punto y medio con dos de hueco, y eso deja de parecer un
+ *  tema y pasa a parecer una cenefa. Macizas —cada muestra ocupa su trozo
+ *  entero, sin hueco— se ve la forma real del track, que es de lo que se
+ *  trataba: son las mismas muestras de siempre, no un relleno.
+ */
+function pintarOnda(cv,ctx,carrilCss,maciza){
   const dpr=devicePixelRatio||1,r=cv.getBoundingClientRect();
   if(!r.width)return; // el panel cerrado no mide nada y todo saldría en cero
   const W=Math.max(1,Math.round(r.width*dpr)),H=Math.max(1,Math.round(r.height*dpr));
@@ -1267,12 +1300,17 @@ function pintarOnda(cv,ctx,carrilCss){
   const data=all.slice(i0,i1);
   const base=util*.5, span=Math.max(1,range.end-range.start);
   const px=now.duration?Math.max(0,Math.min(W,(now.position-range.start)/span*W)):-1;
-  const bw=Math.max(1.5*dpr,W/data.length-1.4*dpr), radius=bw/2;
+  const paso=W/data.length;
+  const bw=maciza?paso:Math.max(1.5*dpr,paso-1.4*dpr), radius=maciza?0:bw/2;
   data.forEach((v,i)=>{
-    const x=i*W/data.length, bar=Math.max(2*dpr,v*util*.42);
+    const x=i*paso, bar=Math.max(maciza?1*dpr:2*dpr,v*util*(maciza?.46:.42));
     ctx.fillStyle=(x<=px)?'#d6b36a':'#6f7683';
     ctx.beginPath();
-    if(ctx.roundRect)ctx.roundRect(x,base-bar,bw,bar*2,radius); else ctx.rect(x,base-bar,bw,bar*2);
+    // El +.6 tapa la costura entre trozos vecinos: sin él quedan rayitas de
+    // fondo entre muestra y muestra y vuelve a parecer una reja.
+    if(maciza)ctx.rect(x,base-bar,bw+.6,bar*2);
+    else if(ctx.roundRect)ctx.roundRect(x,base-bar,bw,bar*2,radius);
+    else ctx.rect(x,base-bar,bw,bar*2);
     ctx.fill();
   });
   if(now.duration){
@@ -1293,14 +1331,9 @@ function pintarOnda(cv,ctx,carrilCss){
 }
 function sincronizarPanel(){document.body.classList.toggle('panel-abierto',playerPanel.classList.contains('open'))}
 function abALaVista(){return activePlayerPane==='ab'&&playerPanel.classList.contains('open')}
-function drawWave(){pintarOnda(wave,wctx,0);if(abALaVista())pintarAB()}
+function drawWave(){pintarOnda(wave,wctx,0,false);if(abALaVista())pintarAB()}
 function waveRange(){const span=now.duration/Math.max(1,waveZoom);if(waveZoom>1&&now.playing&&(now.position<waveOffset||now.position>waveOffset+span))waveOffset=now.position-span*.18;waveOffset=Math.max(0,Math.min(Math.max(0,now.duration-span),waveOffset));return{start:waveOffset,end:Math.min(now.duration,waveOffset+span)}}
 function wavePoint(e){const r=wave.getBoundingClientRect(),v=waveRange();return v.start+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(v.end-v.start)}
-function setWaveZoom(delta){
-  const current=waveRange(),center=now.position||((current.start+current.end)/2);waveZoom=Math.max(1,Math.min(16,waveZoom*(delta>0?2:.5)));
-  waveOffset=center-now.duration/waveZoom/2;waveRange();refreshAB();drawWave();
-}
-waveZoomOut.onclick=()=>setWaveZoom(-1);waveZoomIn.onclick=()=>setWaveZoom(1);
 /* ---- Editor A–B, calcado del de la página de bases de More Than Modes ---- */
 const abStage=document.getElementById('abStage'), abWave=document.getElementById('abWave'), abctx=abWave.getContext('2d');
 const ABCARRIL=22; // alto del carril donde viven las banderas
@@ -1322,7 +1355,7 @@ function colocarBanderas(){
     f.style.transform='translateX('+corre+'px)';
   });
 }
-function pintarAB(){pintarOnda(abWave,abctx,ABCARRIL);colocarBanderas()}
+function pintarAB(){pintarOnda(abWave,abctx,ABCARRIL,true);colocarBanderas()}
 function abTiempo(clientX){
   const r=abStage.getBoundingClientRect(), v=waveRange();
   return v.start+Math.max(0,Math.min(1,(clientX-r.left)/r.width))*(v.end-v.start);
@@ -1348,9 +1381,7 @@ abStage.addEventListener('pointerdown',e=>{
 });
 function refreshAB(){
   aRead.textContent=fmtTime(pointA);bRead.textContent=fmtTime(pointB);
-  if(window.abLen)abLen.textContent='Tramo '+fmtTime(Math.max(0,pointB-pointA));
-  waveZoomRead.textContent=waveZoom+'×';
-  abPanelToggle.classList.toggle('on',loopOn);abPanelToggle.textContent=loopOn?'ACTIVO':'ACTIVAR';
+  if(window.abLen)abLen.textContent=fmtTime(Math.max(0,pointB-pointA));
   if(abALaVista())pintarAB();
 }
 /** Mueve A o B y mantiene el bucle vivo mientras se ajusta. */
@@ -1360,13 +1391,6 @@ function setPoint(which,value){
   if(which==='a')pointA=Math.min(value,pointB-250); else pointB=Math.max(value,pointA+250);
   Native.setLoop(pointA,pointB,loopOn);drawWave();refreshAB();
 }
-document.querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>{
-  const cmd=b.dataset.ab;
-  if(cmd==='whole'){pointA=0;pointB=now.duration;Native.setLoop(pointA,pointB,loopOn);drawWave();refreshAB();return}
-  const which=cmd[0], what=cmd.slice(2);
-  if(what==='set')return setPoint(which,now.position);
-  setPoint(which,(which==='a'?pointA:pointB)+(what==='fwd'?100:-100));
-});
 wave.addEventListener('pointerdown',e=>{
   if(!now.duration)return;wave.setPointerCapture(e.pointerId);const v=wavePoint(e);
   if(loopOn){waveDrag=Math.abs(v-pointA)<Math.abs(v-pointB)?'a':'b';moveWavePoint(v)}

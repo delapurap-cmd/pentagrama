@@ -142,12 +142,68 @@ const SongViews = (() => {
     return 0;
   }
 
+  const SITIO_TOOLS = 'cuaderno.chordtools';
+
+  let toolsFlotantes = null;
+
+  /** Saca la barra del papel, la deja donde el usuario la dejó y engancha su
+   *  agarradera.
+   *
+   *  Lo de sacarla no es capricho: la hoja vive dentro de `.zoomer`, que lleva
+   *  un `transform` para el zoom, y un ascendiente con transform convierte
+   *  cualquier `position:fixed` de dentro en un `absolute` respecto a él. La
+   *  barra acababa a dos mil píxeles de la pantalla. Colgada del `body` sí es
+   *  fija. Los manejadores ya están puestos sobre este mismo nodo, así que
+   *  mudarlo de sitio no los pierde. */
+  function colocarHerramientas(tools) {
+    if (!tools) return;
+    if (toolsFlotantes && toolsFlotantes !== tools) toolsFlotantes.remove();
+    toolsFlotantes = tools;
+    document.body.appendChild(tools);
+    const grip = tools.querySelector('.chord-grip');
+    let guardado = null;
+    try { guardado = JSON.parse(localStorage.getItem(SITIO_TOOLS) || 'null'); } catch (e) { }
+    const poner = (x, y) => {
+      const w = tools.offsetWidth, h = tools.offsetHeight;
+      x = Math.max(6, Math.min(innerWidth - w - 6, x));
+      y = Math.max(52, Math.min(innerHeight - h - 6, y));
+      tools.classList.add('free');
+      tools.style.left = x + 'px';
+      tools.style.top = y + 'px';
+      tools.style.bottom = 'auto';
+      return { x, y };
+    };
+    if (guardado && Number.isFinite(guardado.x)) poner(guardado.x, guardado.y);
+
+    let drag = null;
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const r = tools.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      poner(e.clientX - drag.dx, e.clientY - drag.dy);
+    });
+    const soltar = () => {
+      if (!drag) return;
+      drag = null;
+      const r = tools.getBoundingClientRect();
+      try { localStorage.setItem(SITIO_TOOLS, JSON.stringify({ x: r.left, y: r.top })); } catch (e) { }
+    };
+    grip.addEventListener('pointerup', soltar);
+    grip.addEventListener('pointercancel', soltar);
+  }
+
   function renderChords(page) {
     if (!page || !page.chordsPane) return;
     const data = page.chords;
     const offset = data.transpose;
     page.chordsPane.innerHTML =
       '<div class="chord-tools">' +
+        '<button class="chord-grip" title="Mover las herramientas">⠿</button>' +
         '<div class="chord-step"><button data-a="down" title="Bajar semitono">−</button><output>TONO ' +
           (offset > 0 ? '+' : '') + offset + '</output><button data-a="up" title="Subir semitono">＋</button></div>' +
         '<button data-a="notation" title="Cambiar notación">' + (data.latin ? 'DO' : 'C') + '</button>' +
@@ -224,6 +280,8 @@ const SongViews = (() => {
     };
     page.chordsPane.querySelector('[data-a="magic"]').onclick = () => openImport(page);
     page.chordsPane.querySelector('[data-a="sync"]').onclick = () => syncLyrics(page);
+
+    colocarHerramientas(page.chordsPane.querySelector('.chord-tools'));
   }
 
   function canonicalRoot(root) {

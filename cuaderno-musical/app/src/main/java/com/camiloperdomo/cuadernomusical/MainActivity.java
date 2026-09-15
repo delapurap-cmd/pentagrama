@@ -496,7 +496,7 @@ public class MainActivity extends AppCompatActivity {
             sendDownload(id, 100, "ready", "MP3 listo");
 
             // La forma de onda se calcula después, sin mantener bloqueado el botón Play.
-            String wave = extractWaveform(target, 180).toString();
+            String wave = extractWaveform(target, MUESTRAS_ONDA).toString();
             tracks.edit().putString(id + ".wave", wave).apply();
             sendDownload(id, 100, "waveform", "");
         } catch (Exception e) {
@@ -630,7 +630,7 @@ public class MainActivity extends AppCompatActivity {
         sendVoice("processing", songId, "", null, "Preparando nota…");
         worker.execute(() -> {
             long duration = readDuration(file);
-            JSONArray wave = extractWaveform(file, 180);
+            JSONArray wave = extractWaveform(file, MUESTRAS_ONDA);
             String key = voiceKey(songId, file);
             Uri publicUri = null;
             try { publicUri = copyVoiceToPublicMusic(file, songId); } catch (Exception ignored) { }
@@ -836,6 +836,14 @@ public class MainActivity extends AppCompatActivity {
         finally { try { r.release(); } catch (Exception ignored) { } }
     }
 
+    /* Cuantas muestras se guardan de cada pista. Eran 180, que se veian bien en
+       la tira chica del reproductor pero no en el visor del A-B: repartidas en
+       380 puntos de pantalla, cada muestra ocupaba dos y la onda dejaba de
+       parecerse al tema. Con 480 hay mas de una muestra por punto y la forma
+       que se ve es la de verdad. Las pistas ya descargadas conservan sus 180
+       hasta que se vuelvan a bajar; el dibujo las reparte igual. */
+    private static final int MUESTRAS_ONDA = 480;
+
     private JSONArray extractWaveform(File file, int buckets) {
         float[] peaks = new float[buckets];
         MediaExtractor extractor = new MediaExtractor();
@@ -879,11 +887,19 @@ public class MainActivity extends AppCompatActivity {
                         int start = Math.max(0, Math.min(buckets - 1, (int)(info.presentationTimeUs * buckets / Math.max(1, durationUs))));
                         int samples = info.size / 2;
                         out.position(info.offset); out.limit(info.offset + info.size);
+                        // Todas las muestras de una trama caen en su cubo. Antes se
+                        // repartian por `start + (i * buckets/80) / samples`, que
+                        // manda una trama de veinte milisegundos a cubos de segundos
+                        // mas alla: los picos salian corridos y emborronados hacia
+                        // adelante, y la onda no acababa de parecerse al tema. Una
+                        // trama dura mucho menos que un cubo, asi que su sitio es
+                        // uno solo.
+                        float pico = 0f;
                         for (int i = 0; i < samples && out.remaining() >= 2; i++) {
-                            int bucket = Math.min(buckets - 1, start + (i * Math.max(1, buckets / 80)) / Math.max(1, samples));
                             float amp = Math.abs((float)out.getShort() / 32768f);
-                            if (amp > peaks[bucket]) peaks[bucket] = amp;
+                            if (amp > pico) pico = amp;
                         }
+                        if (pico > peaks[start]) peaks[start] = pico;
                     }
                     outputDone = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
                     codec.releaseOutputBuffer(outIndex, false);
@@ -894,6 +910,11 @@ public class MainActivity extends AppCompatActivity {
             try { extractor.release(); } catch (Exception ignored) { }
             if (codec != null) try { codec.stop(); codec.release(); } catch (Exception ignored) { }
         }
+        // Un cubo puede quedarse a cero si es mas corto que una trama —pasa en
+        // las notas de voz breves, donde cada cubo son milisegundos—. Se le da
+        // el valor del vecino de la izquierda en vez de dejar un diente.
+        for (int i = 1; i < buckets; i++) if (peaks[i] == 0f) peaks[i] = peaks[i - 1];
+
         float max = .001f;
         for (float p : peaks) max = Math.max(max, p);
         JSONArray result = new JSONArray();

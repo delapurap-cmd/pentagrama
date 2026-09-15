@@ -43,10 +43,14 @@
 <!-- Panel de escritura de tiempos -->
 <section class="panel" id="panel" aria-label="Escribir tiempos">
   <div class="row">
-    <input class="num" id="bpm" type="number" min="30" max="300" step="1" value="90" inputmode="numeric" title="Tempo">
+    <div class="bpm-step">
+      <button class="btn ghost icon" id="bpmDown" title="Bajar el tempo" aria-label="Bajar el tempo">−</button>
+      <output class="num" id="bpm" title="Tempo">90</output>
+      <button class="btn ghost icon" id="bpmUp" title="Subir el tempo" aria-label="Subir el tempo">＋</button>
+    </div>
     <button class="btn" id="btnMetro">Metrónomo</button>
     <button class="btn ghost" id="btnTapUse" hidden>Usar tempo</button>
-    <button class="btn ghost icon" id="btnPanelClose" title="Cerrar" style="margin-left:auto">✕</button>
+    <button class="btn ghost icon" id="btnPanelClose" title="Cerrar">✕</button>
   </div>
 
   <button class="tap" id="btnTapPad">Tap</button>

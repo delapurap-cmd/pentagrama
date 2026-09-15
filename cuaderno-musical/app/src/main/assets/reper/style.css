@@ -44,13 +44,24 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 body.embed .standalone-only { display: none !important; }
 body.embed .embed-only { display: inline-flex !important; }
 body.embed { display: flex; flex-direction: column; }
-body.embed .bar { position: relative; flex: 0 0 auto; flex-wrap: wrap; overflow: visible; padding: 5px 7px; }
+/* Dentro del cuaderno la barra va abajo. Arriba, al desplegar «Herramientas»
+   la fila de botones crecia hacia abajo y se comia el principio del
+   pentagrama, que es justo lo que estas mirando mientras escribes. Abajo, al
+   desplegarse empuja desde el suelo y el pentagrama no se tapa nunca. */
+body.embed .bar {
+  position: relative; order: 2; flex: 0 0 auto; flex-wrap: wrap; overflow: visible;
+  padding: 5px 7px calc(5px + env(safe-area-inset-bottom, 0px));
+  border-bottom: 0; border-top: 1px solid var(--line);
+}
+body.embed .stage { order: 1; }
 body.embed .bar-tools {
-  position: static; order: 20; flex: 1 0 100%;
-  display: none; align-items: center; gap: 4px; padding: 4px 0 0;
+  position: static; order: -1; flex: 1 0 100%;
+  display: none; align-items: center; gap: 4px; padding: 0 0 5px;
   overflow-x: auto; border: 0; border-radius: 0;
   background: transparent; box-shadow: none;
 }
+/* El panel de tiempos se levanta para no quedar debajo de la barra. */
+body.embed .panel { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
 body.embed.tools-open .bar-tools { display: flex; }
 body.embed #btnTools.on { border-color: var(--gold); color: var(--gold); }
 body.embed .stage { flex: 1 1 auto; min-height: 0; height: auto; }
@@ -233,7 +244,10 @@ body.embed .sheet-head { display: none; }
 }
 .panel.open { transform: translateX(-50%) translateY(0); }
 .panel #btnTapUse { color: var(--gold); border-color: rgba(201,168,76,.4); }
-.panel .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.panel .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 34px; }
+/* La equis, en la esquina: con `margin-left:auto` dentro de una fila que se
+   envuelve se caia sola a una segunda linea y dejaba un hueco vacio. */
+.panel #btnPanelClose { position: absolute; top: 9px; right: 10px; margin: 0 !important; }
 .panel .tap {
   display: block; width: 100%; margin-top: 9px; height: 54px; border-radius: 14px;
   border: 1px solid rgba(201, 168, 76, .45); background: var(--gold-soft); color: var(--gold);
@@ -242,11 +256,14 @@ body.embed .sheet-head { display: none; }
 }
 .panel .tap:active { transform: scale(.97); background: rgba(201, 168, 76, .3); }
 .panel .preview {
-  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  min-height: 42px; margin-top: 9px; padding: 4px 10px;
+  display: flex; align-items: center; gap: 3px; flex-wrap: nowrap;
+  height: 46px; margin-top: 9px; padding: 4px 10px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   background: #0d0d0f; border: 1px solid var(--line); border-radius: 12px;
   font-family: Bravura, serif; font-size: 26px; color: var(--txt);
 }
+.panel .preview::-webkit-scrollbar { display: none; }
+.panel .preview .g { flex: 0 0 auto; }
 .panel .preview:empty::before {
   content: "los tiempos aparecerán aquí"; font-family: inherit; font-size: 12.5px; color: var(--txt-dim);
 }
@@ -257,6 +274,16 @@ body.embed .sheet-head { display: none; }
 .panel .actions .btn { flex: 0 0 auto; }
 .panel .actions .btn { justify-content: center; height: 40px; }
 .panel .btn.primary { border-color: var(--gold); color: #1a1509; background: var(--gold); font-weight: 600; }
+
+.bpm-step {
+  display: flex; align-items: center; flex: 0 0 auto; height: 42px;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+}
+.bpm-step .btn { width: 42px; height: 40px; border: 0; border-radius: 0; font-size: 19px; }
+.bpm-step .num {
+  width: 56px; height: 40px; display: grid; place-items: center;
+  border: 0; border-radius: 0; background: none; text-align: center;
+}
 
 .num {
   width: 74px; height: 42px; padding: 0 10px;

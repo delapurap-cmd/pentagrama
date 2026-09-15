@@ -534,13 +534,34 @@
   function bindPanel() {
     const bpm = $('#bpm');
     bpm.value = state.score.tempo;
-    bpm.addEventListener('change', () => {
-      const v = Math.max(30, Math.min(300, parseInt(bpm.value, 10) || 90));
+    // El tempo era una casilla de escribir: para subirlo cinco pulsos habia
+    // que sacar el teclado numerico y teclear. Con dos botones se ajusta con
+    // el pulgar, que es como se ajusta un metronomo.
+    const ponerTempo = (v) => {
+      v = Math.max(30, Math.min(300, Math.round(v) || 90));
       bpm.value = v;
       state.score.tempo = v;
       if (Sound.metroOn()) { Sound.metroStop(); Sound.metroStart(v, state.score.time.num); }
       render();
-    });
+    };
+    // Mantener pulsado corre el tempo, que de uno en uno hasta 160 son muchos toques.
+    const pasoLargo = (boton, signo) => {
+      let repite = 0, acelera = 0;
+      const parar = () => { clearInterval(repite); clearTimeout(acelera); repite = 0; };
+      boton.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        ponerTempo(state.score.tempo + signo);
+        acelera = setTimeout(() => {
+          repite = setInterval(() => ponerTempo(state.score.tempo + signo), 70);
+        }, 420);
+        boton.setPointerCapture(e.pointerId);
+      });
+      boton.addEventListener('pointerup', parar);
+      boton.addEventListener('pointercancel', parar);
+      boton.addEventListener('pointerleave', parar);
+    };
+    pasoLargo($('#bpmDown'), -1);
+    pasoLargo($('#bpmUp'), 1);
 
     $('#btnMetro').addEventListener('click', (e) => {
       if (Sound.metroOn()) { Sound.metroStop(); e.currentTarget.classList.remove('on'); }
@@ -614,6 +635,11 @@
     box.innerHTML = state.tapFigures.map((f) =>
       `<span class="g">${Radial.GLYPH.note[f.dur]}${f.dots ? Radial.GLYPH.dot : ''}</span>`).join('')
       + (tail ? `<span class="g pend" title="último golpe">${Radial.GLYPH.note[tail.dur]}${tail.dots ? Radial.GLYPH.dot : ''}</span>` : '');
+    // La tira de figuras no crece: es de alto fijo y se desplaza sola hasta la
+    // ultima. Antes se envolvia en varias filas y el panel entero cambiaba de
+    // tamaño con cada golpe, que es lo peor que puede hacer algo que estas
+    // mirando mientras marcas un ritmo.
+    box.scrollLeft = box.scrollWidth;
     const detected = state.tapBpm && !Sound.metroOn() ? state.tapBpm : null;
     $('#tapInfo').textContent = state.tapFigures.length
       ? `${state.tapFigures.length + 1} figuras · ♩ = ${detected || '–'}`
