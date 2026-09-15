@@ -219,7 +219,19 @@ public class MainActivity extends AppCompatActivity {
                 o.put("downloaded", true);
                 o.put("path", path);
                 o.put("duration", tracks.getLong(id + ".duration", 0));
-                o.put("wave", new JSONArray(tracks.getString(id + ".wave", "[]")));
+                String onda = tracks.getString(id + ".wave", "[]");
+                o.put("wave", new JSONArray(onda));
+                // El nombre de verdad del audio, que hasta ahora se quedaba
+                // guardado aquí sin que nadie lo pidiera: la página enseñaba su
+                // propio encabezado y por eso el reproductor no decía el nombre
+                // del track sino el de la hoja.
+                o.put("title", tracks.getString(id + ".title", ""));
+                o.put("waveMs", tracks.getLong(id + ".waveMs", 0));
+                // Si no hay onda, se calcula ahora en segundo plano. Pasa
+                // siempre que el audio se recupera de la carpeta pública —o
+                // sea, cada vez que se reinstala la app—, y sin onda la tira
+                // dibujaba un dibujito falso en vez del tema.
+                if (onda.length() < 4) pedirOnda(id, new File(path));
                 return o.toString();
             } catch (Exception e) { return "{}"; }
         }
@@ -457,9 +469,15 @@ public class MainActivity extends AppCompatActivity {
                 while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
             }
             long duration = readDuration(target);
+            // La onda **no** se pone en blanco aqui. Este camino es el que se
+            // toma cuando el audio privado ya no esta pero el publico si, o
+            // sea, tras cada reinstalacion: dejarla vacia era condenar a todas
+            // las canciones al dibujito de relleno.
+            String ondaVieja = tracks.getString(id + ".wave", "[]");
             tracks.edit().putString(id + ".path", target.getAbsolutePath()).putString(id + ".title", title)
-                .putString(id + ".wave", "[]").putLong(id + ".duration", duration)
+                .putString(id + ".wave", ondaVieja).putLong(id + ".duration", duration)
                 .putString(id + ".publicUri", uri.toString()).commit();
+            if (ondaVieja.length() < 4) pedirOnda(id, target);
             return target;
         } catch (Exception e) { return null; }
     }
@@ -496,12 +514,36 @@ public class MainActivity extends AppCompatActivity {
             sendDownload(id, 100, "ready", "MP3 listo");
 
             // La forma de onda se calcula después, sin mantener bloqueado el botón Play.
-            String wave = extractWaveform(target, MUESTRAS_ONDA).toString();
-            tracks.edit().putString(id + ".wave", wave).apply();
+            Onda onda = extractWaveform(target, MUESTRAS_ONDA);
+            tracks.edit().putString(id + ".wave", onda.muestras.toString())
+                .putLong(id + ".waveMs", onda.ms).apply();
             sendDownload(id, 100, "waveform", "");
         } catch (Exception e) {
             sendDownload(id, 0, "error", e.getMessage() == null ? "Error de descarga" : e.getMessage());
         }
+    }
+
+    /** Ids cuya onda ya se está calculando, para no lanzar lo mismo diez veces.
+     *  `getTrackState` se llama a cada repintado del índice y de la página. */
+    private final java.util.Set<String> ondasEnMarcha =
+        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    /** Calcula la onda que falta y avisa a la página cuando esté. */
+    private void pedirOnda(String id, File file) {
+        if (id == null || file == null || !file.isFile()) return;
+        if (!ondasEnMarcha.add(id)) return;
+        worker.execute(() -> {
+            try {
+                Onda onda = extractWaveform(file, MUESTRAS_ONDA);
+                String texto = onda.muestras.toString();
+                if (texto.length() > 4) {
+                    tracks.edit().putString(id + ".wave", texto)
+                        .putLong(id + ".waveMs", onda.ms).apply();
+                    sendDownload(id, 100, "waveform", "");
+                }
+            } catch (Exception ignored) {
+            } finally { ondasEnMarcha.remove(id); }
+        });
     }
 
     private void sendDownload(String id, int progress, String state, String message) {
@@ -539,6 +581,13 @@ public class MainActivity extends AppCompatActivity {
             playingTitle = title;
             loopA = 0;
             loopB = player.getDuration();
+            // El lector de metadatos y el motor no siempre dicen lo mismo en un
+            // MP3, y la tira reparte la onda sobre la duracion guardada mientras
+            // que la aguja va con la del motor: si no coinciden, lo pintado y lo
+            // que suena dejan de cuadrar. Manda la del motor.
+            if (player.getDuration() > 0) {
+                tracks.edit().putLong(id + ".duration", player.getDuration()).apply();
+            }
             loopEnabled = false;
             applyPlaybackParams();
             player.setOnCompletionListener(mp -> {
@@ -630,11 +679,13 @@ public class MainActivity extends AppCompatActivity {
         sendVoice("processing", songId, "", null, "Preparando nota…");
         worker.execute(() -> {
             long duration = readDuration(file);
-            JSONArray wave = extractWaveform(file, MUESTRAS_ONDA);
+            Onda onda = extractWaveform(file, MUESTRAS_ONDA);
+            JSONArray wave = onda.muestras;
             String key = voiceKey(songId, file);
             Uri publicUri = null;
             try { publicUri = copyVoiceToPublicMusic(file, songId); } catch (Exception ignored) { }
             tracks.edit().putLong(key + ".duration", duration).putString(key + ".wave", wave.toString())
+                .putLong(key + ".waveMs", onda.ms)
                 .putString(key + ".publicUri", publicUri == null ? "" : publicUri.toString()).apply();
             String id = "voice:" + safeId(songId) + ":" + file.getName();
             sendVoice("ready", songId, id, wave, "Nota de voz lista");
@@ -667,6 +718,7 @@ public class MainActivity extends AppCompatActivity {
                 if (duration < 0) duration = readDuration(file);
                 o.put("duration", duration);
                 o.put("wave", new JSONArray(tracks.getString(key + ".wave", "[]")));
+                o.put("waveMs", tracks.getLong(key + ".waveMs", 0));
                 out.put(o);
             }
         } catch (Exception ignored) { }
@@ -744,7 +796,7 @@ public class MainActivity extends AppCompatActivity {
             String uri = tracks.getString(id + ".publicUri", "");
             if (!uri.isEmpty()) getContentResolver().delete(Uri.parse(uri), null, null);
             tracks.edit().remove(id + ".path").remove(id + ".title").remove(id + ".wave")
-                .remove(id + ".duration").remove(id + ".publicUri").apply();
+                .remove(id + ".waveMs").remove(id + ".duration").remove(id + ".publicUri").apply();
             sendDownload(id, 0, "removed", "Audio eliminado");
         } catch (Exception ignored) { }
     }
@@ -844,8 +896,23 @@ public class MainActivity extends AppCompatActivity {
        hasta que se vuelvan a bajar; el dibujo las reparte igual. */
     private static final int MUESTRAS_ONDA = 480;
 
-    private JSONArray extractWaveform(File file, int buckets) {
+    /** La onda, y la duracion sobre la que quedo repartida.
+     *
+     *  Las dos cosas juntas porque hacen falta juntas: el extractor, el lector
+     *  de metadatos y el motor de reproduccion dan duraciones distintas para
+     *  el mismo MP3 —es normal en VBR sin cabecera—, y la tira reparte las
+     *  muestras sobre una mientras la aguja se mueve sobre otra. Con unos
+     *  segundos de diferencia el estribillo se dibuja donde no suena y las
+     *  marcas A y B caen fuera de sitio. Guardando la duracion del reparto, la
+     *  pagina puede poner cada muestra en su segundo de verdad. */
+    private static final class Onda {
+        final JSONArray muestras; final long ms;
+        Onda(JSONArray muestras, long ms) { this.muestras = muestras; this.ms = ms; }
+    }
+
+    private Onda extractWaveform(File file, int buckets) {
         float[] peaks = new float[buckets];
+        long repartidaMs = 0;
         MediaExtractor extractor = new MediaExtractor();
         MediaCodec codec = null;
         try {
@@ -856,8 +923,9 @@ public class MainActivity extends AppCompatActivity {
                 String mime = f.getString(MediaFormat.KEY_MIME);
                 if (mime != null && mime.startsWith("audio/")) { track = i; format = f; break; }
             }
-            if (track < 0 || format == null) return new JSONArray();
+            if (track < 0 || format == null) return new Onda(new JSONArray(), 0);
             long durationUs = format.containsKey(MediaFormat.KEY_DURATION) ? format.getLong(MediaFormat.KEY_DURATION) : 1;
+            repartidaMs = durationUs / 1000;
             String mime = format.getString(MediaFormat.KEY_MIME);
             extractor.selectTrack(track);
             codec = MediaCodec.createDecoderByType(mime);
@@ -919,7 +987,7 @@ public class MainActivity extends AppCompatActivity {
         for (float p : peaks) max = Math.max(max, p);
         JSONArray result = new JSONArray();
         for (float p : peaks) result.put(Float.valueOf(Math.max(.04f, p / max)));
-        return result;
+        return new Onda(result, repartidaMs);
     }
 
     private String safeId(String id) { return id.replaceAll("[^A-Za-z0-9_-]", "_"); }

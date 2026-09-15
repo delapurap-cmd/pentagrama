@@ -498,6 +498,15 @@ let pages=[], cur=0, mode='text', tool='pen', color=PALETTE[0], full=false;
 const el=(t,c)=>{const n=document.createElement(t);if(c)n.className=c;return n};
 const uid=()=>('song-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8));
 const pageTitle=p=>((p.ed.innerText||'').trim().split(/\n/)[0]||'Canción sin título').slice(0,90);
+/** El nombre del audio descargado; si no lo hay, el encabezado de la hoja.
+ *  `pageTitle` es la primera linea de lo escrito en Apuntes, que es el nombre
+ *  de la **pagina**, no el del track: el reproductor decia «Canción sin
+ *  título» o lo que hubiera garabateado arriba, en vez del nombre real. */
+const trackTitle=p=>{
+  if(!p)return '';
+  const st=trackState(p);
+  return ((st&&st.title)||'').trim()||pageTitle(p);
+};
 /* almacén: artefacto de Claude o localStorage si abres el HTML descargado */
 const store={
   async get(k){
@@ -1076,7 +1085,7 @@ function onPaste(e,p){
 }
 
 /* ═══ audio de ensayo ═══ */
-let engineReady=!!(window.Native&&Native.isEngineReady&&Native.isEngineReady()), now={id:'',songId:'',kind:'song',title:'',position:0,duration:0,playing:false,wave:[]};
+let engineReady=!!(window.Native&&Native.isEngineReady&&Native.isEngineReady()), now={id:'',songId:'',kind:'song',title:'',position:0,duration:0,playing:false,wave:[],waveMs:0};
 let loopOn=false, pointA=0, pointB=0, waveDrag='',waveZoom=1,waveOffset=0;
 let repeatMode=localStorage.getItem('player.repeat')||'track',activePlayerPane='',voiceRecording=false,voiceRecordingSongId='';
 if(!['track','list'].includes(repeatMode))repeatMode='track';
@@ -1107,8 +1116,8 @@ function downloadPage(p){
 function playPage(p){
   const st=trackState(p);
   if(!st.downloaded)return downloadPage(p);
-  now.wave=st.wave||[]; now.duration=st.duration||0; pointA=0;pointB=now.duration;loopOn=false;waveZoom=1;waveOffset=0;
-  loopToggle.classList.remove('on');drawWave();Native.play(p.id,pageTitle(p));
+  now.wave=st.wave||[]; now.waveMs=st.waveMs||0; now.duration=st.duration||0; pointA=0;pointB=now.duration;loopOn=false;waveZoom=1;waveOffset=0;
+  loopToggle.classList.remove('on');drawWave();Native.play(p.id,trackTitle(p));
 }
 function downloadedPages(){return pages.filter(p=>trackState(p).downloaded)}
 function playlistStep(direction,fromId=(now.songId||now.id),wrap=false){
@@ -1127,7 +1136,7 @@ function updatePlayerPage(){
   const p=pages[cur], st=trackState(p), different=now.id&&(now.kind==='voice'||(now.songId||now.id)!==p.id);
   const ready=downloadedPages(),qi=ready.findIndex(x=>x.id===(now.songId||now.id));
   queuePos.textContent=ready.length?(qi>=0?(qi+1)+' / '+ready.length:'— / '+ready.length):'0 / 0';
-  nowTitle.textContent=now.id?('Suena · '+now.title):pageTitle(p);
+  nowTitle.textContent=now.id?('Suena · '+(now.title||trackTitle(p))):trackTitle(p);
   cajaPlayer.classList.toggle('sonando',!!now.playing);
   if(!st.downloaded){
     pageAction.style.display='block';pageAction.disabled=!p.link;
@@ -1220,7 +1229,7 @@ function renderQueue(){
   if(!window.queueList)return;const ready=downloadedPages();queueList.innerHTML='';
   if(!ready.length){queueList.innerHTML='<div class="voice-status">Descarga canciones desde el índice.</div>';return}
   ready.forEach((p,i)=>{const row=el('div','queue-row');row.classList.toggle('on',now.kind==='song'&&(now.songId||now.id)===p.id);
-    const b=el('button');b.textContent=(i+1)+'. '+pageTitle(p);b.onclick=()=>playPage(p);row.append(b);queueList.append(row)});
+    const b=el('button');b.textContent=(i+1)+'. '+trackTitle(p);b.onclick=()=>playPage(p);row.append(b);queueList.append(row)});
 }
 
 function voiceNotes(p){
@@ -1234,7 +1243,7 @@ function startStopVoice(p){
   voiceRecordingSongId=p.id;Native.startVoiceNote(p.id,pageTitle(p));
 }
 function playRecordedNote(p,n){
-  voiceWaveCache[n.id]=n.wave||[];now.wave=n.wave||[];now.duration=n.duration||0;waveZoom=1;waveOffset=0;
+  voiceWaveCache[n.id]=n.wave||[];now.wave=n.wave||[];now.waveMs=n.waveMs||0;now.duration=n.duration||0;waveZoom=1;waveOffset=0;
   Native.playVoiceNote(p.id,n.path,n.label);
 }
 function renderSongRecordings(p){
@@ -1295,22 +1304,30 @@ function pintarOnda(cv,ctx,carrilCss,maciza){
   const W=Math.max(1,Math.round(r.width*dpr)),H=Math.max(1,Math.round(r.height*dpr));
   if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}ctx.clearRect(0,0,W,H);
   const util=Math.max(1,H-(carrilCss||0)*dpr);
-  const all=now.wave&&now.wave.length?now.wave:Array.from({length:80},(_,i)=>.12+.08*Math.sin(i*.7));
-  const range=waveRange(),i0=Math.floor(range.start/Math.max(1,now.duration)*all.length),i1=Math.max(i0+1,Math.ceil(range.end/Math.max(1,now.duration)*all.length));
-  const data=all.slice(i0,i1);
-  const base=util*.5, span=Math.max(1,range.end-range.start);
+  const hayOnda=now.wave&&now.wave.length;
+  const all=hayOnda?now.wave:Array.from({length:80},(_,i)=>.12+.08*Math.sin(i*.7));
+  // Sobre cuanto tiempo se repartieron estas muestras. No tiene por que ser la
+  // duracion que dice el motor: el extractor, el lector de metadatos y el
+  // reproductor discrepan en un MP3 de bitrate variable, y por unos segundos
+  // de diferencia el estribillo acababa dibujado donde no suena. Cada muestra
+  // se coloca en su segundo, no en su fraccion del array.
+  const baseMs=(hayOnda&&now.waveMs>0)?now.waveMs:now.duration;
+  const range=waveRange(), span=Math.max(1,range.end-range.start);
+  const paso=Math.max(1,baseMs)/all.length;            // cuanto dura una muestra
   const px=now.duration?Math.max(0,Math.min(W,(now.position-range.start)/span*W)):-1;
-  const paso=W/data.length;
-  const bw=maciza?paso:Math.max(1.5*dpr,paso-1.4*dpr), radius=maciza?0:bw/2;
-  data.forEach((v,i)=>{
-    const x=i*paso, bar=Math.max(maciza?1*dpr:2*dpr,v*util*(maciza?.46:.42));
+  const ancho=Math.max(1,paso/span*W);
+  const bw=maciza?ancho:Math.max(1.5*dpr,ancho-1.4*dpr), radius=maciza?0:bw/2;
+  all.forEach((v,i)=>{
+    const x=(i*paso-range.start)/span*W;
+    if(x+bw<0||x>W)return;                              // fuera del trozo visible
+    const bar=Math.max(maciza?1*dpr:2*dpr,v*util*(maciza?.46:.42));
     ctx.fillStyle=(x<=px)?'#d6b36a':'#6f7683';
     ctx.beginPath();
     // El +.6 tapa la costura entre trozos vecinos: sin él quedan rayitas de
     // fondo entre muestra y muestra y vuelve a parecer una reja.
-    if(maciza)ctx.rect(x,base-bar,bw+.6,bar*2);
-    else if(ctx.roundRect)ctx.roundRect(x,base-bar,bw,bar*2,radius);
-    else ctx.rect(x,base-bar,bw,bar*2);
+    if(maciza)ctx.rect(x,util*.5-bar,bw+.6,bar*2);
+    else if(ctx.roundRect)ctx.roundRect(x,util*.5-bar,bw,bar*2,radius);
+    else ctx.rect(x,util*.5-bar,bw,bar*2);
     ctx.fill();
   });
   if(now.duration){
@@ -1410,7 +1427,10 @@ window.nativeDownloadState=d=>{
     downloadJobs[p.id]=d;updateIndexTrack(p);
     downloadProgress.style.display='block';downloadProgress.firstElementChild.style.width=Math.max(2,d.progress)+'%';
   }else if(d.state==='waveform'){
-    if(p===pages[cur]||p.id===now.id){const st=trackState(p);now.wave=st.wave||[];drawWave()}
+    // La onda se calcula despues de la descarga, y ahora tambien al vuelo para
+    // las pistas recuperadas. Cuando llega, si es la que suena, entra ya.
+    if(p.id===(now.songId||now.id)){const st=trackState(p);now.wave=st.wave||[];now.waveMs=st.waveMs||0;refreshAB();drawWave()}
+    else if(p===pages[cur])drawWave();
   }else{
     delete downloadJobs[p.id];
     downloadProgress.style.display='none';refreshTrack(p);buildIndex();if(d.message)toast(d.message);
@@ -1455,8 +1475,8 @@ window.nativePlayerState=d=>{
   if(d.playing&&!raf)raf=requestAnimationFrame(followTrack);
   if(!d.playing&&raf){cancelAnimationFrame(raf);raf=0}
   if(changed){
-    if(d.kind==='voice')now.wave=voiceWaveCache[d.id]||now.wave||[];
-    else{const p=pages.find(x=>x.id===(d.songId||d.id)),st=trackState(p);now.wave=st.wave||[]}
+    if(d.kind==='voice'){now.wave=voiceWaveCache[d.id]||now.wave||[];now.waveMs=0}
+    else{const p=pages.find(x=>x.id===(d.songId||d.id)),st=trackState(p);now.wave=st.wave||[];now.waveMs=st.waveMs||0}
     pointA=0;pointB=d.duration||0;loopOn=false;waveZoom=1;waveOffset=0;loopToggle.classList.remove('on');refreshAB();
   }
   cajaPlayer.classList.toggle('sonando',!!d.playing);refreshClock();updatePlayerPage();
