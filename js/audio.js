@@ -67,7 +67,7 @@ const Sound = (() => {
     return Promise.all(wanted.map(loadSample));
   }
 
-  function playSample(at, midi, dur) {
+  function playSample(at, midi, dur, vol = 0.9) {
     const { midi: sm, rate } = nearestSample(midi);
     const buf = samples.get(sm);
     if (!buf) return false;
@@ -77,8 +77,8 @@ const Sound = (() => {
     src.buffer = buf;
     src.playbackRate.value = rate;
     const end = at + Math.max(0.12, dur);
-    g.gain.setValueAtTime(0.9, at);
-    g.gain.setValueAtTime(0.9, Math.max(at, end - 0.12));
+    g.gain.setValueAtTime(vol, at);
+    g.gain.setValueAtTime(vol, Math.max(at, end - 0.12));
     g.gain.exponentialRampToValueAtTime(0.0001, end + 0.22);   // suelta la tecla
     src.connect(g).connect(c.destination);
     src.start(at);
@@ -87,8 +87,8 @@ const Sound = (() => {
   }
 
   /* ---------- Nota (reproducción de la partitura) ---------- */
-  function tone(at, midi, dur) {
-    if (playSample(at, midi, dur)) return;
+  function tone(at, midi, dur, vol = 0.9) {
+    if (playSample(at, midi, dur, vol)) return;
     const c = ac();
     const f = 440 * Math.pow(2, (midi - 69) / 12);
     const o = c.createOscillator();
@@ -97,7 +97,7 @@ const Sound = (() => {
     o.type = 'triangle'; o.frequency.setValueAtTime(f, at);
     o2.type = 'sine'; o2.frequency.setValueAtTime(f * 2, at);
     const g2 = c.createGain(); g2.gain.value = 0.12;
-    const peak = 0.22, end = at + Math.max(0.12, dur * 0.96);
+    const peak = 0.22 * (vol / 0.9), end = at + Math.max(0.12, dur * 0.96);
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(peak, at + 0.012);
     g.gain.exponentialRampToValueAtTime(peak * 0.55, at + Math.min(0.25, dur * 0.5));
@@ -136,6 +136,35 @@ const Sound = (() => {
   /** Instante del primer clic, para alinear los golpes con el pulso. */
   const metroOrigin = () => (metro ? metro.origin : null);
 
+  /* ---------- Cómo suena lo que está escrito ----------
+     Un matiz no es un dibujo: cambia el volumen. Un trino no es un garabato
+     sobre la nota: son notas. Y el pedal alarga lo que ya se ha soltado. Lo
+     que sigue traduce esos signos a sonido. */
+  const VOL_MATIZ = { pppp: .22, ppp: .3, pp: .4, p: .52, mp: .65, mf: .78,
+                      f: .92, ff: 1.05, fff: 1.18, ffff: 1.3,
+                      sf: 1.1, sfz: 1.15, fp: 1.05, rf: 1.05, rfz: 1.1 };
+
+  /** Desarrolla un adorno en las notas que de verdad se tocan. */
+  function desarrollar(orn, midi, dur, escala) {
+    // el vecino de arriba y el de abajo, dentro de la tonalidad que haya
+    const arriba = midi + (escala.indexOf((midi + 1) % 12) >= 0 ? 1 : 2);
+    const abajo = midi - (escala.indexOf(((midi - 1) % 12 + 12) % 12) >= 0 ? 1 : 2);
+    if (orn === 'mordente') return [[midi, .06], [abajo, .06], [midi, dur - .12]];
+    if (orn === 'mordenteInv') return [[midi, .06], [arriba, .06], [midi, dur - .12]];
+    if (orn === 'grupeto') return [[arriba, .07], [midi, .07], [abajo, .07], [midi, dur - .21]];
+    if (orn === 'grupetoInv') return [[abajo, .07], [midi, .07], [arriba, .07], [midi, dur - .21]];
+    if (orn === 'trino') {
+      // tantas alternancias como quepan, sin bajar de 12 por segundo
+      const paso = Math.max(0.055, Math.min(0.09, dur / 10));
+      const out = [];
+      for (let t = 0; t + paso <= dur; t += paso) out.push([out.length % 2 ? midi : arriba, paso]);
+      if (!out.length) return [[midi, dur]];
+      out[0] = [midi, paso];
+      return out;
+    }
+    return [[midi, dur]];
+  }
+
   /* ---------- Reproducción de la partitura ---------- */
   async function play(score, { onNote, onEnd } = {}) {
     stop();
@@ -144,44 +173,102 @@ const Sound = (() => {
     // media melodía con oscilador y la otra media con piano
     try {
       const midis = [];
-      score.measures.forEach((m, mi) => m.events.forEach((ev) => {
-        if (ev.kind === 'note') Model.midisOf(ev, score.key, Model.clefAt(score, mi)).forEach((x) => midis.push(x));
-      }));
+      score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+        if (ev.kind === 'note') {
+          Model.midisOf(ev, score.key, Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
+        }
+      })));
       if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
+
     const secPerTick = (60 / score.tempo) / Model.Q;
+    // dónde empieza cada compás: no todos duran lo mismo si el compás cambia
+    // a mitad de obra o hay anacrusa
+    const inicios = Model.inicios(score);
+    /* Se recorre voz a voz de principio a fin, no compás a compás: así una
+       ligadura que cruza la barra sigue siendo una sola nota, y las dos manos
+       del piano arrancan cada compás a la vez en lugar de encadenarse. Todos
+       los compases duran lo mismo porque `reflow` no deja que se pasen. */
+    const hilos = new Map();
+    score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
+      const k = v.pent + ':' + v.vi;
+      if (!hilos.has(k)) hilos.set(k, []);
+      hilos.get(k).push({ mi, v });
+    }));
+
     const items = [];
-    let t = 0;
-    let carry = null;                      // nota ligada que sigue sonando
-    score.measures.forEach((m, mi) => {
-      const cap = Model.capacity(score.time);
-      let used = 0;
-      m.events.forEach((ev) => {
-        const d = Model.evTicks(ev) * secPerTick;
-        if (carry) {
-          carry.dur += d;                  // la ligadura alarga la misma nota
-          carry.tail.push(ev);
-        } else {
-          carry = { ev, at: t, dur: d, tail: [], mi };
-          items.push(carry);
-        }
-        if (!(ev.kind === 'note' && ev.tie)) carry = null;
-        t += d; used += Model.evTicks(ev);
+    hilos.forEach((tramos) => {
+      let carry = null;
+      tramos.forEach(({ mi, v }) => {
+        let t = inicios[mi];
+        const clef = Model.clefAt(score, mi, v.pent);
+        v.events.forEach((ev) => {
+          const d = Model.evTicks(ev);
+          if (carry) {
+            carry.dur += d * secPerTick;   // la ligadura alarga la misma nota
+            carry.tail.push(ev);
+          } else {
+            carry = { ev, at: t * secPerTick, dur: d * secPerTick, tail: [], mi, clef };
+            items.push(carry);
+          }
+          if (!(ev.kind === 'note' && ev.tie)) carry = null;
+          t += d;
+        });
       });
-      t += Math.max(0, cap - used) * secPerTick;   // silencios automáticos
     });
     if (!items.length) { if (onEnd) onEnd(); return; }
+    items.sort((a, b) => a.at - b.at);
+
+    /* El matiz vale hasta que aparezca otro, y un regulador lleva de uno al
+       siguiente: se recorre en orden y se va arrastrando el volumen. El
+       pedal alarga lo que suena hasta que se suelta, y la 8ª transporta. */
+    const escala = [];
+    for (let k = 0; k < 12; k++) {
+      // grados de la tonalidad, para que el trino use el vecino correcto
+      if ([0, 2, 4, 5, 7, 9, 11].includes((k + 12 - (Model.keyBySpec(score.key).fifths * 7 % 12) + 12) % 12)) escala.push(k);
+    }
+    let vol = VOL_MATIZ.mf, rampa = null, pedalHasta = null, octava = 0;
+    const cambios = [];
+    items.forEach((it, i) => {
+      const ev = it.ev;
+      if (ev.matiz && VOL_MATIZ[ev.matiz] != null) { vol = VOL_MATIZ[ev.matiz]; rampa = null; }
+      if (ev.reg === 'cresc' || ev.reg === 'dim') rampa = { desde: vol, i, dir: ev.reg === 'cresc' ? 1 : -1 };
+      else if (ev.reg === 'fin') rampa = null;
+      if (ev.octava != null) octava = ev.octava === 0 ? 0 : (ev.octava > 0 ? 12 : -12) * (Math.abs(ev.octava) === 15 ? 2 : 1);
+      if (ev.pedal === 'inicio' || ev.pedal === 'cambio') pedalHasta = Infinity;
+      cambios.push({ vol: rampa ? Math.max(.25, Math.min(1.3, rampa.desde + rampa.dir * 0.03 * (i - rampa.i))) : vol,
+                     octava, pedal: pedalHasta != null });
+      if (ev.pedal === 'fin') pedalHasta = null;
+    });
 
     const t0 = c.currentTime + 0.12;
-    items.forEach((it) => {
+    items.forEach((it, i) => {
       if (it.ev.kind !== 'note') return;
-      // Todas las notas del acorde arrancan juntas y duran lo mismo.
-      Model.midisOf(it.ev, score.key, Model.clefAt(score, it.mi || 0))
-        .forEach((m2) => tone(t0 + it.at, m2, it.dur));
+      const cfg = cambios[i];
+      // con el pedal pisado la nota no se corta al soltar la tecla
+      const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
+      const adornos = it.ev.adornos || [];
+      // las notas de adorno roban un poco de tiempo a la que llevan delante
+      const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
+      adornos.forEach((a, k) => {
+        const mid = Model.midiDe(a, score.key, it.clef) + cfg.octava;
+        tone(t0 + it.at + k * 0.075, mid, 0.09, cfg.vol * 0.8);
+      });
+      Model.midisOf(it.ev, score.key, it.clef).forEach((m2, iN) => {
+        const mid = m2 + cfg.octava;
+        // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
+        const partes = (it.ev.orn && iN === Model.midisOf(it.ev, score.key, it.clef).length - 1)
+          ? desarrollar(it.ev.orn, mid, dur - robo, escala)
+          : [[mid, dur - robo]];
+        let t = t0 + it.at + robo;
+        partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol); t += d; } });
+      });
     });
-    const timers = items.map((it) =>
+    // el cursor sólo sigue una nota a la vez: la de la voz de arriba
+    const marcar = items.filter((it) => it.ev.kind === 'note');
+    const timers = marcar.map((it) =>
       setTimeout(() => onNote && onNote(it.ev), it.at * 1000 + 120));
-    const total = items[items.length - 1].at + items[items.length - 1].dur;
+    const total = items.reduce((s, it) => Math.max(s, it.at + it.dur), 0);
     timers.push(setTimeout(() => { player = null; if (onEnd) onEnd(); }, total * 1000 + 260));
     player = { timers };
   }

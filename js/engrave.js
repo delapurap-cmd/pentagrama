@@ -10,12 +10,18 @@ const Engrave = (() => {
 
   const VF = window.VexFlow || {};
   const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot, StaveTie,
-          Tuplet, ChordSymbol, Annotation, Articulation } = VF;
+          Tuplet, ChordSymbol, Annotation, Articulation, StaveConnector, Stem,
+          GraceNote, GraceNoteGroup, Ornament, Curve, StaveHairpin, PedalMarking,
+          TextBracket, Volta, Repetition } = VF;
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
   const PAGE = { w: 1150, h: 1626 };
   const M = { left: 96, right: 96, top: 104, topFirst: 206 };
-  const SYSTEM_H = 132;           // separación vertical entre sistemas
+  const SYSTEM_H = 132;           // separación vertical entre sistemas de un pentagrama
+  const PENT_H = 92;              // separación entre los pentagramas de un mismo sistema
+
+  /** Alto que ocupa un sistema con todos sus pentagramas. */
+  const altoSistema = (score, base) => (base || SYSTEM_H) + (Model.nPent(score) - 1) * PENT_H;
 
   const COLORS = {
     ink: '#12100c',
@@ -61,6 +67,13 @@ const Engrave = (() => {
     }
     suelta();
   }
+
+  /* Adornos de VexFlow. El trino lleva además su ondulación, que la pone
+     `setUpperAccidental`/`setDelayed` según el caso; aquí basta el signo. */
+  const ORNAMENTOS = {
+    trino: 'tr', mordente: 'mordent', mordenteInv: 'mordentInverted',
+    grupeto: 'turn', grupetoInv: 'turnInverted'
+  };
 
   function buildNote(ev, clef) {
     const isRest = ev.kind === 'rest';
@@ -123,7 +136,65 @@ const Engrave = (() => {
         n.addModifier(a, 0);
       } catch (e) { }
     }
+
+    // Adorno escrito sobre la nota: trino, mordente o grupeto.
+    if (ev.orn && Ornament && ORNAMENTOS[ev.orn]) {
+      try { n.addModifier(new Ornament(ORNAMENTOS[ev.orn]), 0); } catch (e) { }
+    }
+
+    /* Notas de adorno: no ocupan tiempo del compás, así que van colgadas de
+       la nota como un grupo aparte. */
+    if (!isRest && ev.adornos && ev.adornos.length && GraceNote && GraceNoteGroup) {
+      try {
+        const chicas = ev.adornos.map((a) => {
+          const g = new GraceNote({ keys: [Model.diToKeyStr(a.di)], duration: a.dur || '8',
+                                    clef: clef ? clef.vex : 'treble', slash: !!a.barrada });
+          if (a.acc) g.addModifier(new Accidental(a.acc), 0);
+          return g;
+        });
+        n.addModifier(new GraceNoteGroup(chicas, true).beamNotes(), 0);
+      } catch (e) { }
+    }
+
+    // Digitación y palabras (rit., a tempo…) van como anotaciones.
+    if (ev.dedo && Annotation) {
+      try {
+        n.addModifier(new Annotation(String(ev.dedo)).setFont(SERIF, 10)
+          .setVerticalJustification(Annotation.VerticalJustify.TOP), 0);
+      } catch (e) { }
+    }
+    if (ev.texto && Annotation) {
+      try {
+        n.addModifier(new Annotation(String(ev.texto)).setFont(SERIF, 12, 400, 'italic')
+          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM), 0);
+      } catch (e) { }
+    }
     return n;
+  }
+
+  /* Barrado: si los eventos traen `barra` —porque venían escritos así en el
+     archivo— se respeta tal cual; si no, se agrupa por tiempo como siempre.
+     Un 12/8 agrupado por tiempo une la nota grave del bajo con los acordes
+     de encima, y eso es justo lo que el grabador decidió no hacer. */
+  function construirBarras(all, notes, time) {
+    const explicito = all.some((ev) => ev.barra);
+    if (!explicito) {
+      return Beam.generateBeams(notes, { groups: Beam.getDefaultBeamGroups(Model.timeLabel(time)) });
+    }
+    const out = [];
+    let grupo = [];
+    const cierra = () => {
+      if (grupo.length > 1) { try { out.push(new Beam(grupo)); } catch (e) { } }
+      grupo = [];
+    };
+    all.forEach((ev, i) => {
+      if (ev.barra === 'begin') { cierra(); grupo = [notes[i]]; return; }
+      if (ev.barra === 'continue') { if (grupo.length) grupo.push(notes[i]); return; }
+      if (ev.barra === 'end') { if (grupo.length) { grupo.push(notes[i]); cierra(); } return; }
+      cierra();
+    });
+    cierra();
+    return out;
   }
 
   /** Agrupa los eventos consecutivos que comparten grupo irregular. */
@@ -151,8 +222,10 @@ const Engrave = (() => {
   /** Ancho extra del primer compás de cada sistema (clave, armadura, compás). */
   function leadWidth(score, isFirstSystem) {
     const fifths = Math.abs(Model.keyBySpec(score.key).fifths);
-    const clef = Model.clefAt(score, 0);
-    return 54 + fifths * 14 + (isFirstSystem ? 38 : 0) + (clef.ottava ? 10 : 0);
+    const ottava = Model.pentagramas(score).some((_, p) => Model.clefAt(score, 0, p).ottava);
+    // con llave, el sistema empieza un poco más adentro
+    const llave = Model.nPent(score) > 1 ? 16 : 0;
+    return 54 + fifths * 14 + (isFirstSystem ? 38 : 0) + (ottava ? 10 : 0) + llave;
   }
 
   /** Dibuja la partitura completa dentro de `root`. */
@@ -166,7 +239,7 @@ const Engrave = (() => {
     const pageWidth = compact ? 760 : PAGE.w;
     const marginLeft = compact ? 34 : M.left;
     const marginRight = compact ? 24 : M.right;
-    const systemHeight = compact ? 108 : SYSTEM_H;
+    const systemHeight = altoSistema(score, compact ? 108 : SYSTEM_H);
 
     if (!Renderer || !Stave || !StaveNote || !Voice || !Formatter) {
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
@@ -175,13 +248,36 @@ const Engrave = (() => {
     /* Cuánto aire pide un sistema por encima y por debajo del pentagrama.
        Los cifrados van arriba y los matices abajo: sin esto, el «mf» de un
        sistema y el «G7» del siguiente se pisan en el hueco de en medio. */
+    const nPentTotal = Model.nPent(score);
     const holgura = (sys) => {
       let arriba = 0, abajo = 0;
-      sys.measures.forEach((m) => m.events.forEach((ev) => {
-        if (ev.cifrado) arriba = Math.max(arriba, 24);
-        else if (ev.art && ev.art.length) arriba = Math.max(arriba, 12);
-        if (ev.matiz) abajo = Math.max(abajo, 20);
-      }));
+      sys.measures.forEach((m, k) => {
+        const mi = sys.from + k;
+        Model.voces(m).forEach((v) => {
+          const clef = Model.clefAt(score, mi, v.pent);
+          v.events.forEach((ev) => {
+            // el cifrado va sobre el primer pentagrama y el matiz bajo el último
+            if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
+            else if (ev.art && ev.art.length && v.pent === 0) arriba = Math.max(arriba, 12);
+            if (ev.matiz) abajo = Math.max(abajo, 20);
+            if (ev.kind !== 'note') return;
+            /* Lo que se sale del pentagrama por líneas adicionales, más la
+               plica y la barra. En el bajo de un nocturno la nota grave baja
+               dos líneas y su barra va por debajo: sin reservar ese hueco, un
+               sistema se mete en el siguiente. */
+            const alt = Model.alturas(ev);
+            if (!alt.length) return;
+            if (v.pent === 0) {
+              const fuera = alt[alt.length - 1].di - (clef.midLine + 4);
+              if (fuera > 0) arriba = Math.max(arriba, fuera * 5 + 18);
+            }
+            if (v.pent === nPentTotal - 1) {
+              const fuera = (clef.midLine - 4) - alt[0].di;
+              if (fuera > 0) abajo = Math.max(abajo, fuera * 5 + 34);
+            }
+          });
+        });
+      });
       return { arriba, abajo };
     };
 
@@ -241,6 +337,7 @@ const Engrave = (() => {
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
     }
     drawTies(score);
+    drawLargos(score);
     return hits;
   }
 
@@ -283,11 +380,11 @@ const Engrave = (() => {
         sys.measures.forEach((measure, mi) => {
           const mx0 = x0 + lead + mi * measureW, mx1 = mx0 + measureW;
           svg.appendChild(make('line', { x1: mx1, y1: y, x2: mx1, y2: y + 40, stroke: COLORS.ink, 'stroke-width': 1 }));
-          const all = measure.events.concat(Model.autoRests(measure, score.time));
+          const all = measure.events.concat(Model.autoRests(measure, score.time, 0, Model.capacityAt(score, sys.from + mi)));
           const noteMap = [];
           all.forEach((ev, i) => {
             const x = mx0 + (i + 1) * measureW / (all.length + 1);
-            const centro = Model.clefAt(score, sys.from + mi).midLine;
+            const centro = Model.clefAt(score, sys.from + mi, 0).midLine;
             const alturaY = (di) => y + 20 - (di - centro) * 5;
             const color = ev.id === opts.selectedId ? COLORS.selected : ev.id === opts.playingId ? COLORS.playing : COLORS.ink;
             if (ev.kind === 'rest') {
@@ -302,9 +399,9 @@ const Engrave = (() => {
               const top = alturaY(alt[alt.length - 1].di), bot = alturaY(alt[0].di);
               svg.appendChild(make('line', { x1: x + 5, y1: bot, x2: x + 5, y2: top - 30, stroke: color, 'stroke-width': 2 }));
             }
-            noteMap.push({ ev, index: i, real: i < measure.events.length, x });
+            noteMap.push({ ev, vi: 0, index: i, real: i < measure.events.length, x });
           });
-          hits.push({ mi: sys.from + mi, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
+          hits.push({ mi: sys.from + mi, pent: 0, vi: 0, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
             yTop: y, yBottom: y + 40, spacing: 10, notes: noteMap });
         });
       });
@@ -316,23 +413,74 @@ const Engrave = (() => {
   /** Ligaduras de unión: se dibujan cuando las dos notas caen en el mismo
      sistema; si la ligadura salta de línea, cada mitad se lee por su figura. */
   function drawTies(score) {
-    score.measures.forEach((m) => m.events.forEach((ev) => {
+    score.measures.forEach((m) => Model.voces(m).forEach((vz) => vz.events.forEach((ev) => {
       if (!ev.tie || ev.kind !== 'note') return;
       const next = Model.nextEvent(score, ev.id);
       if (!next) return;
       const a = refs.get(ev.id), b = refs.get(next.ev.id);
       if (!a || !b || a.system !== b.system) return;
       new StaveTie({ firstNote: a.note, lastNote: b.note }).setContext(a.ctx).draw();
-    }));
+    })));
+  }
+
+  /* Lo que abarca más de una nota: ligaduras de expresión, reguladores y
+     pedal. Se dibuja al final, cuando ya se sabe dónde ha caído cada nota, y
+     sólo si las dos puntas están en el mismo sistema: partir una ligadura
+     entre dos líneas queda peor que no dibujarla. */
+  function drawLargos(score) {
+    const abiertos = { lig: null, reg: null, pedal: null };
+    const cerrar = (clave, hasta) => {
+      const a = abiertos[clave];
+      abiertos[clave] = null;
+      if (!a || !hasta) return null;
+      const x = refs.get(a.id), y = refs.get(hasta);
+      if (!x || !y || x.system !== y.system) return null;
+      return { a: x, b: y, dato: a.dato };
+    };
+
+    score.measures.forEach((m) => Model.voces(m).forEach((vz) => vz.events.forEach((ev) => {
+      if (ev.lig === 'inicio') abiertos.lig = { id: ev.id };
+      else if (ev.lig === 'fin') {
+        const par = cerrar('lig', ev.id);
+        if (par && Curve) {
+          try { new Curve(par.a.note, par.b.note, {}).setContext(par.a.ctx).draw(); } catch (e) { }
+        }
+      }
+      if (ev.reg === 'cresc' || ev.reg === 'dim') abiertos.reg = { id: ev.id, dato: ev.reg };
+      else if (ev.reg === 'fin') {
+        const par = cerrar('reg', ev.id);
+        if (par && StaveHairpin) {
+          try {
+            new StaveHairpin({ firstNote: par.a.note, lastNote: par.b.note },
+              par.dato === 'cresc' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC)
+              .setContext(par.a.ctx).setPosition(VF.Modifier.Position.BELOW).draw();
+          } catch (e) { }
+        }
+      }
+      if (ev.pedal === 'inicio') abiertos.pedal = { id: ev.id };
+      else if (ev.pedal === 'fin' || ev.pedal === 'cambio') {
+        const par = cerrar('pedal', ev.id);
+        if (par && PedalMarking) {
+          try {
+            const pm = new PedalMarking([par.a.note, par.b.note]);
+            pm.setStyle(PedalMarking.Styles.BRACKET);
+            pm.setContext(par.a.ctx).draw();
+          } catch (e) { }
+        }
+        if (ev.pedal === 'cambio') abiertos.pedal = { id: ev.id };
+      }
+    })));
   }
 
   function drawSystem(score, sys, o) {
     const measures = sys.measures;
     const lead = leadWidth(score, o.isFirstSystemOfScore);
+    const nPent = Model.nPent(score);
 
-    // reparto del ancho según la densidad de cada compás
+    // reparto del ancho según la densidad del compás más apretado
     const weights = measures.map((m) => {
-      const n = m.events.length + Model.autoRests(m, score.time).length;
+      const n = Model.voces(m).reduce((s, v) =>
+        Math.max(s, v.events.length + Model.autoRests(m, score.time, v.vi, Model.capacityAt(score, sys.from + measures.indexOf(m))).length), 0);
       return 1 + Math.max(0, n - 1) * 0.38;
     });
     const wsum = weights.reduce((a, b) => a + b, 0);
@@ -342,71 +490,133 @@ const Engrave = (() => {
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
       const mi = sys.from + i;
-      const clef = Model.clefAt(score, mi);
-      const clefPrevia = mi > 0 ? Model.clefAt(score, mi - 1) : null;
-      const stave = new Stave(x, o.y, w);
-      if (i === 0) {
-        stave.addClef(clef.vex, undefined, clef.ottava);
-        stave.addKeySignature(score.key);
-        if (o.isFirstSystemOfScore) stave.addTimeSignature(Model.timeLabel(score.time));
-      } else if (clefPrevia && clefPrevia.id !== clef.id) {
-        // Cambio de clave a media línea: va pequeña y antes de la barra.
-        stave.addClef(clef.vex, 'small', clef.ottava);
+      const primero = i === 0;
+      const ultimo = i === measures.length - 1;
+      const pentagramas = [];
+      const compasDelCompas = Model.timeAt(score, mi);
+
+      for (let p = 0; p < nPent; p++) {
+        const clef = Model.clefAt(score, mi, p);
+        const clefPrevia = mi > 0 ? Model.clefAt(score, mi - 1, p) : null;
+        const stave = new Stave(x, o.y + p * PENT_H, w);
+        const compasAqui = Model.timeAt(score, mi);
+        const compasAntes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
+        if (primero) {
+          stave.addClef(clef.vex, undefined, clef.ottava);
+          stave.addKeySignature(score.key);
+          if (o.isFirstSystemOfScore) stave.addTimeSignature(Model.timeLabel(compasAqui));
+        } else if (clefPrevia && clefPrevia.id !== clef.id) {
+          // Cambio de clave a media línea: va pequeña y antes de la barra.
+          stave.addClef(clef.vex, 'small', clef.ottava);
+        }
+        // un cambio de compás se escribe donde ocurre
+        if (compasAntes && (compasAntes.num !== compasAqui.num || compasAntes.den !== compasAqui.den)) {
+          stave.addTimeSignature(Model.timeLabel(compasAqui));
+        }
+        // barras de compás escritas en la partitura: final, doble, repetición
+        if (m.repite === 'inicio') stave.setBegBarType(VF.Barline.type.REPEAT_BEGIN);
+        if (m.repite === 'fin') stave.setEndBarType(VF.Barline.type.REPEAT_END);
+        else if (m.barra === 'fin') stave.setEndBarType(VF.Barline.type.END);
+        else if (m.barra === 'doble') stave.setEndBarType(VF.Barline.type.DOUBLE);
+        else if (ultimo && o.lastSystem) stave.setEndBarType(VF.Barline.type.END);
+        if (m.volta && p === 0 && Volta) {
+          try { stave.setVoltaType(Volta.type.BEGIN, String(m.volta), 28); } catch (e) { }
+        }
+        stave.setContext(o.ctx).draw();
+        pentagramas.push({ p, clef, stave });
       }
-      if (i === measures.length - 1 && o.lastSystem) stave.setEndBarType(VF.Barline.type.END);
-      stave.setContext(o.ctx).draw();
 
-      const auto = Model.autoRests(m, score.time);
-      const all = m.events.concat(auto);
-      const notes = all.map((ev) => buildNote(ev, clef));
-      const grupos = construirGrupos(all, notes);
+      /* La llave y la barra que unen los pentagramas: sin ellas son dos
+         pautas sueltas, no un sistema de piano. Van sólo en el primer compás
+         de la línea; en los demás basta con que las barras lleguen de arriba
+         abajo. */
+      if (nPent > 1 && StaveConnector) {
+        const arriba = pentagramas[0].stave, abajo = pentagramas[nPent - 1].stave;
+        const une = (tipo) => {
+          try { new StaveConnector(arriba, abajo).setType(tipo).setContext(o.ctx).draw(); } catch (e) { }
+        };
+        if (primero) { une(StaveConnector.type.BRACE); une(StaveConnector.type.SINGLE_LEFT); }
+        une(ultimo && o.lastSystem ? StaveConnector.type.BOLD_DOUBLE_RIGHT : StaveConnector.type.SINGLE_RIGHT);
+      }
 
-      all.forEach((ev, idx) => {
-        if (ev.id === o.selectedId) notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
-        else if (ev.id === o.playingId) notes[idx].setStyle({ fillStyle: COLORS.playing, strokeStyle: COLORS.playing });
-
-      });
-
-      if (notes.length) {
-        const voice = new Voice({ numBeats: score.time.num, beatValue: score.time.den })
+      // Cada voz se formatea con las demás para que lo simultáneo quede
+      // alineado en vertical, que es lo que hace legible un sistema de piano.
+      const bloques = [];
+      Model.voces(m).forEach((v) => {
+        const pent = pentagramas[Math.min(v.pent, nPent - 1)];
+        const auto = Model.autoRests(m, score.time, v.vi, Model.capacityAt(score, mi));
+        const all = v.events.concat(auto);
+        if (!all.length) return;
+        const notes = all.map((ev) => buildNote(ev, pent.clef));
+        // con dos voces en la misma pauta, la de arriba lleva las plicas
+        // hacia arriba y la de abajo hacia abajo, como manda la costumbre
+        const hermanas = Model.voces(m).filter((x) => x.pent === v.pent);
+        if (Stem) {
+          const porVoz = hermanas.length > 1 ? (hermanas[0].vi === v.vi ? Stem.UP : Stem.DOWN) : null;
+          all.forEach((ev, idx) => {
+            // manda lo que dijera el archivo; si no, la regla de las voces
+            const d = ev.plica === 'up' ? Stem.UP : ev.plica === 'down' ? Stem.DOWN : porVoz;
+            if (d) { try { notes[idx].setStemDirection(d); } catch (e) { } }
+          });
+        }
+        all.forEach((ev, idx) => {
+          if (ev.id === o.selectedId) notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
+          else if (ev.id === o.playingId) notes[idx].setStyle({ fillStyle: COLORS.playing, strokeStyle: COLORS.playing });
+        });
+        const voice = new Voice({ numBeats: compasDelCompas.num, beatValue: compasDelCompas.den })
           .setMode(Voice.Mode.SOFT)
           .addTickables(notes);
-        const inner = stave.getNoteEndX() - stave.getNoteStartX() - 16;
-        new Formatter().joinVoices([voice]).format([voice], Math.max(40, inner));
-        const beams = Beam.generateBeams(notes, {
-          groups: Beam.getDefaultBeamGroups(Model.timeLabel(score.time))
-        });
-        voice.draw(o.ctx, stave);
-        beams.forEach((b) => b.setContext(o.ctx).draw());
-        grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
-        // los silencios automáticos se ven atenuados en pantalla (en papel, tinta normal)
-        all.forEach((ev, idx) => {
-          if (!ev.auto) return;
-          const el = notes[idx].getSVGElement && notes[idx].getSVGElement();
-          if (el) el.classList.add('ink-auto');
+        voice.setStave(pent.stave);
+        bloques.push({ v, pent, all, notes, voice, grupos: construirGrupos(all, notes) });
+      });
+
+      if (bloques.length) {
+        const ref = pentagramas[0].stave;
+        const inner = ref.getNoteEndX() - ref.getNoteStartX() - 16;
+        const fmt = new Formatter();
+        bloques.forEach((b) => fmt.joinVoices([b.voice]));
+        fmt.format(bloques.map((b) => b.voice), Math.max(40, inner));
+        bloques.forEach((b) => {
+          const beams = construirBarras(b.all, b.notes, compasDelCompas);
+          b.voice.draw(o.ctx, b.pent.stave);
+          beams.forEach((x) => x.setContext(o.ctx).draw());
+          b.grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
+          // los silencios automáticos se ven atenuados en pantalla (en papel, tinta normal)
+          b.all.forEach((ev, idx) => {
+            if (!ev.auto) return;
+            const el = b.notes[idx].getSVGElement && b.notes[idx].getSVGElement();
+            if (el) el.classList.add('ink-auto');
+          });
+          b.all.forEach((ev, idx) => {
+            if (!ev.auto) refs.set(ev.id, { note: b.notes[idx], system: o.systemKey, ctx: o.ctx });
+          });
         });
       }
 
-      all.forEach((ev, idx) => {
-        if (!ev.auto) refs.set(ev.id, { note: notes[idx], system: o.systemKey, ctx: o.ctx });
-      });
-
-      hits.push({
-        mi,
-        midLine: clef.midLine,
-        pageIndex: o.pageIndex,
-        svg: o.svg,
-        systemHeight: o.systemHeight,
-        x0: stave.getNoteStartX(),
-        x1: stave.getNoteEndX(),
-        yTop: stave.getYForLine(0),
-        yBottom: stave.getYForLine(4),
-        spacing: stave.getSpacingBetweenLines(),
-        notes: all.map((ev, idx) => ({
-          ev, index: idx,
-          real: idx < m.events.length,
-          x: notes[idx] ? notes[idx].getAbsoluteX() : 0
-        }))
+      // Un punto de impacto por pentagrama: al tocar se sabe en qué pauta se
+      // escribe y con qué clave, que es lo que decide la altura.
+      pentagramas.forEach((pent) => {
+        const suyos = bloques.filter((b) => b.pent === pent);
+        const notas = [];
+        suyos.forEach((b) => b.all.forEach((ev, idx) => notas.push({
+          ev, vi: b.v.vi, index: idx,
+          real: idx < b.v.events.length,
+          x: b.notes[idx] ? b.notes[idx].getAbsoluteX() : 0
+        })));
+        hits.push({
+          mi, pent: pent.p,
+          vi: suyos.length ? suyos[0].v.vi : null,
+          midLine: pent.clef.midLine,
+          pageIndex: o.pageIndex,
+          svg: o.svg,
+          systemHeight: PENT_H,
+          x0: pent.stave.getNoteStartX(),
+          x1: pent.stave.getNoteEndX(),
+          yTop: pent.stave.getYForLine(0),
+          yBottom: pent.stave.getYForLine(4),
+          spacing: pent.stave.getSpacingBetweenLines(),
+          notes: notas
+        });
       });
 
       x += w;
@@ -455,10 +665,11 @@ const Engrave = (() => {
       if (!n.real) return;
       const d = Math.abs(n.x - bestP.x);
       if (d < 20 && d < nearest) { nearest = d; hitEvent = n; }
-      if (n.x < bestP.x) insertIndex = n.index + 1;
+      if (n.x < bestP.x) insertIndex = Math.max(insertIndex, n.index + 1);
     });
 
-    return { mi: best.mi, di: Math.max(20, Math.min(48, di)), insertIndex, hitEvent };
+    return { mi: best.mi, pent: best.pent | 0, vi: best.vi,
+             di: Math.max(20, Math.min(48, di)), insertIndex, hitEvent };
   }
 
   /** Posición en pantalla de un evento (para colocar el círculo). */

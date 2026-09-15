@@ -16,12 +16,23 @@ servidas desde el propio repositorio: no hace falta conexión.
   (cifrado y articulaciones) y **Grupo** (tresillo, quintillo, seisillo,
   septillo). Si la nota queda detrás del bloque, la hoja sube sola.
 - **Acordes**: varias alturas en la misma figura, cada una con su alteración.
-- **Claves**: sol, sol 8ª baja, fa, do en 3ª y do en 4ª, para toda la
-  partitura o como cambio a partir de un compás.
+- **Varios pentagramas**: uno para una línea de melodía, dos unidos por una
+  llave para piano. Cada pauta con su clave, y hasta cuatro voces por compás
+  con las plicas enfrentadas. Se elige en «Clave» de la barra.
+- **Claves**: sol, sol 8ª baja, fa, do en 3ª y do en 4ª, por pentagrama, para
+  toda la partitura o como cambio a partir de un compás.
+- **Lo que trae una partitura de verdad**: notas de adorno, trinos, mordentes
+  y grupetos, pedal, reguladores, 8ª alta y baja, indicaciones de texto
+  (*rit.*, *espress.*), ligaduras de expresión, digitación, barras de
+  repetición, cambios de compás y anacrusa.
 - **Figuras**: de la redonda a la semifusa, con puntillo y doble puntillo.
 - **Ejemplos**: «Archivo → Ejemplos» abre las partituras del piano de la web
   —una escala, la *Gymnopédie n.º 1* de Satie y el *Nocturno op. 9 n.º 2* de
-  Chopin— con el mismo importador que cualquier MusicXML.
+  Chopin— con el mismo importador que cualquier MusicXML. Entran enteras y
+  salen enteras: el Nocturno son 809 notas en dos pentagramas, con sus 301
+  acordes, 143 ligaduras, 75 digitaciones, 15 notas de adorno, 8 adornos, 7
+  pedales, 32 reguladores, 3 cambios de compás y una anacrusa, y el MusicXML
+  que se vuelve a exportar no pierde ni uno.
 - **Tiempos automáticos**: cada compás se completa solo con silencios y lo que
   no cabe pasa al compás siguiente.
 - **Escribir tiempos (tap)**: pon el tempo, enciende el metrónomo si quieres y
@@ -30,7 +41,7 @@ servidas desde el propio repositorio: no hace falta conexión.
   lo que falte para cerrar el compás.
 - **Abrir lo que hiciste en otro programa**: MusicXML (`.musicxml`, `.xml` y
   `.mxl` comprimido) y MIDI. Al abrirlo te dice cuántas notas ha leído y qué
-  no ha podido traer (otras voces, acordes, tresillos…), sin inventarse nada.
+  no ha podido traer, sin inventarse nada.
 - **Exportar** a MusicXML, MIDI, PDF (imprimir) o una copia en JSON.
 - **Ligaduras de unión**: lo que no cabe en el compás se parte y se liga solo
   por encima de la barra, y puedes ligar a mano desde el círculo.

@@ -112,14 +112,117 @@ const Model = (() => {
     { id: 'tenor',     vex: 'tenor',     label: 'Do en 4ª',   midLine: 26, octava: 0 }
   ];
   const clefById = (id) => CLEFS.find((c) => c.id === id) || CLEFS[0];
-  /** La clave vigente en un compás: la del compás, o la del score. */
-  function clefAt(score, mi) {
+
+  /* ---------- Pentagramas ----------
+     Una partitura de piano son dos pentagramas unidos por una llave. El
+     primero sigue siendo `score.clef`, que es donde ha vivido siempre la
+     clave; los de abajo van en `score.abajo = [{clef}]`. Igual que con los
+     acordes: lo ya guardado —en el navegador y dentro del Cuaderno— se abre
+     tal cual, sin migrar nada.
+
+     Los cambios de clave a mitad de obra: `m.clef` es el del primero y
+     `m.claves = {1: 'bass'}` el de los demás. */
+  function pentagramas(score) {
+    return [{ clef: score.clef || 'treble' }]
+      .concat((score.abajo || []).map((p) => ({ clef: p.clef || 'bass' })));
+  }
+  const nPent = (score) => 1 + ((score.abajo || []).length);
+
+  /** Pone la partitura a `n` pentagramas, conservando lo que ya hubiera. */
+  function ponerPentagramas(score, n, claves) {
+    n = Math.max(1, Math.min(4, n | 0));
+    const previas = pentagramas(score).map((p) => p.clef);
+    const quiere = claves || previas;
+    score.clef = quiere[0] || 'treble';
+    if (n === 1) { delete score.abajo; return score; }
+    score.abajo = [];
+    for (let i = 1; i < n; i++) score.abajo.push({ clef: quiere[i] || (i === 1 ? 'bass' : 'treble') });
+    return score;
+  }
+
+  /** La clave vigente en un compás para un pentagrama. */
+  function clefAt(score, mi, pent = 0) {
     for (let i = mi; i >= 0; i--) {
-      const c = score.measures[i] && score.measures[i].clef;
+      const m = score.measures[i];
+      if (!m) continue;
+      const c = pent === 0 ? m.clef : (m.claves && m.claves[pent]);
       if (c) return clefById(c);
     }
-    return clefById(score.clef);
+    return clefById(pentagramas(score)[pent] ? pentagramas(score)[pent].clef : score.clef);
   }
+
+  /** Marca —o quita— un cambio de clave en un compás y pentagrama. */
+  function ponerClaveEn(m, pent, id) {
+    if (pent === 0) { if (id) m.clef = id; else delete m.clef; return; }
+    if (id) (m.claves || (m.claves = {}))[pent] = id;
+    else if (m.claves) { delete m.claves[pent]; if (!Object.keys(m.claves).length) delete m.claves; }
+  }
+
+  /* ---------- Compás vigente ----------
+     El compás puede cambiar a mitad de obra: se anota en el compás donde
+     ocurre y rige desde ahí. La anacrusa es otro caso: un compás que dura
+     menos de lo que pide la cifra, y que por eso no se rellena de silencios
+     ni empuja nada al siguiente. */
+  function timeAt(score, mi) {
+    for (let i = mi; i >= 0; i--) {
+      const t = score.measures[i] && score.measures[i].time;
+      if (t && t.num && t.den) return t;
+    }
+    return score.time;
+  }
+  function capacityAt(score, mi) {
+    const m = score.measures[mi];
+    const cap = capacity(timeAt(score, mi));
+    if (m && m.parcial) {
+      const escrito = measureTicksMax(m);
+      return escrito > 0 ? Math.min(escrito, cap) : cap;
+    }
+    return cap;
+  }
+  /** Tick en el que empieza cada compás, contando cambios de compás. */
+  function inicios(score) {
+    const out = [];
+    let t = 0;
+    for (let i = 0; i < score.measures.length; i++) { out.push(t); t += capacityAt(score, i); }
+    return out;
+  }
+
+  /* ---------- Voces ----------
+     Una voz es una hilera de eventos que pertenece a un pentagrama y llena
+     el compás por su cuenta. La primera es `m.events`, como siempre; las de
+     más van en `m.voces = [{pent, events}]`. Un piano corriente tiene dos
+     voces, una por pentagrama; la Gymnopédie de Satie tiene cuatro. */
+  function voces(m) {
+    const out = [{ vi: 0, pent: 0, events: m.events }];
+    (m.voces || []).forEach((v, k) => out.push({ vi: k + 1, pent: v.pent | 0, events: v.events }));
+    return out;
+  }
+  const nVoces = (m) => 1 + ((m.voces || []).length);
+  function vozDe(m, vi) {
+    if (!vi) return { vi: 0, pent: 0, events: m.events };
+    const v = (m.voces || [])[vi - 1];
+    return v ? { vi, pent: v.pent | 0, events: v.events } : null;
+  }
+  /** Devuelve la voz, creándola —y las que falten por el camino— si no está. */
+  function asegurarVoz(m, vi, pent = 0) {
+    if (!vi) return vozDe(m, 0);
+    m.voces = m.voces || [];
+    while (m.voces.length < vi) m.voces.push({ pent, events: [] });
+    m.voces[vi - 1].pent = pent;
+    return vozDe(m, vi);
+  }
+  /** Primera voz del pentagrama indicado; si no hay, la crea al final. */
+  function vozDePentagrama(m, pent) {
+    const v = voces(m).find((x) => x.pent === pent);
+    return v || asegurarVoz(m, nVoces(m), pent);
+  }
+  /** Quita las voces vacías de más, que si no se acumulan al borrar. */
+  function podarVoces(m) {
+    if (!m.voces) return;
+    m.voces = m.voces.filter((v) => v.events.length);
+    if (!m.voces.length) delete m.voces;
+  }
+  const compasVacio = (m) => voces(m).every((v) => !v.events.length);
 
   const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
   const SEMIS   = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
@@ -205,7 +308,13 @@ const Model = (() => {
   let _seq = 0;
   function uid() { return 'e' + (++_seq) + '_' + Math.random().toString(36).slice(2, 7); }
 
-  const measureTicks = (m) => m.events.reduce((s, e) => s + evTicks(e), 0);
+  /** Ticks escritos en una voz del compás (por omisión, la principal). */
+  const measureTicks = (m, vi = 0) => {
+    const v = vozDe(m, vi);
+    return v ? v.events.reduce((s, e) => s + evTicks(e), 0) : 0;
+  };
+  /** Los de la voz más llena: es lo que de verdad ocupa el compás. */
+  const measureTicksMax = (m) => voces(m).reduce((s, v) => Math.max(s, measureTicks(m, v.vi)), 0);
 
   /* ---------- Partitura ---------- */
   function newScore(opts = {}) {
@@ -237,14 +346,14 @@ const Model = (() => {
   /** Quita vacíos sobrantes, conservando dos compases iniciales y una salida para seguir escribiendo. */
   function trimEmptyTail(score) {
     while (score.measures.length > 2 &&
-           score.measures.at(-1).events.length === 0 &&
-           score.measures.at(-2).events.length === 0) score.measures.pop();
+           compasVacio(score.measures.at(-1)) &&
+           compasVacio(score.measures.at(-2))) score.measures.pop();
   }
 
   /** Siempre deja un compás vacío a la derecha; así la partitura crece al escribir. */
   function ensureWritingTail(score) {
     while (score.measures.length < 2) score.measures.push(emptyMeasure());
-    if (score.measures.at(-1).events.length) score.measures.push(emptyMeasure());
+    if (!compasVacio(score.measures.at(-1))) score.measures.push(emptyMeasure());
   }
 
   /** Valor exacto (figura y puntillo) para una duración, si existe. */
@@ -264,29 +373,34 @@ const Model = (() => {
    * entera al compás siguiente.
    */
   function reflow(score) {
-    const cap = capacity(score.time);
     for (let i = 0; i < score.measures.length; i++) {
       const m = score.measures[i];
-      let guard = 0;
-      while (measureTicks(m) > cap && m.events.length && guard++ < 200) {
-        const last = m.events[m.events.length - 1];
-        const before = measureTicks(m) - evTicks(last);
-        const room = cap - before;
-        const rest = evTicks(last) - room;
-        const head = room > 0 ? exactFigure(room) : null;
-        const tail = rest > 0 ? exactFigure(rest) : null;
+      const cap = capacityAt(score, i);
+      // cada voz llena el compás por su cuenta, así que se reparte una a una
+      for (const v of voces(m)) {
+        let guard = 0;
+        while (measureTicks(m, v.vi) > cap && v.events.length && guard++ < 200) {
+          const last = v.events[v.events.length - 1];
+          const before = measureTicks(m, v.vi) - evTicks(last);
+          const room = cap - before;
+          const rest = evTicks(last) - room;
+          const head = room > 0 ? exactFigure(room) : null;
+          const tail = rest > 0 ? exactFigure(rest) : null;
 
-        if (i + 1 >= score.measures.length) score.measures.push(emptyMeasure());
-        const nextM = score.measures[i + 1];
+          if (i + 1 >= score.measures.length) score.measures.push(emptyMeasure());
+          const nextM = score.measures[i + 1];
+          // lo que desborda cae en la misma voz del compás siguiente
+          const destino = v.vi === 0 ? vozDe(nextM, 0) : asegurarVoz(nextM, v.vi, v.pent);
 
-        if (head && tail && m.events.length >= 1) {
-          last.dur = head.dur; last.dots = head.dots;
-          const cont = Object.assign({}, last, { id: uid(), dur: tail.dur, dots: tail.dots, tie: false });
-          if (last.kind === 'note') last.tie = true;      // ligadura sobre la barra
-          nextM.events.unshift(cont);
-        } else {
-          m.events.pop();
-          nextM.events.unshift(last);
+          if (head && tail && v.events.length >= 1) {
+            last.dur = head.dur; last.dots = head.dots;
+            const cont = Object.assign({}, last, { id: uid(), dur: tail.dur, dots: tail.dots, tie: false });
+            if (last.kind === 'note') last.tie = true;      // ligadura sobre la barra
+            destino.events.unshift(cont);
+          } else {
+            v.events.pop();
+            destino.events.unshift(last);
+          }
         }
       }
     }
@@ -294,10 +408,10 @@ const Model = (() => {
     return score;
   }
 
-  /** Silencios automáticos que completan un compás (no se guardan en el modelo). */
-  function autoRests(measure, time) {
-    const cap = capacity(time);
-    let pos = measureTicks(measure);
+  /** Silencios automáticos que completan una voz (no se guardan en el modelo). */
+  function autoRests(measure, time, vi = 0, capDada) {
+    const cap = capDada != null ? capDada : capacity(time);
+    let pos = measureTicks(measure, vi);
     let left = cap - pos;
     if (left <= 0) return [];
     if (pos === 0) {
@@ -331,36 +445,51 @@ const Model = (() => {
   }
 
   /* ---------- Edición ---------- */
-  function insertEvent(score, mi, index, ev) {
+  function insertEvent(score, mi, vi, index, ev) {
     const m = score.measures[mi];
     if (!m) return;
-    m.events.splice(Math.max(0, Math.min(index, m.events.length)), 0, ev);
+    const v = asegurarVoz(m, vi || 0, vi ? (vozDe(m, vi) || {}).pent || 0 : 0);
+    v.events.splice(Math.max(0, Math.min(index, v.events.length)), 0, ev);
     reflow(score);
   }
 
-  function removeEvent(score, mi, index) {
+  function removeEvent(score, mi, vi, index) {
     const m = score.measures[mi];
-    if (!m || !m.events[index]) return;
-    m.events.splice(index, 1);
+    const v = m && vozDe(m, vi || 0);
+    if (!v || !v.events[index]) return;
+    v.events.splice(index, 1);
+    podarVoces(m);
     reflow(score);
   }
 
-  /** Evento que sigue a `id` en el orden de lectura, o null. */
+  /** Evento que sigue a `id` dentro de su misma voz, o null. */
   function nextEvent(score, id) {
     const found = findEvent(score, id);
     if (!found) return null;
-    const m = score.measures[found.mi];
-    if (found.index + 1 < m.events.length) return { mi: found.mi, index: found.index + 1, ev: m.events[found.index + 1] };
+    const aqui = vozDe(score.measures[found.mi], found.vi);
+    if (found.index + 1 < aqui.events.length) {
+      return { mi: found.mi, vi: found.vi, index: found.index + 1, ev: aqui.events[found.index + 1] };
+    }
     for (let i = found.mi + 1; i < score.measures.length; i++) {
-      if (score.measures[i].events.length) return { mi: i, index: 0, ev: score.measures[i].events[0] };
+      const v = mismaVoz(score.measures[i], found);
+      if (v && v.events.length) return { mi: i, vi: v.vi, index: 0, ev: v.events[0] };
     }
     return null;
   }
 
+  /** La voz equivalente en otro compás: misma posición, o la del pentagrama. */
+  function mismaVoz(m, ref) {
+    const porIndice = vozDe(m, ref.vi);
+    if (porIndice && porIndice.pent === (ref.pent | 0)) return porIndice;
+    return voces(m).find((v) => v.pent === (ref.pent | 0)) || vozDe(m, 0);
+  }
+
   function findEvent(score, id) {
     for (let mi = 0; mi < score.measures.length; mi++) {
-      const idx = score.measures[mi].events.findIndex((e) => e.id === id);
-      if (idx >= 0) return { mi, index: idx, ev: score.measures[mi].events[idx] };
+      for (const v of voces(score.measures[mi])) {
+        const idx = v.events.findIndex((e) => e.id === id);
+        if (idx >= 0) return { mi, vi: v.vi, pent: v.pent, index: idx, ev: v.events[idx] };
+      }
     }
     return null;
   }
@@ -379,12 +508,17 @@ const Model = (() => {
     return out.length ? out : [[]];
   }
 
-  /** Total de ticks escritos (para reproducción). */
+  /** Todos los eventos con su sitio y su momento, para reproducción. */
   function flatten(score) {
     const out = [];
     score.measures.forEach((m, mi) => {
-      let pos = 0;
-      m.events.forEach((ev, index) => { out.push({ ev, mi, index, pos }); pos += evTicks(ev); });
+      voces(m).forEach((v) => {
+        let pos = 0;
+        v.events.forEach((ev, index) => {
+          out.push({ ev, mi, vi: v.vi, pent: v.pent, index, pos });
+          pos += evTicks(ev);
+        });
+      });
     });
     return out;
   }
@@ -394,10 +528,12 @@ const Model = (() => {
   return {
     Q, WHOLE, DURS, KEYS, TIMES, CLEFS, MIDDLE_LINE_DI, LETTERS, SEMIS,
     durById, durTicks, dotFactor, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
-    clefById, clefAt,
+    clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
+    timeAt, capacityAt, inicios,
+    voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
     alturas, anadirAltura, quitarAltura, esAcorde, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
-    note, rest, emptyMeasure, measureTicks, uid,
+    note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,
     insertEvent, removeEvent, findEvent, nextEvent, exactFigure, pages, flatten, clone
   };

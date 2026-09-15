@@ -92,8 +92,6 @@ const Radial = (() => {
     bandeja = dock.querySelector('.tray');
     document.body.appendChild(wrap);
 
-    wrap.addEventListener('pointerdown', (e) => { if (e.target === wrap) close(); });
-
     document.addEventListener('keydown', (e) => {
       if (!isOpen()) return;
       if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }

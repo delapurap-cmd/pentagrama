@@ -59,7 +59,11 @@
         measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
       });
       bindHeadFields();
-      $('#chipClef').textContent = Model.clefById(state.score.clef).label;
+      const sel = state.selectedId && Model.findEvent(state.score, state.selectedId);
+      const pentSel = sel ? (sel.pent | 0) : 0;
+      const nPent = Model.nPent(state.score);
+      $('#chipClef').textContent = Model.clefAt(state.score, sel ? sel.mi : 0, pentSel).label +
+        (nPent > 1 ? ' · ' + (pentSel + 1) + '/' + nPent : '');
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
@@ -268,7 +272,7 @@
       const found = currentEvent();
       if (!found) return;
       snapshot();
-      Model.removeEvent(state.score, found.mi, found.index);
+      Model.removeEvent(state.score, found.mi, found.vi, found.index);
       state.selectedId = null;
       Radial.close();
       render();
@@ -323,20 +327,22 @@
       if (!found) return;
       snapshot();
       const m = state.score.measures[found.mi];
+      const voz = Model.vozDe(m, found.vi);
+      if (!voz) return;
       if (!g) {
         const id = found.ev.tup && found.ev.tup.id;
-        if (id) m.events.forEach((ev) => { if (ev.tup && ev.tup.id === id) delete ev.tup; });
+        if (id) voz.events.forEach((ev) => { if (ev.tup && ev.tup.id === id) delete ev.tup; });
       } else {
         // el grupo se forma con esta nota y las que le siguen; si no hay
         // bastantes en el compás, se escriben copiándola
         const id = Model.uid();
         for (let k = 0; k < g.num; k++) {
-          let ev = m.events[found.index + k];
+          let ev = voz.events[found.index + k];
           if (!ev) {
             ev = found.ev.kind === 'rest'
               ? Model.rest(found.ev.dur, found.ev.dots || 0)
               : Model.note(found.ev.di, found.ev.dur, found.ev.dots || 0);
-            m.events.splice(found.index + k, 0, ev);
+            voz.events.splice(found.index + k, 0, ev);
           }
           ev.tup = { id, num: g.num, den: g.den };
         }
@@ -362,7 +368,12 @@
     const found = currentEvent();
     if (!found) return;
     const flat = [];
-    state.score.measures.forEach((m, mi) => m.events.forEach((ev, index) => flat.push({ ev, mi, index })));
+    // sólo la voz en la que se está escribiendo: saltar de una mano a otra
+    // a media frase no es lo que espera nadie
+    state.score.measures.forEach((m, mi) => {
+      const v = Model.mismaVoz(m, found);
+      if (v) v.events.forEach((ev, index) => flat.push({ ev, mi, vi: v.vi, index }));
+    });
     const at = flat.findIndex((f) => f.ev.id === found.ev.id);
     const target = flat[at + dir];
     if (target) {
@@ -377,7 +388,7 @@
     if (dir < 0) return;
     snapshot();
     const ev = Model.note(found.ev.kind === 'note' ? found.ev.di : Model.MIDDLE_LINE_DI, found.ev.dur, 0);
-    Model.insertEvent(state.score, found.mi, found.index + 1, ev);
+    Model.insertEvent(state.score, found.mi, found.vi, found.index + 1, ev);
     state.selectedId = ev.id;
     render();
     requestAnimationFrame(() => { Radial.update(radialState(ev)); aLaVista(ev.id); });
@@ -471,6 +482,15 @@
     }, { passive: false });
   }
 
+  /** Voz en la que escribir al tocar un pentagrama: la que ya tenga música
+      en esa pauta, o una nueva si la pauta estaba vacía. */
+  function vozDelToque(hit) {
+    const m = state.score.measures[hit.mi];
+    if (!m) return 0;
+    if (hit.vi != null) return hit.vi;
+    return Model.vozDePentagrama(m, hit.pent | 0).vi;
+  }
+
   /** Selecciona la nota tocada o escribe una nueva en esa altura. */
   function writeAt(hit) {
     if (hit.hitEvent) {
@@ -481,7 +501,7 @@
     }
     snapshot();
     const ev = Model.note(hit.di, state.pending.dur, 0);
-    Model.insertEvent(state.score, hit.mi, hit.insertIndex, ev);
+    Model.insertEvent(state.score, hit.mi, vozDelToque(hit), hit.insertIndex, ev);
     state.selectedId = ev.id;
     render();
     requestAnimationFrame(() => openRadialFor(ev.id));
@@ -538,23 +558,43 @@
 
     $('#btnClef').addEventListener('click', (e) => {
       const found = currentEvent();
-      const items = [{ head: 'Clave de la partitura' }];
+      const pent = found ? (found.pent | 0) : 0;
+      const n = Model.nPent(state.score);
+      const items = [];
+      // Cuántas pautas: una para una línea de melodía, dos para piano.
+      items.push({ head: 'Pentagramas' });
+      [1, 2, 3].forEach((k) => items.push({
+        label: k === 1 ? 'Uno' : k === 2 ? 'Dos (piano)' : 'Tres',
+        hint: k === 2 ? 'sol y fa' : '',
+        sel: n === k,
+        fn: () => { snapshot(); Model.ponerPentagramas(state.score, k); state.selectedId = null; Radial.close(); render(); }
+      }));
+      items.push({ sep: true },
+        { head: n > 1 ? 'Clave del pentagrama ' + (pent + 1) : 'Clave de la partitura' });
+      const claves = Model.pentagramas(state.score);
       Model.CLEFS.forEach((c) => items.push({
         label: c.label,
-        sel: (state.score.clef || 'treble') === c.id,
-        fn: () => { snapshot(); state.score.clef = c.id; render(); }
+        sel: claves[pent].clef === c.id,
+        fn: () => {
+          snapshot();
+          const todas = claves.map((x) => x.clef);
+          todas[pent] = c.id;
+          Model.ponerPentagramas(state.score, n, todas);
+          render();
+        }
       }));
       if (found) {
         // un cambio de clave a mitad de obra se guarda en el compás, no en la
         // partitura, y rige desde ahí hasta el siguiente cambio
         const m = state.score.measures[found.mi];
+        const actual = pent === 0 ? m.clef : (m.claves && m.claves[pent]);
         items.push({ sep: true }, { head: 'Cambio desde el compás ' + (found.mi + 1) });
         Model.CLEFS.forEach((c) => items.push({
           label: c.label,
-          sel: m.clef === c.id,
+          sel: actual === c.id,
           fn: () => {
             snapshot();
-            if (m.clef === c.id) delete m.clef; else m.clef = c.id;
+            Model.ponerClaveEn(m, pent, actual === c.id ? null : c.id);
             render();
           }
         }));
@@ -788,11 +828,11 @@
     if (!state.tapFigures.length) return;
     snapshot();
     // punto de escritura: tras la nota seleccionada, o al final de lo escrito
-    let mi, index;
+    let mi, vi, index;
     const found = currentEvent();
-    if (found) { mi = found.mi; index = found.index + 1; }
+    if (found) { mi = found.mi; vi = found.vi; index = found.index + 1; }
     else {
-      mi = 0;
+      mi = 0; vi = 0;
       for (let i = state.score.measures.length - 1; i >= 0; i--) {
         if (state.score.measures[i].events.length) { mi = i; break; }
       }
@@ -801,7 +841,7 @@
     let last = null;
     state.tapFigures.forEach((f, k) => {
       last = Model.note(Model.MIDDLE_LINE_DI, f.dur, f.dots);
-      Model.insertEvent(state.score, mi, index + k, last);
+      Model.insertEvent(state.score, mi, vi, index + k, last);
     });
 
     // El golpe final no tiene duración medida: dura lo que falte para cerrar
@@ -809,12 +849,12 @@
     // compás se completa solo con silencios.
     const tail = tailFigure();
     if (tail) {
-      let at = last ? Model.findEvent(state.score, last.id) : { mi, index: index - 1 };
+      let at = last ? Model.findEvent(state.score, last.id) : { mi, vi, index: index - 1 };
       const m = state.score.measures[at ? at.mi : mi];
-      const left = Model.capacity(state.score.time) - Model.measureTicks(m);
+      const left = Model.capacity(state.score.time) - Model.measureTicks(m, at ? at.vi : vi);
       const fig = left > 0 ? (figureThatFits(left) || tail) : tail;
       const ev = Model.note(Model.MIDDLE_LINE_DI, fig.dur, fig.dots);
-      Model.insertEvent(state.score, at ? at.mi : mi, (at ? at.index : index) + 1, ev);
+      Model.insertEvent(state.score, at ? at.mi : mi, at ? at.vi : vi, (at ? at.index : index) + 1, ev);
     }
     clearTaps();
     state.selectedId = null;
@@ -847,8 +887,54 @@
     alto: '<sign>C</sign><line>3</line>',
     tenor: '<sign>C</sign><line>4</line>'
   };
-  const claveXML = (clef) =>
-    `        <clef>${CLAVE_XML[clef.id] || CLAVE_XML.treble}</clef>\n`;
+  /** `n` es el número de pentagrama (1, 2…); 0 significa que sólo hay uno. */
+  const claveXML = (clef, n) =>
+    `        <clef${n ? ` number="${n}"` : ''}>${CLAVE_XML[clef.id] || CLAVE_XML.treble}</clef>\n`;
+
+  /* Los signos que abarcan o adornan: van como los escribe MuseScore, para
+     que el viaje de ida y vuelta no pierda nada. */
+  const ORN_XML = { trino: 'trill-mark', mordente: 'mordent', mordenteInv: 'inverted-mordent',
+                    grupeto: 'turn', grupetoInv: 'inverted-turn' };
+  const ornXML = (o) => (ORN_XML[o] ? `<ornaments><${ORN_XML[o]}/></ornaments>` : '');
+  const ligXML = (l) => (l === 'inicio' ? '<slur type="start" number="1"/>'
+                       : l === 'fin' ? '<slur type="stop" number="1"/>' : '');
+  const dedoXML = (d) => (d ? `<technical><fingering>${xmlEsc(d)}</fingering></technical>` : '');
+
+  /** Notas de adorno: van delante y sin duración, que es lo que las define. */
+  function adornosXML(ev, s, marca) {
+    return (ev.adornos || []).map((a) => {
+      const letra = Model.diLetter(a.di);
+      const alt = a.acc == null ? Model.keyAlter(s.key, letra) : ({ '#': 1, b: -1, n: 0 }[a.acc] || 0);
+      return '      <note>' + `<grace${a.barrada ? ' slash="yes"' : ''}/>` +
+        `<pitch><step>${letra.toUpperCase()}</step>` + (alt ? `<alter>${alt}</alter>` : '') +
+        `<octave>${Model.diOctave(a.di)}</octave></pitch>` + marca +
+        `<type>${Model.durById(a.dur).xml}</type></note>\n`;
+    }).join('');
+  }
+
+  /** Pedal, reguladores, 8ª y textos: hermanos del compás, antes de la nota. */
+  function direccionesXML(ev, pent) {
+    const n = pent != null ? ` staff="${pent + 1}"` : '';
+    let out = '';
+    if (ev.pedal) {
+      const t = ev.pedal === 'inicio' ? 'start' : ev.pedal === 'cambio' ? 'change' : 'stop';
+      out += `      <direction placement="below"${n}><direction-type><pedal type="${t}" line="yes"/></direction-type></direction>\n`;
+    }
+    if (ev.reg) {
+      const t = ev.reg === 'cresc' ? 'crescendo' : ev.reg === 'dim' ? 'diminuendo' : 'stop';
+      out += `      <direction placement="below"${n}><direction-type><wedge type="${t}"/></direction-type></direction>\n`;
+    }
+    if (ev.octava != null) {
+      // signo al revés: «up» quiere decir que lo escrito suena una octava más grave
+      const t = ev.octava === 0 ? 'stop' : (ev.octava > 0 ? 'down' : 'up');
+      const tam = Math.abs(ev.octava) === 15 ? 15 : 8;
+      out += `      <direction placement="above"${n}><direction-type><octave-shift type="${t}" size="${tam}"/></direction-type></direction>\n`;
+    }
+    if (ev.texto) {
+      out += `      <direction placement="above"${n}><direction-type><words>${xmlEsc(ev.texto)}</words></direction-type></direction>\n`;
+    }
+    return out;
+  }
 
   /** El cifrado va como <harmony>, que es lo que leen MuseScore y Sibelius. */
   function cifradoXML(texto) {
@@ -1009,31 +1095,53 @@
       '  <part-list><score-part id="P1"><part-name>Música</part-name></score-part></part-list>\n' +
       '  <part id="P1">\n';
 
-    let tiedFrom = false;
+    const nPent = Model.nPent(s);
     s.measures.forEach((m, i) => {
-      xml += `    <measure number="${i + 1}">\n`;
+      const cap = Model.capacityAt(s, i);
+      xml += `    <measure number="${i + 1}"${m.parcial ? ' implicit="yes"' : ''}>\n`;
+      if (m.repite === 'inicio') xml += '      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>\n';
       if (i === 0) {
         xml += '      <attributes>\n' +
           `        <divisions>${div}</divisions>\n` +
           `        <key><fifths>${Model.keyBySpec(s.key).fifths}</fifths></key>\n` +
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
-          claveXML(Model.clefAt(s, 0)) +
+          (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
+          Model.pentagramas(s).map((_, p) => claveXML(Model.clefAt(s, 0, p), nPent > 1 ? p + 1 : 0)).join('') +
           '      </attributes>\n' +
           `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
+      } else {
+        // cambios de clave a mitad de obra, uno por pentagrama
+        const cambios = Model.pentagramas(s).map((_, p) => {
+          const aqui = p === 0 ? m.clef : (m.claves && m.claves[p]);
+          return aqui ? claveXML(Model.clefById(aqui), nPent > 1 ? p + 1 : 0) : '';
+        }).join('');
+        const tc = m.time
+          ? `        <time><beats>${m.time.num}</beats><beat-type>${m.time.den}</beat-type></time>\n` : '';
+        if (cambios || tc) xml += '      <attributes>\n' + tc + cambios + '      </attributes>\n';
       }
-      const evs = m.events.concat(Model.autoRests(m, s.time));
+
+      /* Cada voz se escribe entera y luego se rebobina el reloj con
+         <backup>, que es como MusicXML representa lo simultáneo. */
+      Model.voces(m).forEach((vz, iv) => {
+        let tiedFrom = false;
+        const evs = vz.events.concat(Model.autoRests(m, s.time, vz.vi, cap));
+        if (!evs.length) return;
+        if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
+        const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent + 1}</staff>` : '');
       evs.forEach((ev) => {
         const d = Model.evTicks(ev);
         const type = Model.durById(ev.dur).xml;
         const puntos = '<dot/>'.repeat(ev.dots || 0);
         if (ev.kind === 'rest') {
           xml += '      <note>' + (ev.measureRest ? '<rest measure="yes"/>' : '<rest/>') +
-            `<duration>${d}</duration><type>${type}</type>${puntos}</note>\n`;
+            `<duration>${d}</duration>` + marca + `<type>${type}</type>${puntos}</note>\n`;
         } else {
           const prev = tiedFrom;
           tiedFrom = !!ev.tie;
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
+          xml += direccionesXML(ev, nPent > 1 ? vz.pent : null);
+          xml += adornosXML(ev, s, marca);
           // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
           // adelante llevan <chord/> y comparten la duración de la primera.
           Model.alturas(ev).forEach((n, iN) => {
@@ -1043,22 +1151,33 @@
             const notaciones =
               (base && (prev || ev.tie) ? (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') : '') +
               (base && ev.tup && ev.tup.id ? tupletXML(ev, evs) : '') +
-              (base && ev.art ? artXML(ev.art) : '');
+              (base && ev.lig ? ligXML(ev.lig) : '') +
+              (base && ev.orn ? ornXML(ev.orn) : '') +
+              (base && ev.art ? artXML(ev.art) : '') +
+              (base && ev.dedo ? dedoXML(ev.dedo) : '');
             xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
               `<step>${letter.toUpperCase()}</step>` +
               (alter ? `<alter>${alter}</alter>` : '') +
               `<octave>${Model.diOctave(n.di)}</octave></pitch>` +
               (base && prev ? '<tie type="stop"/>' : '') + (base && ev.tie ? '<tie type="start"/>' : '') +
-              `<duration>${d}</duration><type>${type}</type>${puntos}` +
+              `<duration>${d}</duration>` + marca + `<type>${type}</type>${puntos}` +
+              (base && ev.plica ? `<stem>${ev.plica}</stem>` : '') +
               (n.acc ? `<accidental>${({ '#': 'sharp', b: 'flat', n: 'natural', '##': 'double-sharp', bb: 'flat-flat' })[n.acc] || 'natural'}</accidental>` : '') +
               (ev.tup && ev.tup.id
                 ? `<time-modification><actual-notes>${ev.tup.num}</actual-notes><normal-notes>${ev.tup.den}</normal-notes></time-modification>`
                 : '') +
+              (base && ev.barra ? `<beam number="1">${ev.barra}</beam>` : '') +
               (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
               '</note>\n';
           });
         }
       });
+      });
+      if (m.repite === 'fin' || m.barra === 'fin' || m.barra === 'doble') {
+        const estilo = m.repite === 'fin' ? 'light-heavy' : m.barra === 'doble' ? 'light-light' : 'light-heavy';
+        xml += `      <barline location="right"><bar-style>${estilo}</bar-style>` +
+          (m.repite === 'fin' ? '<repeat direction="backward"/>' : '') + '</barline>\n';
+      }
       xml += '    </measure>\n';
     });
     xml += '  </part>\n</score-partwise>\n';

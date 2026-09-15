@@ -162,6 +162,11 @@ body.embed .sheet-head { display: none; }
    coloca los botones. */
 .radial-wrap { position: fixed; inset: 0; z-index: 70; display: none; touch-action: none; }
 .radial-wrap.open { display: block; }
+/* El envoltorio cubre la pantalla pero no la capta: con el bloque abierto se
+   sigue pudiendo tocar el pentagrama y la barra de arriba. Sólo el bloque
+   recoge el dedo. */
+.radial-wrap { pointer-events: none; }
+.radial-wrap .dock { pointer-events: auto; }
 .radial-wrap .dock {
   --aro: 75px;
   position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px));

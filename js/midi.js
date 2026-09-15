@@ -26,30 +26,41 @@ const Midi = (() => {
     const events = [];            // { tick, data[] }
     let tick = 0, carry = null;
 
-    score.measures.forEach((m, mi) => {
-      const cap = Model.capacity(score.time);
-      let used = 0;
-      m.events.forEach((ev) => {
-        const d = Model.evTicks(ev);
-        if (ev.kind === 'note') {
-          // Un acorde son varias notas a la vez. La ligadura sólo alarga la
-          // nota base, que es la que `tie` describe.
-          const clef = Model.clefAt(score, mi);
-          const midis = Model.midisOf(ev, score.key, clef);
-          const midi = midis[0];
-          if (carry && carry.midi === midi) carry.end += d;       // ligadura
-          else {
-            if (carry) events.push(carry);
-            carry = { midi, start: tick, end: tick + d };
-          }
-          midis.slice(1).forEach((m2) => events.push({ midi: m2, start: tick, end: tick + d }));
-          if (!ev.tie) { events.push(carry); carry = null; }
-        } else if (carry) { events.push(carry); carry = null; }
-        tick += d; used += d;
+    /* Voz a voz de principio a fin: las dos manos arrancan cada compás a la
+       vez, y una ligadura que cruza la barra sigue siendo una sola nota. */
+    const inicios = Model.inicios(score);
+    const hilos = new Map();
+    score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
+      const k = v.pent + ':' + v.vi;
+      if (!hilos.has(k)) hilos.set(k, []);
+      hilos.get(k).push({ mi, v });
+    }));
+
+    hilos.forEach((tramos) => {
+      carry = null;
+      tramos.forEach(({ mi, v }) => {
+        tick = inicios[mi];
+        const clef = Model.clefAt(score, mi, v.pent);
+        v.events.forEach((ev) => {
+          const d = Model.evTicks(ev);
+          if (ev.kind === 'note') {
+            // Un acorde son varias notas a la vez. La ligadura sólo alarga la
+            // nota base, que es la que `tie` describe.
+            const midis = Model.midisOf(ev, score.key, clef);
+            const midi = midis[0];
+            if (carry && carry.midi === midi) carry.end += d;       // ligadura
+            else {
+              if (carry) events.push(carry);
+              carry = { midi, start: tick, end: tick + d };
+            }
+            midis.slice(1).forEach((m2) => events.push({ midi: m2, start: tick, end: tick + d }));
+            if (!ev.tie) { events.push(carry); carry = null; }
+          } else if (carry) { events.push(carry); carry = null; }
+          tick += d;
+        });
       });
-      tick += Math.max(0, cap - used);
+      if (carry) { events.push(carry); carry = null; }
     });
-    if (carry) events.push(carry);
 
     const track = [];
     const usPerQuarter = Math.round(60000000 / score.tempo);
