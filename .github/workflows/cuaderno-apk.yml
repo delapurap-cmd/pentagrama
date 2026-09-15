@@ -15,6 +15,11 @@ on:
 permissions:
   contents: write
 
+# una compilacion a la vez: si empieza otra, la anterior se cancela
+concurrency:
+  group: cuaderno-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,8 +34,10 @@ jobs:
       - name: Recuperar la clave de firma
         env:
           KEYSTORE_B64: ${{ secrets.REPER_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.REPER_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
+          # sin contrasena, gradle la pediria por consola y el flujo se quedaria colgado
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
             echo "$KEYSTORE_B64" | base64 -d > cuaderno-musical/app/reper-release.jks
             echo "firmado=si" >> "$GITHUB_ENV"
           else
@@ -49,7 +56,10 @@ jobs:
           REPER_KEY_PASSWORD: ${{ secrets.REPER_KEY_PASSWORD }}
           REPER_KEY_ALIAS: ${{ secrets.REPER_KEY_ALIAS }}
         run: |
-          if [ "$firmado" = "si" ]; then gradle assembleRelease --no-daemon; else gradle assembleDebug --no-daemon; fi
+          tarea=assembleDebug
+          if [ "$firmado" = "si" ]; then tarea=assembleRelease; fi
+          # sin consola interactiva: cualquier pregunta falla en vez de colgarse
+          timeout 45m gradle "$tarea" --no-daemon --console=plain --stacktrace < /dev/null
 
       - name: Publicar el APK
         uses: actions/upload-artifact@v4
