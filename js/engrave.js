@@ -78,9 +78,14 @@ const Engrave = (() => {
   function buildNote(ev, clef) {
     const isRest = ev.kind === 'rest';
     const notas = isRest ? [] : Model.alturas(ev);
+    /* Un silencio se coloca en la tercera línea de SU pentagrama, y el de
+       compás entero cuelga de la cuarta. Estaban fijos en si4 y re5, que son
+       los de la clave de sol: en la de fa caían muy por encima de la pauta y
+       parecía que los silencios del bajo se habían subido al de arriba. */
+    const centro = clef ? clef.midLine : Model.MIDDLE_LINE_DI;
     const opts = {
       keys: isRest
-        ? [ev.measureRest ? 'd/5' : 'b/4']
+        ? [Model.diToKeyStr(centro + (ev.measureRest ? 2 : 0))]
         : notas.map((n) => Model.diToKeyStr(n.di)),
       duration: durStr(ev),
       clef: clef ? clef.vex : 'treble',

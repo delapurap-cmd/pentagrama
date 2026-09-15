@@ -8,6 +8,7 @@ const Sound = (() => {
   let ctx = null;
   let metro = null;
   let player = null;
+  let vivos = [];        // fuentes sonando ahora mismo, para poder cortarlas
 
   function ac() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -83,6 +84,7 @@ const Sound = (() => {
     src.connect(g).connect(c.destination);
     src.start(at);
     src.stop(end + 0.3);
+    vivos.push(src);
     return true;
   }
 
@@ -140,9 +142,13 @@ const Sound = (() => {
      Un matiz no es un dibujo: cambia el volumen. Un trino no es un garabato
      sobre la nota: son notas. Y el pedal alarga lo que ya se ha soltado. Lo
      que sigue traduce esos signos a sonido. */
-  const VOL_MATIZ = { pppp: .22, ppp: .3, pp: .4, p: .52, mp: .65, mf: .78,
-                      f: .92, ff: 1.05, fff: 1.18, ffff: 1.3,
-                      sf: 1.1, sfz: 1.15, fp: 1.05, rf: 1.05, rfz: 1.1 };
+  /* El «mf» vale 0,9, que es el volumen fijo con el que sonaba todo antes de
+     que hubiera matices; los demás se abren alrededor. Una escala absoluta
+     con el «p» en 0,5 dejaba media partitura por debajo de lo que se oye en
+     el altavoz de un teléfono. */
+  const VOL_MATIZ = { pppp: .42, ppp: .5, pp: .58, p: .68, mp: .8, mf: .9,
+                      f: 1.0, ff: 1.1, fff: 1.2, ffff: 1.3,
+                      sf: 1.15, sfz: 1.2, fp: 1.1, rf: 1.1, rfz: 1.15 };
 
   /** Desarrolla un adorno en las notas que de verdad se tocan. */
   function desarrollar(orn, midi, dur, escala) {
@@ -208,7 +214,8 @@ const Sound = (() => {
             carry.dur += d * secPerTick;   // la ligadura alarga la misma nota
             carry.tail.push(ev);
           } else {
-            carry = { ev, at: t * secPerTick, dur: d * secPerTick, tail: [], mi, clef };
+            carry = { ev, at: t * secPerTick, dur: d * secPerTick, tail: [], mi, clef,
+                      vi: v.vi, pent: v.pent };
             items.push(carry);
           }
           if (!(ev.kind === 'note' && ev.tie)) carry = null;
@@ -236,45 +243,91 @@ const Sound = (() => {
       else if (ev.reg === 'fin') rampa = null;
       if (ev.octava != null) octava = ev.octava === 0 ? 0 : (ev.octava > 0 ? 12 : -12) * (Math.abs(ev.octava) === 15 ? 2 : 1);
       if (ev.pedal === 'inicio' || ev.pedal === 'cambio') pedalHasta = Infinity;
-      cambios.push({ vol: rampa ? Math.max(.25, Math.min(1.3, rampa.desde + rampa.dir * 0.03 * (i - rampa.i))) : vol,
+      cambios.push({ vol: rampa ? Math.max(.5, Math.min(1.3, rampa.desde + rampa.dir * 0.02 * (i - rampa.i))) : vol,
                      octava, pedal: pedalHasta != null });
       if (ev.pedal === 'fin') pedalHasta = null;
     });
 
-    const t0 = c.currentTime + 0.12;
-    items.forEach((it, i) => {
+    /* Antes se programaba la partitura entera de una vez. Con dos manos, el
+       Nocturno son mil doscientas fuentes de audio creadas en un bucle: un
+       ordenador lo aguanta y un teléfono no, y lo que se oye es nada. Ahora
+       se va programando por delante, en ventanas de dos segundos, y al parar
+       se cortan las que estén sonando. */
+    const VENTANA = 2.0;        // cuánto se adelanta el motor
+    const PASO = 700;           // cada cuánto vuelve a mirar
+
+    const t0 = c.currentTime + 0.15;
+    const sonar = (it, cfg) => {
       if (it.ev.kind !== 'note') return;
-      const cfg = cambios[i];
       // con el pedal pisado la nota no se corta al soltar la tecla
       const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
       const adornos = it.ev.adornos || [];
       // las notas de adorno roban un poco de tiempo a la que llevan delante
       const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        const mid = Model.midiDe(a, score.key, it.clef) + cfg.octava;
-        tone(t0 + it.at + k * 0.075, mid, 0.09, cfg.vol * 0.8);
+        tone(t0 + it.at + k * 0.075, Model.midiDe(a, score.key, it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
       });
-      Model.midisOf(it.ev, score.key, it.clef).forEach((m2, iN) => {
+      const midis = Model.midisOf(it.ev, score.key, it.clef);
+      midis.forEach((m2, iN) => {
         const mid = m2 + cfg.octava;
         // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
-        const partes = (it.ev.orn && iN === Model.midisOf(it.ev, score.key, it.clef).length - 1)
+        const partes = (it.ev.orn && iN === midis.length - 1)
           ? desarrollar(it.ev.orn, mid, dur - robo, escala)
           : [[mid, dur - robo]];
         let t = t0 + it.at + robo;
         partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol); t += d; } });
       });
+    };
+
+    /* El cursor sigue una sola voz —la de arriba del primer pentagrama—: si
+       lo mueven las dos manos a la vez, salta de una a otra y parece que se
+       está saltando notas. */
+    const notas = items.filter((it) => it.ev.kind === 'note');
+    /* Una por golpe: de las que arrancan a la vez se señala la de la pauta de
+       arriba, y si en ese momento sólo suena la izquierda, esa. Así el cursor
+       avanza siempre —no se queda quieto quince segundos esperando a que
+       entre la melodía— y nunca vuelve atrás. */
+    const porGolpe = new Map();
+    notas.forEach((it) => {
+      const k = Math.round(it.at * 1000);
+      const previa = porGolpe.get(k);
+      const mejor = (a, b) => {
+        if ((a.pent | 0) !== (b.pent | 0)) return (a.pent | 0) < (b.pent | 0) ? a : b;
+        return (a.vi | 0) <= (b.vi | 0) ? a : b;
+      };
+      porGolpe.set(k, previa ? mejor(previa, it) : it);
     });
-    // el cursor sólo sigue una nota a la vez: la de la voz de arriba
-    const marcar = items.filter((it) => it.ev.kind === 'note');
-    const timers = marcar.map((it) =>
-      setTimeout(() => onNote && onNote(it.ev), it.at * 1000 + 120));
-    const total = items.reduce((s, it) => Math.max(s, it.at + it.dur), 0);
-    timers.push(setTimeout(() => { player = null; if (onEnd) onEnd(); }, total * 1000 + 260));
-    player = { timers };
+    const aSenalar = [...porGolpe.values()].sort((a, b) => a.at - b.at);
+
+    let siguiente = 0, siguienteAviso = 0;
+    const total = items.reduce((s2, it) => Math.max(s2, it.at + it.dur), 0);
+    const adelantar = () => {
+      const hasta = c.currentTime - t0 + VENTANA;
+      while (siguiente < items.length && items[siguiente].at <= hasta) {
+        sonar(items[siguiente], cambios[siguiente]);
+        siguiente++;
+      }
+      while (siguienteAviso < aSenalar.length && aSenalar[siguienteAviso].at <= c.currentTime - t0) {
+        const it = aSenalar[siguienteAviso++];
+        if (onNote) onNote(it.ev);
+      }
+      if (siguiente >= items.length && c.currentTime - t0 > total + 0.2) {
+        clearInterval(reloj);
+        player = null;
+        vivos = [];
+        if (onEnd) onEnd();
+      }
+    };
+    adelantar();
+    const reloj = setInterval(adelantar, PASO);
+    player = { reloj };
   }
 
   function stop() {
-    if (player) { player.timers.forEach(clearTimeout); player = null; }
+    if (player) { clearInterval(player.reloj); player = null; }
+    // cortar de verdad lo que ya estuviera sonando, no sólo dejar de programar
+    vivos.forEach((s2) => { try { s2.stop(); } catch (e) { /* ya terminó */ } });
+    vivos = [];
   }
   const playing = () => !!player;
 
