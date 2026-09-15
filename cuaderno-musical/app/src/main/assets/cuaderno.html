@@ -282,26 +282,6 @@ body.score-editing #dockwrap,body.score-editing #player{display:none!important}
 #fgrip:active{opacity:.9;cursor:grabbing}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
-/* ═══ reproductor de ensayo ═══ */
-body.player-open #scroller{padding-bottom:148px}
-body.player-open #dockwrap{bottom:158px}
-/* El panel del reproductor ocupa media pantalla; la barra flotante de
-   herramientas se le montaba encima y tapaba el editor A-B. Mientras el
-   panel esté abierto, la barra se quita de en medio. */
-body.panel-abierto #dockwrap{display:none}
-#player{position:fixed;left:0;right:0;bottom:0;z-index:45;height:148px;padding:6px 10px max(6px,env(safe-area-inset-bottom));
-  background:linear-gradient(180deg,rgba(31,33,39,.985),rgba(12,14,17,.995));border-top:1px solid #d6b36a3d;
-  border-radius:18px 18px 0 0;box-shadow:0 -14px 38px #0009;backdrop-filter:blur(22px);display:none}
-body.player-open #player{display:block}
-.phead{display:flex;align-items:center;gap:7px;height:40px}
-#nowTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 12.5px/1.2 ui-sans-serif,sans-serif;color:#f3f1eb}
-#pageAction{max-width:38%;height:36px;padding:0 12px;border-radius:999px;background:#d6b36a;color:#17130b;font:700 11px/1 ui-sans-serif,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#pageAction:disabled{background:#ffffff12;color:#ffffff66}
-.ptab{flex:0 0 44px;width:44px;height:38px;border-radius:11px;background:#ffffff12;color:#ffffffd0;font:700 14px/1 ui-monospace,monospace}
-.ptab:active{background:#ffffff1c}
-.ptab.on{background:#d6b36a;color:#17130b}
-#playerPanel{position:absolute;left:6px;right:6px;bottom:calc(100% + 5px);display:none;max-height:46vh;overflow:hidden;border:1px solid #ffffff16;border-radius:11px;background:#111318f7;color:#f2efe7;box-shadow:0 -12px 30px #0008;backdrop-filter:blur(18px)}
-#playerPanel.open{display:block}.player-pane{display:none;padding:7px;max-height:46vh;overflow:auto}.player-pane.on{display:block}.panehead{display:flex;align-items:center;gap:5px;min-height:26px}.panehead strong{flex:1;font-size:10px;color:#d6b36a;letter-spacing:.06em;text-transform:uppercase}.panehead button{height:30px;padding:0 12px;border-radius:9px;background:#ffffff09;font:700 10px/1 ui-monospace,monospace}.panehead button.on{background:#d6b36a;color:#17130b}
 #idxSearchRow{display:flex;align-items:center;gap:6px;margin:2px 0 8px}
 /* El índice es una hoja clara. Esto estaba pintado para fondo oscuro —letra
    casi blanca, borde blanco al 11%— y sobre el papel no se veía ni la caja ni
@@ -311,59 +291,126 @@ body.player-open #player{display:block}
 #idxSearch::placeholder{color:var(--soft)}
 #idxSearch:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px #d6b36a2e}
 #idxClear{width:38px;height:40px;border-radius:11px;border:1px solid var(--soft);color:var(--soft);font-size:18px}
-.idx-empty{padding:18px 4px;text-align:center;color:#ffffff7a;font:500 12px/1.5 ui-sans-serif,sans-serif}
-#queueList,#voiceList{max-height:34vh;overflow:auto}.queue-row,.voice-row{display:flex;align-items:center;gap:6px;min-height:31px;padding:3px 4px;border-top:1px solid #ffffff0b}.queue-row.on{color:#d6b36a}.queue-row button:first-child,.voice-row button:first-child{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.voice-row .trash{width:24px;color:#ffaaaa}
-/* El editor A–B de la página de bases de More Than Modes, tal cual: onda oscura,
-   franja ámbar entre las dos marcas y dos banderitas con letra negra sobre un
-   carril bajo. Las banderas van en el carril y no sobre la onda para que la
-   mano que arrastra no tape justo lo que se quiere ver. */
-#abStage{position:relative;height:132px;margin-top:6px;border:1px solid #ffffff14;border-radius:10px;background:#0c0e12;overflow:hidden;touch-action:none;user-select:none}
-#abWave{width:100%;height:132px;display:block}
-.ab-lane{position:absolute;left:0;right:0;bottom:0;height:22px;background:#0006;border-top:1px solid #ffffff14;pointer-events:none}
-.ab-handle{position:absolute;top:0;bottom:0;width:0;display:none}
-#abStage.armed .ab-handle{display:block}
-/* Caja táctil ancha e invisible: la bandera mide 34px y el dedo, bastante más. */
-.ab-hit{position:absolute;left:-30px;width:60px;top:0;bottom:0;display:block}
-.ab-line{position:absolute;left:-1px;width:2px;top:0;bottom:22px;display:block;background:#d6b36a;box-shadow:0 0 6px #d6b36a55}
-.ab-flag{position:absolute;bottom:2px;width:34px;height:18px;display:grid;place-items:center;border:1.5px solid #0b0c0f;border-radius:4px;background:#d6b36a;color:#17130b;font:800 10px/1 ui-monospace,monospace;box-shadow:0 2px 5px #0008}
-.ab-handle[data-h="a"] .ab-flag{left:0;border-top-left-radius:0;border-bottom-right-radius:0}
-.ab-handle[data-h="b"] .ab-flag{left:-34px;border-top-right-radius:0;border-bottom-left-radius:0}
-.ab-handle.grab .ab-flag{box-shadow:0 0 0 2px #d6b36a66,0 3px 8px #000a}
-.ab-readout{display:flex;align-items:center;gap:6px;margin-top:7px;font:10px/1 ui-monospace,monospace;color:#ffffffa0}
-.ab-readout .ab-tag{width:22px;height:26px;display:grid;place-items:center;border-radius:7px;background:#d6b36a;color:#17130b;font:800 11px/1 ui-monospace,monospace}
-.ab-readout output{min-width:52px;height:26px;display:grid;place-items:center;border-radius:7px;background:#ffffff0b;color:#f2efe7;font:700 12px/1 ui-monospace,monospace}
-.ab-readout .spacer{flex:1}
-.ab-readout #abLen{height:26px;display:grid;place-items:center;padding:0 9px;border-radius:7px;background:#ffffff08;color:#d6b36a;font:700 11px/1 ui-monospace,monospace}
-#voiceRecord.recording{background:#b33;color:#fff}.voice-status{font:9px/1.3 ui-monospace,monospace;color:#ffffff88;padding:5px 1px}
-.pmain{display:flex;align-items:center;gap:10px;height:60px}
-.wavebox{position:relative;flex:1;min-width:0;height:46px;border-radius:10px;background:#ffffff07;touch-action:none}
-#wave{width:100%;height:46px;display:block}
-.ptime{position:absolute;left:8px;right:8px;bottom:2px;display:flex;justify-content:space-between;pointer-events:none;font:600 10px/1 ui-monospace,monospace;color:#ffffffa8;text-shadow:0 1px 2px #000a}
-#playToggle{flex:0 0 58px;width:58px;height:58px;border-radius:50%;background:#f2efe7;color:#111;display:grid;place-items:center;box-shadow:0 6px 16px #0006;transition:transform .12s,background .18s,box-shadow .18s}
-#playToggle:active{transform:scale(.94)}
-/* Sonando se pone del color de la casa y con un halo: se sabe de un vistazo
-   si hay música sin tener que mirar el icono. */
-#player.sonando #playToggle{background:#d6b36a;color:#17130b;box-shadow:0 6px 18px #d6b36a4d,0 0 0 5px #d6b36a1f}
+.idx-empty{padding:18px 4px;text-align:center;color:var(--soft);font:500 12px/1.5 ui-sans-serif,sans-serif}
+
+/* ═══ reproductor ═══════════════════════════════════════════════════════
+   Dos piezas y nada mas: una tira fina que siempre esta —avance, transporte,
+   titulo, lista y editor— y un editor que se despliega ya montado encima. La
+   version anterior repartia lo mismo en tres filas fijas y tres paneles con
+   pestañas, y el A-B acababa compartiendo linea con la onda de la pista. */
+:root{--tira:104px}
+body.player-open #scroller{padding-bottom:calc(var(--tira) + 10px)}
+body.player-open #dockwrap{bottom:calc(var(--tira) + 14px)}
+body.panel-abierto #dockwrap{display:none}
+
+#player{position:fixed;left:0;right:0;bottom:0;z-index:45;display:none;
+  padding:0 0 max(4px,env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(28,30,36,.97),rgba(11,12,15,.99));
+  border-top:1px solid #d6b36a33;border-radius:16px 16px 0 0;
+  box-shadow:0 -14px 38px #0009;backdrop-filter:blur(22px);color:#f2efe7}
+body.player-open #player{display:block}
 #player svg{width:24px;height:24px;fill:currentColor;stroke:none}
+#player button{color:inherit}
+
+/* ---- la tira ---- */
+#seekRow{display:flex;align-items:center;gap:9px;height:30px;padding:0 13px;touch-action:none}
+#seekRow span{flex:0 0 auto;min-width:32px;font:600 10px/1 ui-monospace,monospace;color:#ffffff7a}
+#seekRow span:last-child{text-align:right}
+#seekBar{position:relative;flex:1;min-width:0;height:26px;display:flex;align-items:center;cursor:pointer}
+#seekBar::before{content:"";position:absolute;left:0;right:0;height:4px;border-radius:2px;background:#ffffff1a}
+#seekFill{position:absolute;left:0;height:4px;width:0;border-radius:2px;background:#d6b36a}
+#seekKnob{position:absolute;left:0;width:12px;height:12px;margin-left:-6px;border-radius:50%;
+  background:#fffdf7;box-shadow:0 1px 4px #000a;transition:transform .12s}
+#seekBar.agarrado #seekKnob{transform:scale(1.5)}
+
+#transporte{display:flex;align-items:center;gap:8px;height:66px;padding:0 11px}
+#playToggle{flex:0 0 52px;width:52px;height:52px;border-radius:50%;background:#f2efe7;color:#14161a;
+  display:grid;place-items:center;box-shadow:0 5px 14px #0007;transition:transform .12s,background .18s,box-shadow .18s}
+#playToggle:active{transform:scale(.93)}
+#player.sonando #playToggle{background:#d6b36a;box-shadow:0 5px 16px #d6b36a55,0 0 0 5px #d6b36a1c}
+#playToggle svg{width:26px;height:26px}
 #playToggle .i-pause,#player.sonando #playToggle .i-play{display:none}
 #player.sonando #playToggle .i-pause{display:block}
-.trackskip{flex:0 0 48px;width:48px;height:48px;border-radius:50%;background:#ffffff12;color:#d6b36a;display:grid;place-items:center}
-.trackskip svg{width:21px;height:21px}
-.trackskip:active{background:#ffffff1e}
-/* Hilo de posición en el canto de arriba del reproductor: dice dónde va la
-   pista aunque el panel tape la onda. */
-#posLine{position:absolute;left:0;right:0;top:0;height:2px;background:#ffffff0e;overflow:hidden;border-radius:2px 2px 0 0}
-#posLine i{display:block;width:0;height:100%;background:linear-gradient(90deg,#d6b36a88,#d6b36a)}
-#queuePos{flex:0 0 auto;color:#ffffff65;font:700 8px/1 ui-monospace,monospace;letter-spacing:.05em}
-#loopToggle{flex:0 0 auto;height:48px;padding:0 12px;border-radius:12px;background:#ffffff0c;color:#ffffffa8;font:700 11px/1 ui-monospace,monospace}
-#loopToggle.on{background:#d6b36a;color:#17130b}
+.tsk{flex:0 0 42px;width:42px;height:42px;border-radius:50%;background:#ffffff0f;color:#d6b36a;display:grid;place-items:center}
+.tsk:active{background:#ffffff1c}
+.tsk svg{width:20px;height:20px}
+#nowTitle{flex:1;min-width:0;height:44px;padding:0 4px;text-align:left;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font:600 12.5px/44px ui-sans-serif,sans-serif;color:#f3f1eb}
+#nowTitle:active{color:#d6b36a}
+.tapa{flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:#ffffff0f;color:#ffffffc4;display:grid;place-items:center}
+.tapa:active{background:#ffffff1c}
+.tapa.on{background:#d6b36a;color:#17130b}
+.tapa svg{width:21px;height:21px}
+#pageAction{flex:0 0 auto;max-width:40%;height:38px;padding:0 14px;border-radius:999px;background:#d6b36a;
+  color:#17130b;font:700 11px/1 ui-sans-serif,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pageAction:disabled{display:none}
+
+/* ---- las hojas que se despliegan ---- */
+#editor,#lista{display:none;max-height:58vh;overflow:auto;padding:10px 13px 4px;
+  border-bottom:1px solid #ffffff10}
+#editor.on,#lista.on{display:block}
+.lista-head{display:flex;align-items:center;gap:8px;padding-bottom:6px}
+.lista-head strong{flex:1;font:700 10px/1 ui-monospace,monospace;color:#d6b36a;letter-spacing:.09em;text-transform:uppercase}
+#queuePos{font:700 9px/1 ui-monospace,monospace;color:#ffffff6b}
+#queueList,#voiceList{max-height:42vh;overflow:auto}
+.queue-row,.voice-row{display:flex;align-items:center;gap:7px;min-height:42px;border-top:1px solid #ffffff0d}
+.queue-row.on{color:#d6b36a}
+.queue-row button:first-child,.voice-row button:first-child{flex:1;min-width:0;text-align:left;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;font:500 12px/1.3 ui-sans-serif,sans-serif}
+.voice-row .trash{width:34px;height:34px;color:#ffaaaa}
+
+/* ---- el visor ---- */
+/* A sangre: el visor llega a los dos bordes de la pantalla. Metido dentro del
+   relleno del editor se quedaba a veintiséis píxeles de ancho de la pantalla y
+   se notaba: es la pieza grande, tiene que ocupar todo. */
+#abStage{position:relative;height:148px;margin:0 -13px;border-top:1px solid #ffffff14;
+  border-bottom:1px solid #ffffff14;background:#0b0d11;
+  overflow:hidden;touch-action:none;user-select:none}
+#abWave{width:100%;height:148px;display:block}
+.ab-lane{position:absolute;left:0;right:0;bottom:0;height:24px;background:#00000073;border-top:1px solid #ffffff14;pointer-events:none}
+.ab-handle{position:absolute;top:0;bottom:0;width:0;display:none}
+#abStage.armed .ab-handle{display:block}
+.ab-hit{position:absolute;left:-30px;width:60px;top:0;bottom:0;display:block}
+.ab-line{position:absolute;left:-1.5px;width:3px;top:0;bottom:24px;display:block;background:#d6b36a;box-shadow:0 0 8px #d6b36a66}
+.ab-flag{position:absolute;bottom:3px;width:36px;height:19px;display:grid;place-items:center;border:1.5px solid #0b0c0f;
+  border-radius:5px;background:#d6b36a;color:#17130b;font:800 11px/1 ui-monospace,monospace;box-shadow:0 2px 6px #0009}
+.ab-handle[data-h="a"] .ab-flag{left:0;border-top-left-radius:0;border-bottom-right-radius:0}
+.ab-handle[data-h="b"] .ab-flag{left:-36px;border-top-right-radius:0;border-bottom-left-radius:0}
+.ab-handle.grab .ab-flag{box-shadow:0 0 0 2px #d6b36a77,0 3px 9px #000b}
+
+/* ---- A y B, cada uno en su linea ---- */
+.ab-fila{display:flex;align-items:center;gap:6px;margin-top:8px}
+.ab-fila .ab-tag{flex:0 0 26px;height:34px;display:grid;place-items:center;border-radius:9px;
+  background:#d6b36a;color:#17130b;font:800 12px/1 ui-monospace,monospace}
+.ab-fila output{flex:0 0 auto;min-width:56px;height:34px;display:grid;place-items:center;border-radius:9px;
+  background:#ffffff0d;color:#f2efe7;font:700 13px/1 ui-monospace,monospace}
+.ab-fila button{flex:0 0 auto;height:34px;padding:0 10px;border-radius:9px;background:#ffffff0d;
+  color:#e9e6dd;font:700 10px/1 ui-monospace,monospace}
+.ab-fila button:active{background:#ffffff1f}
+.ab-fila button.aqui{background:#ffffff16;color:#d6b36a}
+.ab-fila .ab-sep{flex:1}
+#abLen{color:#d6b36a!important;background:#d6b36a1a!important;min-width:auto!important;padding:0 10px}
+#loopToggle{background:#ffffff14!important;color:#ffffffa8!important;letter-spacing:.06em}
+#loopToggle.on{background:#d6b36a!important;color:#17130b!important}
+
+/* ---- tono y velocidad ---- */
+.mandos{display:flex;gap:8px;margin-top:10px}
+.mando{flex:1;display:flex;align-items:center;height:46px;border:1px solid #ffffff16;border-radius:12px;background:#ffffff08}
+.mando button{width:46px;height:44px;color:#d6b36a;font:700 20px/1 ui-sans-serif,sans-serif}
+.mando button:active{background:#ffffff14}
+.mando span{flex:1;min-width:0;display:grid;place-items:center;gap:1px}
+.mando b{font:700 14px/1 ui-monospace,monospace;color:#f2efe7}
+.mando i{font:600 8px/1 ui-monospace,monospace;color:#ffffff66;letter-spacing:.12em;font-style:normal}
+
+.extras{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.extras button{flex:1 1 auto;height:36px;padding:0 12px;border-radius:10px;background:#ffffff0b;
+  color:#e9e6dd;font:700 10px/1 ui-sans-serif,sans-serif}
+.extras button.on{background:#d6b36a;color:#17130b}
+#voiceRecord.recording{background:#b33;color:#fff}
+.voice-status{font:9px/1.35 ui-monospace,monospace;color:#ffffff7d;padding:6px 1px}
+
 #downloadProgress{position:absolute;left:0;right:0;top:0;height:2px;background:#ffffff12;overflow:hidden;display:none}
 #downloadProgress i{display:block;width:0;height:100%;background:#d6b36a}
-.adjust{height:34px;display:flex;align-items:center;justify-content:center;gap:10px;color:#ffffffa0;font:10px/1 ui-monospace,monospace}
-.stepper{height:30px;display:flex;align-items:center;border:1px solid #ffffff18;border-radius:9px;background:#ffffff08;overflow:hidden}
-.stepper button{width:32px;height:30px;color:#d6b36a;font:700 16px/1 ui-monospace,monospace}
-.stepper button:active{background:#ffffff14}
-.stepper output{min-width:74px;text-align:center;color:#f2efe7;font:600 10px/1 ui-monospace,monospace}
 .downloaded{color:#2d8251!important;opacity:1!important;font-size:13px!important}
 @media (max-width:430px){#viewTabs{justify-content:flex-start}#viewTabs button{min-width:70px;padding:0 6px}.slot{padding-left:8px;padding-right:8px}}
 </style>
@@ -391,24 +438,70 @@ body.player-open #player{display:block}
 <div id="scroller"></div>
 
 <div id="player">
-  <div id="playerPanel">
-    <section class="player-pane" data-pane="queue"><div class="panehead"><strong>Lista descargada</strong><button id="repeatTrack" class="on">↻ CANCIÓN</button><button id="repeatList">↻ LISTA</button></div><div id="queueList"></div></section>
-    <section class="player-pane" data-pane="ab">
-      <div id="abStage">
-        <canvas id="abWave"></canvas>
-        <div class="ab-lane"></div>
-        <div class="ab-handle" data-h="a"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">A</b></div>
-        <div class="ab-handle" data-h="b"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">B</b></div>
-      </div>
-      <div class="ab-readout"><span class="ab-tag">A</span><output id="aRead">0:00</output><span class="ab-tag">B</span><output id="bRead">0:00</output><span class="spacer"></span><span id="abLen">0:00</span></div></section>
-    <section class="player-pane" data-pane="voice"><div class="panehead"><strong>Notas de voz</strong><button id="voiceRecord">● GRABAR</button></div><div id="voiceStatus" class="voice-status">Grabación AAC · 48 kHz · alta calidad</div><div id="voiceList"></div></section>
+  <!-- El editor, plegado. Sale entero y listo: onda, A-B, tono y velocidad. -->
+  <div id="editor">
+    <div id="abStage">
+      <canvas id="abWave"></canvas>
+      <div class="ab-lane"></div>
+      <div class="ab-handle" data-h="a"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">A</b></div>
+      <div class="ab-handle" data-h="b"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">B</b></div>
+    </div>
+
+    <div class="ab-fila">
+      <span class="ab-tag">A</span><output id="aRead">0:00</output>
+      <button data-ab="a-back" aria-label="A, una décima antes">−0,1</button>
+      <button data-ab="a-fwd" aria-label="A, una décima después">+0,1</button>
+      <button data-ab="a-set" class="aqui">AQUÍ</button>
+      <span class="ab-sep"></span>
+      <button id="loopToggle" aria-label="Activar el bucle A–B">BUCLE</button>
+    </div>
+    <div class="ab-fila">
+      <span class="ab-tag">B</span><output id="bRead">0:00</output>
+      <button data-ab="b-back" aria-label="B, una décima antes">−0,1</button>
+      <button data-ab="b-fwd" aria-label="B, una décima después">+0,1</button>
+      <button data-ab="b-set" class="aqui">AQUÍ</button>
+      <span class="ab-sep"></span>
+      <output id="abLen">0:00</output>
+      <button data-ab="whole" aria-label="Todo el tema">TODO</button>
+    </div>
+
+    <div class="mandos">
+      <div class="mando"><button id="pitchDown" aria-label="Bajar el tono">−</button>
+        <span><b id="pitchOut">0</b><i>TONO</i></span>
+        <button id="pitchUp" aria-label="Subir el tono">+</button></div>
+      <div class="mando"><button id="speedDown" aria-label="Bajar la velocidad">−</button>
+        <span><b id="speedOut">1×</b><i>VELOCIDAD</i></span>
+        <button id="speedUp" aria-label="Subir la velocidad">+</button></div>
+    </div>
+
+    <div class="extras">
+      <button id="repeatTrack" class="on">Repetir canción</button>
+      <button id="repeatList">Repetir lista</button>
+      <button id="voiceRecord">Grabar nota</button>
+    </div>
+    <div id="voiceStatus" class="voice-status"></div>
+    <div id="voiceList"></div>
   </div>
-  <div class="phead"><div id="nowTitle">Selecciona una canción</div><span id="queuePos">0 / 0</span><button class="ptab" data-player-tab="queue" title="Lista">☷</button><button class="ptab" data-player-tab="voice" title="Notas de voz">●</button><button id="pageAction" disabled>Sin audio</button></div>
-  <div class="pmain"><button id="prevTrack" class="trackskip" title="Anterior" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M18 5.6v12.8L9.2 12z"/><rect x="5.4" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><button id="playToggle" aria-label="Reproducir o pausar"><svg class="i-play" viewBox="0 0 24 24"><path d="M8.4 5.3v13.4L19 12z"/></svg><svg class="i-pause" viewBox="0 0 24 24"><rect x="7.6" y="5.4" width="3.4" height="13.2" rx="1.3"/><rect x="13" y="5.4" width="3.4" height="13.2" rx="1.3"/></svg></button><button id="nextTrack" class="trackskip" title="Siguiente" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M6 5.6v12.8L14.8 12z"/><rect x="16" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><div class="wavebox"><canvas id="wave"></canvas><div class="ptime"><span id="posTime">0:00</span><span id="durTime">0:00</span></div></div><button id="loopToggle">A–B</button></div>
-  <div class="adjust"><div class="stepper"><button id="pitchDown">‹</button><output id="pitchOut">TONO 0</output><button id="pitchUp">›</button></div>
-    <div class="stepper"><button id="speedDown">‹</button><output id="speedOut">VEL 1×</output><button id="speedUp">›</button></div></div>
+
+  <!-- La lista, plegada. -->
+  <div id="lista"><div class="lista-head"><strong>Descargadas</strong><span id="queuePos">0 / 0</span></div><div id="queueList"></div></div>
+
+  <!-- La tira fina: lo que se ve siempre. -->
+  <div id="seekRow">
+    <span id="posTime">0:00</span>
+    <div id="seekBar"><i id="seekFill"></i><b id="seekKnob"></b></div>
+    <span id="durTime">0:00</span>
+  </div>
+  <div id="transporte">
+    <button id="prevTrack" class="tsk" aria-label="Volver al principio o a la anterior"><svg viewBox="0 0 24 24"><path d="M19 5.4v13.2L9.5 12z"/><rect x="5" y="5.4" width="3" height="13.2" rx="1.4"/></svg></button>
+    <button id="playToggle" aria-label="Reproducir o pausar"><svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.1v13.8L19.4 12z"/></svg><svg class="i-pause" viewBox="0 0 24 24"><rect x="6.8" y="5.2" width="4" height="13.6" rx="1.5"/><rect x="13.2" y="5.2" width="4" height="13.6" rx="1.5"/></svg></button>
+    <button id="nextTrack" class="tsk" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M5 5.4v13.2L14.5 12z"/><rect x="16" y="5.4" width="3" height="13.2" rx="1.4"/></svg></button>
+    <button id="nowTitle">Selecciona una canción</button>
+    <button id="pageAction" disabled>Sin audio</button>
+    <button id="openList" class="tapa" aria-label="Lista de canciones"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="2.6" rx="1.3"/><rect x="3" y="10.7" width="18" height="2.6" rx="1.3"/><rect x="3" y="16.4" width="18" height="2.6" rx="1.3"/></svg></button>
+    <button id="openEditor" class="tapa" aria-label="Controles de la pista"><svg viewBox="0 0 24 24"><rect x="3" y="10.6" width="18" height="2.8" rx="1.4"/><rect x="7.2" y="4" width="3.4" height="16" rx="1.7"/><rect x="14.6" y="9" width="3.4" height="11" rx="1.7"/></svg></button>
+  </div>
   <div id="downloadProgress"><i></i></div>
-  <div id="posLine"><i></i></div>
 </div>
 
 <div id="dockwrap">
@@ -1086,11 +1179,13 @@ function onPaste(e,p){
 
 /* ═══ audio de ensayo ═══ */
 let engineReady=!!(window.Native&&Native.isEngineReady&&Native.isEngineReady()), now={id:'',songId:'',kind:'song',title:'',position:0,duration:0,playing:false,wave:[],waveMs:0};
-let loopOn=false, pointA=0, pointB=0, waveDrag='',waveZoom=1,waveOffset=0;
-let repeatMode=localStorage.getItem('player.repeat')||'track',activePlayerPane='',voiceRecording=false,voiceRecordingSongId='';
+let loopOn=false, pointA=0, pointB=0, waveZoom=1, waveOffset=0;
+let repeatMode=localStorage.getItem('player.repeat')||'track',hojaAbierta='',voiceRecording=false,voiceRecordingSongId='';
 if(!['track','list'].includes(repeatMode))repeatMode='track';
 const voiceWaveCache={};
-const wave=document.getElementById('wave'), wctx=wave.getContext('2d');
+/* La onda chica ya no existe: el visor del editor es el unico, y a todo el
+   ancho. Se deja `wave` a nulo para que el pintor compartido no la busque. */
+const wave=null, wctx=null;
 const cajaPlayer=document.getElementById('player');
 const fmtTime=ms=>{const s=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function trackState(p){
@@ -1116,8 +1211,8 @@ function downloadPage(p){
 function playPage(p){
   const st=trackState(p);
   if(!st.downloaded)return downloadPage(p);
-  now.wave=st.wave||[]; now.waveMs=st.waveMs||0; now.duration=st.duration||0; pointA=0;pointB=now.duration;loopOn=false;waveZoom=1;waveOffset=0;
-  loopToggle.classList.remove('on');drawWave();Native.play(p.id,trackTitle(p));
+  now.wave=st.wave||[]; now.waveMs=st.waveMs||0; now.duration=st.duration||0; waveZoom=1;waveOffset=0;
+  drawWave();Native.play(p.id,trackTitle(p));
 }
 function downloadedPages(){return pages.filter(p=>trackState(p).downloaded)}
 function playlistStep(direction,fromId=(now.songId||now.id),wrap=false){
@@ -1159,11 +1254,17 @@ function updatePlayerPage(){
   }else{
     pageAction.style.display='none';clearTimeout(cambioDePista);
   }
-  refreshClock();drawWave();if(activePlayerPane==='queue')renderQueue();if(activePlayerPane==='voice'&&playerPanel.classList.contains('open'))renderVoiceNotes();syncRepeatButtons();
+  refreshClock();drawWave();if(hojaAbierta==='lista')renderQueue();syncRepeatButtons();
 }
 function refreshClock(){
   posTime.textContent=fmtTime(now.position);durTime.textContent=fmtTime(now.duration);
-  posLine.firstElementChild.style.width=(now.duration?Math.max(0,Math.min(100,now.position/now.duration*100)):0)+'%';
+  pintarAvance();
+}
+/** La barrita de la tira: relleno y perilla. */
+function pintarAvance(){
+  const f=now.duration?Math.max(0,Math.min(1,now.position/now.duration)):0;
+  seekFill.style.width=(f*100)+'%';
+  seekKnob.style.left=(f*100)+'%';
 }
 playToggle.onclick=()=>{
   // El botón de transporte transporta. Antes, si estabas oyendo una canción y
@@ -1202,8 +1303,8 @@ loopToggle.onclick=()=>{
     pointA=now.position;pointB=Math.min(now.duration,pointA+30000);
   }
   loopToggle.classList.toggle('on',loopOn);
-  Native.setLoop(pointA,pointB,loopOn);
-  mostrarPanel(loopOn?'ab':'');
+  Native.setLoop(pointA,pointB,loopOn);recordarPista();
+  if(loopOn)mostrarPanel('editor');
   drawWave();refreshAB();
 };
 
@@ -1213,18 +1314,21 @@ function syncRepeatButtons(){
 function setRepeat(mode){repeatMode=mode;localStorage.setItem('player.repeat',mode);syncRepeatButtons();toast(mode==='track'?'Repetir canción actual':'Repetir lista completa')}
 repeatTrack.onclick=()=>setRepeat('track');repeatList.onclick=()=>setRepeat('list');syncRepeatButtons();
 /** Enseña un panel del reproductor, o ninguno si se le pasa vacío. */
+/** Enseña una de las dos hojas del reproductor, o ninguna. */
 function mostrarPanel(name){
-  activePlayerPane=name;
-  playerPanel.classList.toggle('open',!!name);
-  document.querySelectorAll('[data-player-tab]').forEach(x=>x.classList.toggle('on',x.dataset.playerTab===name));
-  document.querySelectorAll('.player-pane').forEach(x=>x.classList.toggle('on',x.dataset.pane===name));
+  hojaAbierta=name;
+  editor.classList.toggle('on',name==='editor');
+  lista.classList.toggle('on',name==='lista');
+  openEditor.classList.toggle('on',name==='editor');
+  openList.classList.toggle('on',name==='lista');
   sincronizarPanel();
-  if(name==='queue')renderQueue();if(name==='voice')renderVoiceNotes();if(name==='ab')refreshAB();
+  if(name==='lista')renderQueue();
+  if(name==='editor'){renderVoiceNotes();refreshAB()}
 }
-document.querySelectorAll('[data-player-tab]').forEach(b=>b.onclick=()=>{
-  const name=b.dataset.playerTab;
-  mostrarPanel(activePlayerPane===name&&playerPanel.classList.contains('open')?'':name);
-});
+const alternarHoja=name=>mostrarPanel(hojaAbierta===name?'':name);
+openEditor.onclick=()=>alternarHoja('editor');
+openList.onclick=()=>alternarHoja('lista');
+nowTitle.onclick=()=>alternarHoja('lista');
 function renderQueue(){
   if(!window.queueList)return;const ready=downloadedPages();queueList.innerHTML='';
   if(!ready.length){queueList.innerHTML='<div class="voice-status">Descarga canciones desde el índice.</div>';return}
@@ -1275,8 +1379,59 @@ voiceRecord.onclick=()=>{
   startStopVoice(pages[cur]);
 };
 let pitchValue=0,speedValue=1;
-function changePitch(delta){pitchValue=Math.max(-6,Math.min(6,pitchValue+delta));pitchOut.value='TONO '+(pitchValue>0?'+':'')+pitchValue;if(window.Native)Native.setPitch(pitchValue)}
-function changeSpeed(delta){speedValue=Math.max(.5,Math.min(1.5,Math.round((speedValue+delta)*20)/20));speedOut.value='VEL '+speedValue.toFixed(2).replace(/0$/,'').replace(/\.0$/,'')+'×';if(window.Native)Native.setSpeed(speedValue)}
+
+/* ═══ lo que se le hizo a cada pista ═══════════════════════════════════════
+   Tono, velocidad y los puntos del bucle son del tema, no del aparato: si
+   una cancion se estudia dos semitonos abajo y a 0,85, eso tiene que estar
+   puesto la proxima vez que se abra, sin volver a buscarlo. Se guarda por
+   id de pista y se aplica al empezar a sonar. */
+const AJUSTES='cuaderno.ajustes';
+function ajustesGuardados(){
+  try{return JSON.parse(localStorage.getItem(AJUSTES)||'{}')}catch(e){return {}}
+}
+function recordarPista(){
+  const id=now.songId||now.id; if(!id)return;
+  try{
+    const todo=ajustesGuardados();
+    const limpio=pitchValue===0&&speedValue===1&&pointA===0&&pointB===now.duration&&!loopOn;
+    if(limpio)delete todo[id];
+    else todo[id]={tono:pitchValue,vel:speedValue,a:Math.round(pointA),b:Math.round(pointB),bucle:loopOn};
+    localStorage.setItem(AJUSTES,JSON.stringify(todo));
+  }catch(e){}
+}
+/** Devuelve la pista a como se dejo. Se llama cuando ya se conoce la duración. */
+function recuperarPista(id){
+  const g=ajustesGuardados()[id];
+  ponerTono(g?+g.tono||0:0);
+  ponerVelocidad(g?+g.vel||1:1);
+  if(g&&g.b>g.a){
+    pointA=Math.max(0,Math.min(now.duration,+g.a||0));
+    pointB=Math.max(pointA+250,Math.min(now.duration,+g.b||now.duration));
+    loopOn=!!g.bucle;
+  }else{pointA=0;pointB=now.duration;loopOn=false}
+  loopToggle.classList.toggle('on',loopOn);
+  if(window.Native)Native.setLoop(pointA,pointB,loopOn);
+  refreshAB();
+}
+
+function pintarTono(){pitchOut.textContent=(pitchValue>0?'+':'')+pitchValue}
+function pintarVelocidad(){
+  // 1 se escribe «1×», no «1.0×»; y las decimales con coma, como el resto.
+  const v=speedValue;
+  const t=Number.isInteger(v)?String(v):v.toFixed(2).replace(/0$/,'').replace('.',',');
+  speedOut.textContent=t+'×';
+}
+function ponerTono(v){
+  pitchValue=Math.max(-6,Math.min(6,Math.round(v)||0));
+  pintarTono(); if(window.Native)Native.setPitch(pitchValue);
+}
+function ponerVelocidad(v){
+  speedValue=Math.max(.5,Math.min(1.5,Math.round((v||1)*20)/20));
+  pintarVelocidad(); if(window.Native)Native.setSpeed(speedValue);
+}
+function changePitch(delta){ponerTono(pitchValue+delta);recordarPista()}
+function changeSpeed(delta){ponerVelocidad(speedValue+delta);recordarPista()}
+pintarTono();pintarVelocidad();
 pitchDown.onclick=()=>changePitch(-1);pitchUp.onclick=()=>changePitch(1);
 speedDown.onclick=()=>changeSpeed(-.05);speedUp.onclick=()=>changeSpeed(.05);
 tPlayer.onclick=()=>{
@@ -1299,6 +1454,7 @@ tPlayer.classList.toggle('on',document.body.classList.contains('player-open'));
  *  trataba: son las mismas muestras de siempre, no un relleno.
  */
 function pintarOnda(cv,ctx,carrilCss,maciza){
+  if(!cv||!ctx)return;
   const dpr=devicePixelRatio||1,r=cv.getBoundingClientRect();
   if(!r.width)return; // el panel cerrado no mide nada y todo saldría en cero
   const W=Math.max(1,Math.round(r.width*dpr)),H=Math.max(1,Math.round(r.height*dpr));
@@ -1346,11 +1502,13 @@ function pintarOnda(cv,ctx,carrilCss,maciza){
     }
   }
 }
-function sincronizarPanel(){document.body.classList.toggle('panel-abierto',playerPanel.classList.contains('open'))}
-function abALaVista(){return activePlayerPane==='ab'&&playerPanel.classList.contains('open')}
-function drawWave(){pintarOnda(wave,wctx,0,false);if(abALaVista())pintarAB()}
+function sincronizarPanel(){document.body.classList.toggle('panel-abierto',!!hojaAbierta)}
+function abALaVista(){return hojaAbierta==='editor'}
+/** Repinta lo que este a la vista: el visor si el editor esta abierto, y
+ *  siempre la barrita de avance de la tira. */
+function drawWave(){if(abALaVista())pintarAB();pintarAvance()}
 function waveRange(){const span=now.duration/Math.max(1,waveZoom);if(waveZoom>1&&now.playing&&(now.position<waveOffset||now.position>waveOffset+span))waveOffset=now.position-span*.18;waveOffset=Math.max(0,Math.min(Math.max(0,now.duration-span),waveOffset));return{start:waveOffset,end:Math.min(now.duration,waveOffset+span)}}
-function wavePoint(e){const r=wave.getBoundingClientRect(),v=waveRange();return v.start+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(v.end-v.start)}
+
 /* ---- Editor A–B, calcado del de la página de bases de More Than Modes ---- */
 const abStage=document.getElementById('abStage'), abWave=document.getElementById('abWave'), abctx=abWave.getContext('2d');
 const ABCARRIL=22; // alto del carril donde viven las banderas
@@ -1396,6 +1554,15 @@ abStage.addEventListener('pointerdown',e=>{
   if(loopOn)return setPoint(Math.abs(v-pointA)<Math.abs(v-pointB)?'a':'b',v);
   saltarA(v);
 });
+document.querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>{
+  if(!now.duration)return toast('Reproduce una canción primero');
+  const cmd=b.dataset.ab;
+  if(cmd==='whole'){pointA=0;pointB=now.duration;Native.setLoop(pointA,pointB,loopOn);recordarPista();drawWave();refreshAB();return}
+  const cual=cmd[0], que=cmd.slice(2);
+  if(que==='set')return setPoint(cual,livePosition());
+  setPoint(cual,(cual==='a'?pointA:pointB)+(que==='fwd'?100:-100));
+});
+
 function refreshAB(){
   aRead.textContent=fmtTime(pointA);bRead.textContent=fmtTime(pointB);
   if(window.abLen)abLen.textContent=fmtTime(Math.max(0,pointB-pointA));
@@ -1406,19 +1573,26 @@ function setPoint(which,value){
   if(!now.duration)return toast('Reproduce una canción primero');
   value=Math.max(0,Math.min(now.duration,value));
   if(which==='a')pointA=Math.min(value,pointB-250); else pointB=Math.max(value,pointA+250);
-  Native.setLoop(pointA,pointB,loopOn);drawWave();refreshAB();
+  Native.setLoop(pointA,pointB,loopOn);recordarPista();drawWave();refreshAB();
 }
-wave.addEventListener('pointerdown',e=>{
-  if(!now.duration)return;wave.setPointerCapture(e.pointerId);const v=wavePoint(e);
-  if(loopOn){waveDrag=Math.abs(v-pointA)<Math.abs(v-pointB)?'a':'b';moveWavePoint(v)}
-  else saltarA(v);
+/* ---- la barra de avance de la tira ---- */
+let arrastrandoAvance=false;
+const puntoDeLaBarra=e=>{
+  const r=seekBar.getBoundingClientRect();
+  return Math.max(0,Math.min(1,(e.clientX-r.left)/Math.max(1,r.width)))*now.duration;
+};
+seekBar.addEventListener('pointerdown',e=>{
+  if(!now.duration)return;
+  e.preventDefault();
+  arrastrandoAvance=true;seekBar.classList.add('agarrado');
+  seekBar.setPointerCapture(e.pointerId);
+  saltarA(puntoDeLaBarra(e));
 });
-wave.addEventListener('pointermove',e=>{if(waveDrag)moveWavePoint(wavePoint(e))});
-wave.addEventListener('pointerup',()=>waveDrag='');wave.addEventListener('pointercancel',()=>waveDrag='');
-function moveWavePoint(v){
-  if(waveDrag==='a')pointA=Math.min(v,pointB-250);else pointB=Math.max(v,pointA+250);
-  Native.setLoop(pointA,pointB,loopOn);drawWave();refreshAB();
-}
+seekBar.addEventListener('pointermove',e=>{if(arrastrandoAvance)saltarA(puntoDeLaBarra(e))});
+const soltarAvance=()=>{arrastrandoAvance=false;seekBar.classList.remove('agarrado')};
+seekBar.addEventListener('pointerup',soltarAvance);
+seekBar.addEventListener('pointercancel',soltarAvance);
+
 window.nativeEngineReady=()=>{engineReady=true;updatePlayerPage()};
 window.nativeEngineError=m=>toast('Motor de audio: '+m);
 window.nativeDownloadState=d=>{
@@ -1477,7 +1651,9 @@ window.nativePlayerState=d=>{
   if(changed){
     if(d.kind==='voice'){now.wave=voiceWaveCache[d.id]||now.wave||[];now.waveMs=0}
     else{const p=pages.find(x=>x.id===(d.songId||d.id)),st=trackState(p);now.wave=st.wave||[];now.waveMs=st.waveMs||0}
-    pointA=0;pointB=d.duration||0;loopOn=false;waveZoom=1;waveOffset=0;loopToggle.classList.remove('on');refreshAB();
+    waveZoom=1;waveOffset=0;
+    // La pista vuelve como se dejo: tono, velocidad y bucle.
+    recuperarPista(d.songId||d.id);
   }
   cajaPlayer.classList.toggle('sonando',!!d.playing);refreshClock();updatePlayerPage();
 };
@@ -1492,7 +1668,7 @@ window.nativeVoiceState=d=>{
 window.closeOverlay=()=>{
   if(ScoreBlocks.close())return true;
   if(SongViews.closePicker())return true;
-  if(playerPanel.classList.contains('open')){playerPanel.classList.remove('open');activePlayerPane='';document.querySelectorAll('[data-player-tab]').forEach(x=>x.classList.remove('on'));sincronizarPanel();return true}
+  if(hojaAbierta){mostrarPanel('');return true}
   if(quickAdd.classList.contains('open')){quickAdd.classList.remove('open');return true}
   if(idx.classList.contains('open')){idx.classList.remove('open');return true}
   return false;
@@ -1659,7 +1835,23 @@ document.getElementById('jsonFile').onchange=e=>{const f=e.target.files[0];if(!f
   r.readAsText(f);e.target.value=''};
 window.nativeBackupImported=json=>{try{load(JSON.parse(json));save();toast('Copia restaurada')}catch(e){toast('Copia no válida')}};
 window.nativeBackupState=d=>{if(d&&d.message)toast(d.message)};
-window.nativeMediaPermission=()=>{buildIndex();updatePlayerPage();if(activePlayerPane==='voice')renderVoiceNotes()};
+/** La copia de Documentos llega despues del arranque. Solo entra si es mas
+ *  nueva que lo que ya hay cargado —el caso de haber reinstalado la app— y
+ *  nunca pisa trabajo reciente sin avisar. */
+window.nativeCopiaExterna=json=>{
+  try{
+    const fuera=JSON.parse(json);
+    if(!fuera||!fuera.pages||!fuera.pages.length)return;
+    const mio=serialize();
+    const vacio=mio.pages.length<=1&&!(mio.pages[0]&&mio.pages[0].html);
+    if(!vacio&&(+fuera.savedAt||0)<=(+mio.savedAt||0))return;
+    if(!vacio&&!confirm('Hay una copia en Documentos más nueva que este cuaderno. ¿Abrirla?'))return;
+    load(fuera);repairCatalog(fuera.v||0);
+    pages.forEach(p=>{reflow(p);redraw(p)});
+    toast('Copia de Documentos restaurada');
+  }catch(e){}
+};
+window.nativeMediaPermission=()=>{buildIndex();updatePlayerPage();if(hojaAbierta==='editor')renderVoiceNotes()};
 newSong.onclick=()=>{
   const title=prompt('Nombre de la canción:',''); if(!title)return;
   const link=prompt('Enlace de YouTube:','https://youtu.be/'); if(!link)return;

@@ -90,7 +90,21 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_RECORD_AUDIO = 4207;
     private static final int REQUEST_MEDIA_AUDIO = 4208;
     private volatile String pendingBackupJson;
+    /* El ultimo cuaderno serializado, que **no** se vacia al escribirlo: al
+       salir de la app hace falta para asegurar la copia de fuera, y
+       `pendingBackupJson` ya se ha consumido para entonces. */
+    private volatile String ultimoJson;
     private volatile boolean backupQueued = false;
+    /* La ficha de cada pista, ya montada. `getTrackState` se llama una vez por
+       pagina cada vez que se repinta el indice —veintitantas veces seguidas— y
+       cada llamada cruzaba el puente para leer preferencias y tocar el disco.
+       Eso es lo que hacia que la app tardara en abrir el indice. */
+    private final java.util.Map<String, String> fichas =
+        java.util.Collections.synchronizedMap(new java.util.HashMap<>());
+    private final java.util.Set<String> rescatesEnMarcha =
+        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private long ultimaCopiaPublica = 0;
+    private boolean avisoCopiaDado = false;
     private final ActivityResultLauncher<Intent> backupPicker = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(), result -> {
             if (result.getResultCode() != RESULT_OK || result.getData() == null || result.getData().getData() == null) return;
@@ -208,13 +222,24 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface public String getTrackState(String id, String title) {
+            String hecha = fichas.get(id);
+            if (hecha != null) return hecha;
+            String ficha = montarFicha(id, title);
+            fichas.put(id, ficha);
+            return ficha;
+        }
+
+        private String montarFicha(String id, String title) {
             try {
                 String path = tracks.getString(id + ".path", "");
                 if (path.isEmpty() || !new File(path).isFile()) {
-                    File recovered = recoverPublicTrack(id, title);
-                    path = recovered == null ? "" : recovered.getAbsolutePath();
+                    // El rescate desde la carpeta publica copia un MP3 entero.
+                    // Hacerlo aqui, con la pagina esperando al otro lado del
+                    // puente, era colgar el arranque tantos megas como pistas
+                    // hubiera. Se encarga al obrero y se avisa al terminar.
+                    pedirRescate(id, title);
+                    return "{}";
                 }
-                if (path.isEmpty() || !new File(path).isFile()) return "{}";
                 JSONObject o = new JSONObject();
                 o.put("downloaded", true);
                 o.put("path", path);
@@ -332,7 +357,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface public String restoreBackup() {
-            return readAutomaticBackup();
+            buscarCopiaExterna();          // la de Documentos, por detras
+            return readAutomaticBackup();  // la de dentro, ya
         }
 
         @JavascriptInterface public void exportBackup(String json) {
@@ -352,6 +378,7 @@ public class MainActivity extends AppCompatActivity {
     private void queueAutomaticBackup(String json) {
         synchronized (this) {
             pendingBackupJson = json;
+            ultimoJson = json;
             if (backupQueued) return;
             backupQueued = true;
         }
@@ -363,26 +390,90 @@ public class MainActivity extends AppCompatActivity {
                     pendingBackupJson = null;
                     if (latest == null) { backupQueued = false; return; }
                 }
+                // La copia de dentro siempre: es un fichero normal en la
+                // carpeta de la app, no pasa por MediaStore y no falla.
+                try {
+                    File casa = new File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                                         "reper-autobackup.json");
+                    File padre = casa.getParentFile();
+                    if (padre != null) padre.mkdirs();
+                    try (OutputStream out = new FileOutputStream(casa, false)) {
+                        out.write(latest.getBytes(StandardCharsets.UTF_8));
+                    }
+                } catch (Exception ignored) { }
+
+                // La de fuera, en Documentos, como mucho una vez por minuto.
+                // Antes se reescribia entera en cada pulsacion de tecla —el
+                // autoguardado dispara medio segundo despues de cada cambio— y
+                // cada reescritura es una consulta a MediaStore y un fichero
+                // completo. Eso, ademas de ir lento, fallaba.
+                long ahora = System.currentTimeMillis();
+                if (ahora - ultimaCopiaPublica < 60000) continue;
+                ultimaCopiaPublica = ahora;
                 try { writeNamedBackup("reper-autobackup.json", latest, true); }
-                catch (Exception e) { sendBackup("error", "No se pudo actualizar la copia automática"); }
+                catch (Exception e) {
+                    // Una copia automatica no interrumpe a nadie. Se avisa una
+                    // vez por sesion y se calla: lo de dentro esta guardado y
+                    // «Exportar copia» sigue estando a mano.
+                    if (!avisoCopiaDado) {
+                        avisoCopiaDado = true;
+                        sendBackup("error", "La copia en Documentos no se pudo escribir; "
+                                          + "el cuaderno sí está guardado en el teléfono.");
+                    }
+                }
             }
         });
     }
 
+    @Override protected void onPause() {
+        super.onPause();
+        // Salir de la app es el momento natural para asegurar la copia de
+        // fuera, sin esperar al minuto.
+        ultimaCopiaPublica = 0;
+        String json = ultimoJson;
+        if (json != null) queueAutomaticBackup(json);
+    }
+
+    /** La copia de dentro. Es un fichero de la propia app: se lee al instante.
+     *
+     *  Antes esto consultaba MediaStore y leia el cuaderno entero desde
+     *  Documentos, y lo hacia **sincronamente** al arrancar, con la pagina
+     *  esperando al otro lado del puente. Eso era buena parte de lo que
+     *  tardaba en aparecer el indice. */
     private String readAutomaticBackup() {
         try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                Uri uri = findDownload("reper-autobackup.json", "Documents/Reper/");
-                if (uri == null) return "";
-                try (InputStream in = getContentResolver().openInputStream(uri)) {
-                    return in == null ? "" : readStream(in);
-                }
-            }
-            File file = new File(new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOCUMENTS), "Reper"), "reper-autobackup.json");
-            if (!file.isFile()) return "";
-            try (InputStream in = new FileInputStream(file)) { return readStream(in); }
+            File casa = new File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                                 "reper-autobackup.json");
+            if (!casa.isFile()) return "";
+            try (InputStream in = new FileInputStream(casa)) { return readStream(in); }
         } catch (Exception e) { return ""; }
+    }
+
+    /** La copia de fuera, la de Documentos, buscada sin bloquear a nadie.
+     *
+     *  Sirve para cuando se reinstala la app: lo de dentro desaparece y esta
+     *  es la que queda. Llega tarde y la pagina decide si es mas nueva que lo
+     *  que ya tiene cargado. */
+    private void buscarCopiaExterna() {
+        worker.execute(() -> {
+            String json = "";
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    Uri uri = findDownload("reper-autobackup.json", "Documents/Reper/");
+                    if (uri != null) try (InputStream in = getContentResolver().openInputStream(uri)) {
+                        if (in != null) json = readStream(in);
+                    }
+                } else {
+                    File file = new File(new File(Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOCUMENTS), "Reper"), "reper-autobackup.json");
+                    if (file.isFile()) try (InputStream in = new FileInputStream(file)) {
+                        json = readStream(in);
+                    }
+                }
+            } catch (Exception ignored) { }
+            if (json.isEmpty()) return;
+            sendJs("window.nativeCopiaExterna&&window.nativeCopiaExterna(" + JSONObject.quote(json) + ")");
+        });
     }
 
     private void writeExportBackup(String json) {
@@ -400,10 +491,16 @@ public class MainActivity extends AppCompatActivity {
             Uri uri = replace ? findDownload(name, "Documents/Reper/") : null;
             if (uri == null) {
                 ContentValues values = new ContentValues();
-                values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-                values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
-                values.put(MediaStore.Downloads.RELATIVE_PATH, "Documents/Reper/");
-                uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                values.put(MediaStore.Files.FileColumns.DISPLAY_NAME, name);
+                values.put(MediaStore.Files.FileColumns.MIME_TYPE, "application/json");
+                values.put(MediaStore.Files.FileColumns.RELATIVE_PATH, "Documents/Reper/");
+                // La coleccion de descargas solo admite rutas bajo `Download/`:
+                // al insertar ahi un `Documents/...` Android responde con un
+                // «Primary directory Documents not allowed» y la copia
+                // automatica fallaba en cada intento. Para `Documents/` la
+                // coleccion que toca es la de ficheros.
+                uri = getContentResolver().insert(
+                    MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values);
             }
             if (uri == null) throw new Exception("No se pudo crear la copia");
             try (OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
@@ -421,12 +518,15 @@ public class MainActivity extends AppCompatActivity {
 
     private Uri findDownload(String name, String relativePath) {
         if (Build.VERSION.SDK_INT < 29) return null;
-        String[] projection = { MediaStore.Downloads._ID };
-        String selection = MediaStore.Downloads.DISPLAY_NAME + "=? AND " + MediaStore.Downloads.RELATIVE_PATH + "=?";
-        try (Cursor cursor = getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            projection, selection, new String[]{name, relativePath}, MediaStore.Downloads.DATE_MODIFIED + " DESC")) {
+        Uri coleccion = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        String[] projection = { MediaStore.Files.FileColumns._ID };
+        String selection = MediaStore.Files.FileColumns.DISPLAY_NAME + "=? AND "
+                         + MediaStore.Files.FileColumns.RELATIVE_PATH + "=?";
+        try (Cursor cursor = getContentResolver().query(coleccion,
+            projection, selection, new String[]{name, relativePath},
+            MediaStore.Files.FileColumns.DATE_MODIFIED + " DESC")) {
             if (cursor != null && cursor.moveToFirst()) {
-                return Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cursor.getString(0));
+                return Uri.withAppendedPath(coleccion, cursor.getString(0));
             }
         } catch (Exception ignored) { }
         return null;
@@ -511,16 +611,42 @@ public class MainActivity extends AppCompatActivity {
                 .putLong(id + ".duration", duration)
                 .putString(id + ".publicUri", publicUri == null ? "" : publicUri.toString())
                 .commit();
+            olvidarFicha(id);
             sendDownload(id, 100, "ready", "MP3 listo");
 
             // La forma de onda se calcula después, sin mantener bloqueado el botón Play.
             Onda onda = extractWaveform(target, MUESTRAS_ONDA);
             tracks.edit().putString(id + ".wave", onda.muestras.toString())
                 .putLong(id + ".waveMs", onda.ms).apply();
+            olvidarFicha(id);
             sendDownload(id, 100, "waveform", "");
         } catch (Exception e) {
             sendDownload(id, 0, "error", e.getMessage() == null ? "Error de descarga" : e.getMessage());
         }
+    }
+
+    /** Tira la ficha guardada de una pista: la siguiente vez se monta de nuevo. */
+    private void olvidarFicha(String id) {
+        fichas.remove(id);
+    }
+
+    /** Rescata el audio de la carpeta publica sin bloquear a la pagina. */
+    private void pedirRescate(String id, String title) {
+        if (id == null || title == null || title.isEmpty()) return;
+        if (Build.VERSION.SDK_INT < 29) return;
+        if (!rescatesEnMarcha.add(id)) return;
+        worker.execute(() -> {
+            try {
+                File rescatado = recoverPublicTrack(id, title);
+                if (rescatado != null) {
+                    olvidarFicha(id);
+                    // 'ready' es lo que la pagina ya escucha para refrescar una
+                    // fila del indice y el boton de la pagina.
+                    sendDownload(id, 100, "ready", "");
+                }
+            } catch (Exception ignored) {
+            } finally { rescatesEnMarcha.remove(id); }
+        });
     }
 
     /** Ids cuya onda ya se está calculando, para no lanzar lo mismo diez veces.
@@ -539,6 +665,7 @@ public class MainActivity extends AppCompatActivity {
                 if (texto.length() > 4) {
                     tracks.edit().putString(id + ".wave", texto)
                         .putLong(id + ".waveMs", onda.ms).apply();
+                    olvidarFicha(id);
                     sendDownload(id, 100, "waveform", "");
                 }
             } catch (Exception ignored) {
@@ -587,6 +714,7 @@ public class MainActivity extends AppCompatActivity {
             // que suena dejan de cuadrar. Manda la del motor.
             if (player.getDuration() > 0) {
                 tracks.edit().putLong(id + ".duration", player.getDuration()).apply();
+                olvidarFicha(id);
             }
             loopEnabled = false;
             applyPlaybackParams();
@@ -797,6 +925,7 @@ public class MainActivity extends AppCompatActivity {
             if (!uri.isEmpty()) getContentResolver().delete(Uri.parse(uri), null, null);
             tracks.edit().remove(id + ".path").remove(id + ".title").remove(id + ".wave")
                 .remove(id + ".waveMs").remove(id + ".duration").remove(id + ".publicUri").apply();
+            olvidarFicha(id);
             sendDownload(id, 0, "removed", "Audio eliminado");
         } catch (Exception ignored) { }
     }
