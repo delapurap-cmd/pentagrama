@@ -12,6 +12,9 @@ on:
       - 'cuaderno-musical/**'
       - '.github/workflows/cuaderno-apk.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,3 +57,15 @@ jobs:
           name: Cuaderno-Musical-APK
           path: cuaderno-musical/app/build/outputs/apk/*/*.apk
           if-no-files-found: error
+
+      - name: Dejar el APK descargable por enlace
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # un único enlace fijo que siempre apunta al último APK
+          apk=$(find cuaderno-musical/app/build/outputs/apk -name '*.apk' | head -1)
+          cp "$apk" cuaderno-musical.apk
+          gh release delete cuaderno-latest --yes --cleanup-tag || true
+          gh release create cuaderno-latest cuaderno-musical.apk \
+            --title "Cuaderno Musical (último APK)" \
+            --notes "APK del commit ${{ github.sha }} (firma: $firmado)."
