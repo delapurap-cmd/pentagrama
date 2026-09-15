@@ -88,6 +88,21 @@
     Radial.close();
   }
 
+  /** Encuadra la hoja: el sistema entero de izquierda a derecha, centrado. */
+  function encuadrar() {
+    const scroller = $('#scroller');
+    // el aire de los lados se lee del propio relleno, que cambia con la
+    // pantalla; medir la hoja no valdría porque su ancho es lo que se calcula
+    const cs = getComputedStyle($('#stage'));
+    const lados = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    state.zoom = Math.max(0.2, Math.min(3, (scroller.clientWidth - lados) / SHEET_BASE));
+    applyZoom();
+    Radial.close();
+    // al encuadrar, se vuelve al principio: ya se ve todo el ancho
+    scroller.scrollLeft = 0;
+    toast('Hoja ajustada a la pantalla');
+  }
+
   function bindHeadFields() {
     $$('#stage [data-field]').forEach((el) => {
       el.addEventListener('blur', () => {
@@ -164,8 +179,21 @@
   function openRadialFor(id) {
     const found = Model.findEvent(state.score, id);
     if (!found) return;
-    const pos = Engrave.screenPosOf(id) || { x: innerWidth / 2, y: innerHeight / 2 };
-    Radial.open(pos, radialState(found.ev), handlers);
+    Radial.open(radialState(found.ev), handlers);
+    aLaVista(id);
+  }
+
+  /* El bloque de edición se apoya en el borde de abajo, así que la nota que
+     estás escribiendo puede quedar detrás. Si pasa, la hoja sube lo justo. */
+  function aLaVista(id) {
+    const p = Engrave.screenPosOf(id);
+    if (!p) return;
+    const scroller = $('#scroller');
+    const caja = scroller.getBoundingClientRect();
+    const suelo = innerHeight - Radial.alto() - 16;
+    const techo = caja.top + 24;
+    if (p.y > suelo) scroller.scrollTop += p.y - suelo;
+    else if (p.y < techo) scroller.scrollTop -= techo - p.y;
   }
 
   function radialState(ev) {
@@ -204,7 +232,7 @@
     render();
     requestAnimationFrame(() => {
       const f2 = currentEvent();
-      if (f2) Radial.update(radialState(f2.ev), Engrave.screenPosOf(f2.ev.id));
+      if (f2) { Radial.update(radialState(f2.ev)); aLaVista(f2.ev.id); }
     });
   }
 
@@ -317,7 +345,7 @@
       render();
       requestAnimationFrame(() => {
         const f2 = currentEvent();
-        if (f2) Radial.update(radialState(f2.ev), Engrave.screenPosOf(f2.ev.id));
+        if (f2) { Radial.update(radialState(f2.ev)); aLaVista(f2.ev.id); }
       });
     },
     next() { hop(1); },
@@ -341,8 +369,8 @@
       state.selectedId = target.ev.id;
       render();
       requestAnimationFrame(() => {
-        const p = Engrave.screenPosOf(state.selectedId);
-        Radial.update(radialState(target.ev), p);
+        Radial.update(radialState(target.ev));
+        aLaVista(state.selectedId);
       });
       return;
     }
@@ -352,7 +380,7 @@
     Model.insertEvent(state.score, found.mi, found.index + 1, ev);
     state.selectedId = ev.id;
     render();
-    requestAnimationFrame(() => Radial.update(radialState(ev), Engrave.screenPosOf(ev.id)));
+    requestAnimationFrame(() => { Radial.update(radialState(ev)); aLaVista(ev.id); });
   }
 
   /* ---------------- Interacción con la hoja ---------------- */
@@ -561,6 +589,10 @@
         { label: 'Importar copia', hint: '.json', fn: importJSON },
       ];
       if (!Native.isApp()) items.push({ label: 'Imprimir / PDF', fn: () => window.print() });
+      items.push({ sep: true }, { head: 'Ejemplos' });
+      EJEMPLOS.forEach((ej) => items.push({
+        label: escapeHtml(ej.titulo), hint: ej.pista, fn: () => abrirEjemplo(ej)
+      }));
       if (lib.length) {
         items.push({ sep: true }, { head: 'Mis partituras' });
         lib.slice(0, 8).forEach((entry) => items.push({
@@ -574,6 +606,7 @@
 
     $('#btnZoomIn').addEventListener('click', () => stepZoom(1));
     $('#btnZoomOut').addEventListener('click', () => stepZoom(-1));
+    $('#btnZoomFit').addEventListener('click', encuadrar);
     let rt = 0;
     window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
       if (EMBED) state.zoom = Math.max(0.43, Math.min(1.05, (innerWidth - 12) / SHEET_BASE));
@@ -635,13 +668,34 @@
   function bindPanel() {
     const bpm = $('#bpm');
     bpm.value = state.score.tempo;
-    bpm.addEventListener('change', () => {
-      const v = Math.max(30, Math.min(300, parseInt(bpm.value, 10) || 90));
+    // El tempo era una casilla de escribir: para subirlo cinco pulsos había
+    // que sacar el teclado numérico y teclear. Con dos botones se ajusta con
+    // el pulgar, que es como se ajusta un metrónomo.
+    const ponerTempo = (v) => {
+      v = Math.max(30, Math.min(300, Math.round(v) || 90));
       bpm.value = v;
       state.score.tempo = v;
       if (Sound.metroOn()) { Sound.metroStop(); Sound.metroStart(v, state.score.time.num); }
       render();
-    });
+    };
+    // Mantener pulsado corre el tempo, que de uno en uno hasta 160 son muchos toques.
+    const pasoLargo = (boton, signo) => {
+      let repite = 0, acelera = 0;
+      const parar = () => { clearInterval(repite); clearTimeout(acelera); repite = 0; };
+      boton.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        ponerTempo(state.score.tempo + signo);
+        acelera = setTimeout(() => {
+          repite = setInterval(() => ponerTempo(state.score.tempo + signo), 70);
+        }, 420);
+        boton.setPointerCapture(e.pointerId);
+      });
+      boton.addEventListener('pointerup', parar);
+      boton.addEventListener('pointercancel', parar);
+      boton.addEventListener('pointerleave', parar);
+    };
+    pasoLargo($('#bpmDown'), -1);
+    pasoLargo($('#bpmUp'), 1);
 
     $('#btnMetro').addEventListener('click', (e) => {
       if (Sound.metroOn()) { Sound.metroStop(); e.currentTarget.classList.remove('on'); }
@@ -715,6 +769,11 @@
     box.innerHTML = state.tapFigures.map((f) =>
       `<span class="g">${Radial.GLYPH.note[f.dur]}${f.dots ? Radial.GLYPH.dot : ''}</span>`).join('')
       + (tail ? `<span class="g pend" title="último golpe">${Radial.GLYPH.note[tail.dur]}${tail.dots ? Radial.GLYPH.dot : ''}</span>` : '');
+    // La tira de figuras no crece: es de alto fijo y se desplaza sola hasta la
+    // última. Antes se envolvía en varias filas y el panel entero cambiaba de
+    // tamaño con cada golpe, que es lo peor que puede hacer algo que estás
+    // mirando mientras marcas un ritmo.
+    box.scrollLeft = box.scrollWidth;
     const detected = state.tapBpm && !Sound.metroOn() ? state.tapBpm : null;
     $('#tapInfo').textContent = state.tapFigures.length
       ? `${state.tapFigures.length + 1} figuras · ♩ = ${detected || '–'}`
@@ -847,6 +906,35 @@
   }
 
   /** Abre MusicXML (.musicxml, .xml, .mxl) o MIDI (.mid) y lo traduce. */
+  /* Partituras de verdad, las mismas que se leen en el piano de la web, para
+     abrir el editor y ver a la primera qué sabe hacer. Son .mxl, así que
+     pasan por el mismo importador que cualquier archivo de MuseScore: lo que
+     se ve aquí es exactamente lo que el editor entiende, sin trampa. */
+  const EJEMPLOS = [
+    { archivo: 'escala-do-mayor',       titulo: 'Escala de Do mayor', pista: 'para empezar' },
+    { archivo: 'satie-gymnopedie-1',    titulo: 'Satie · Gymnopédie n.º 1', pista: 'acordes y matices' },
+    { archivo: 'chopin-nocturno-op9-2', titulo: 'Chopin · Nocturno op. 9 n.º 2', pista: 'lo que aguanta' }
+  ];
+
+  async function abrirEjemplo(ej) {
+    try {
+      const resp = await fetch('ejemplos/' + ej.archivo + '.mxl');
+      if (!resp.ok) throw new Error('No se encontró el ejemplo');
+      const resultado = MusicXML.parse(await MusicXML.readAny(await resp.blob()));
+      snapshot();
+      state.score = resultado.score;
+      if (!state.score.title || state.score.title === 'Sin título') state.score.title = ej.titulo;
+      state.selectedId = null;
+      Radial.close();
+      render();
+      const info = MusicXML.reportText(resultado.report);
+      state.lastReport = info;
+      toast(info);
+    } catch (err) {
+      toast(err.message || 'No se pudo abrir el ejemplo');
+    }
+  }
+
   function importScore() {
     pickFile('.musicxml,.xml,.mxl,.mid,.midi', async (file) => {
       try {

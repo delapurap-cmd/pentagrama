@@ -58,32 +58,41 @@ const Radial = (() => {
   ];
 
   const small = () => window.innerWidth < 560;
-  const radius = () => (small() ? 63 : 66);   // radio donde se colocan los botones
+  const radius = () => (small() ? 54 : 58);   // radio donde se colocan los botones
+  const HALO = 17;                            // lo que sobresale el aro del botón
   /* Con siete figuras por lado el aro se llena: se reparten en 150°, que a
-     este radio deja 28 px entre centros —más que el botón— y guarda hueco
-     arriba y abajo para que los dos arcos no se toquen. */
+     este radio deja sitio de sobra entre centros y guarda hueco arriba y
+     abajo para que los dos arcos no se toquen. */
   const ARCO = 150;
   const INICIO_FIGURAS = 255;                 // hacia arriba a la izquierda
   const INICIO_SILENCIOS = -75;               // hacia arriba a la derecha
 
-  let wrap, disc, handlers = {}, state = {};
-  let moved = false;                           // el usuario lo ha reubicado
+  let wrap, dock, aro, disc, bandeja, handlers = {}, state = {};
   let page = 'nota';                           // pestaña visible de la bandeja
-  let pos = { x: 0, y: 0 };
 
   const escapa = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
+  /* El círculo y la bandeja son una sola pieza, centrada y apoyada en el
+     borde de abajo. Antes flotaba sobre la nota y había que apartarlo a mano
+     porque tapaba justo lo que estabas escribiendo. */
   function build() {
     wrap = document.createElement('div');
     wrap.className = 'radial-wrap';
-    wrap.innerHTML = '<div class="radial">' +
-      '<div class="ring"></div><div class="edge out"></div><div class="edge in"></div>' +
+    wrap.innerHTML =
+      '<div class="dock">' +
+        '<div class="aro">' +
+          '<div class="ring"></div><div class="edge out"></div><div class="edge in"></div>' +
+          '<div class="radial"></div>' +
+        '</div>' +
+        '<div class="tray"></div>' +
       '</div>';
-    disc = wrap.firstChild;
+    dock = wrap.firstChild;
+    aro = dock.firstChild;
+    disc = aro.querySelector('.radial');
+    bandeja = dock.querySelector('.tray');
     document.body.appendChild(wrap);
 
     wrap.addEventListener('pointerdown', (e) => { if (e.target === wrap) close(); });
-    bindDrag();
 
     document.addEventListener('keydown', (e) => {
       if (!isOpen()) return;
@@ -93,31 +102,6 @@ const Radial = (() => {
       const map = { '1': 'w', '2': 'h', '3': 'q', '4': '8', '5': '16', '6': '32', '7': '64' };
       if (map[e.key]) { e.preventDefault(); fire('figure', map[e.key]); }
     });
-  }
-
-  /* ---------- Arrastrar por el aro ---------- */
-  function bindDrag() {
-    let drag = null;
-    disc.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button')) return;          // los botones no arrastran
-      drag = { id: e.pointerId, dx: e.clientX - pos.x, dy: e.clientY - pos.y };
-      e.stopPropagation();
-      disc.setPointerCapture(e.pointerId);
-      disc.classList.add('dragging');
-      e.preventDefault();
-    });
-    disc.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      moved = true;
-      place(e.clientX - drag.dx, e.clientY - drag.dy);
-    });
-    const end = (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      drag = null;
-      disc.classList.remove('dragging');
-    };
-    disc.addEventListener('pointerup', end);
-    disc.addEventListener('pointercancel', end);
   }
 
   function fire(name, arg) { if (handlers[name]) handlers[name](arg); }
@@ -139,8 +123,12 @@ const Radial = (() => {
   }
 
   function paint() {
-    disc.querySelectorAll('.rb, .cap, .tray, .grip').forEach((n) => n.remove());
+    disc.innerHTML = '';
+    bandeja.innerHTML = '';
     const R = radius();
+    // el aro se dimensiona desde el mismo número que coloca los botones, para
+    // que no puedan discrepar
+    dock.style.setProperty('--aro', (R + HALO) + 'px');
 
     // Figuras: arco izquierdo (de arriba hacia abajo)
     const paso = ARCO / Math.max(1, ORDER.length - 1);
@@ -178,18 +166,8 @@ const Radial = (() => {
     c.textContent = state.kind === 'rest' ? 'sil.' : (state.pitch || '');
     disc.appendChild(c);
 
-    // Asa: por aquí se agarra el círculo para moverlo
-    const grip = document.createElement('div');
-    grip.className = 'grip';
-    grip.title = 'Arrastra para mover el círculo';
-    grip.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
-      '<path d="M12 2.5 15 6H9l3-3.5ZM12 21.5 9 18h6l-3 3.5ZM2.5 12 6 9v6l-3.5-3ZM21.5 12 18 15V9l3.5 3Z" fill="currentColor"/>' +
-      '<path d="M12 6.5v11M6.5 12h11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>';
-    disc.appendChild(grip);
-
     // Bandeja inferior: pestañas arriba, lo que cada una ofrece abajo
-    const tray = document.createElement('div');
-    tray.className = 'tray';
+    const tray = bandeja;
     const tabs = document.createElement('div');
     tabs.className = 'row tabs';
     const fila = document.createElement('div');
@@ -261,50 +239,21 @@ const Radial = (() => {
       mk(fila, '∅', 'Deshacer el grupo', !state.tup, () => fire('grupo', null));
     }
 
-    disc.appendChild(tray);
-    adjustTray();
   }
 
-  /** Evita que la bandeja se salga de la pantalla. */
-  function adjustTray() {
-    const tray = disc.querySelector('.tray');
-    if (!tray) return;
-    // se mide con offsetWidth: getBoundingClientRect mentiría durante la
-    // animación de apertura, que escala el círculo
-    const w = tray.offsetWidth;
-    const left = pos.x - w / 2, right = pos.x + w / 2;
-    let shift = 0;
-    if (left < 10) shift = 10 - left;
-    else if (right > window.innerWidth - 10) shift = window.innerWidth - 10 - right;
-    tray.style.transform = shift
-      ? `translateX(calc(-50% + ${Math.round(shift)}px))`
-      : 'translateX(-50%)';
-  }
-
-  function place(x, y) {
-    const m = radius() + 34;
-    pos.x = Math.max(m, Math.min(window.innerWidth - m, x));
-    pos.y = Math.max(m + 50, Math.min(window.innerHeight - m - 56, y));
-    disc.style.left = pos.x + 'px';
-    disc.style.top = pos.y + 'px';
-  }
-
-  function open(at, st, h) {
+  function open(st, h) {
     if (!wrap) build();
     handlers = h || {};
     state = st || {};
-    moved = false;
     page = 'nota';
-    wrap.classList.add('open');   // visible antes de medir la bandeja
-    place(at.x, at.y);
+    wrap.classList.add('open');
     paint();
   }
 
-  /** Refresca el contenido; sólo reubica si el usuario no lo ha movido. */
-  function update(st, at) {
+  /** Refresca el contenido sin mover nada: el bloque vive siempre abajo. */
+  function update(st) {
     if (!isOpen()) return;
     state = Object.assign(state, st || {});
-    if (at && !moved) place(at.x, at.y);
     paint();
   }
 
@@ -317,5 +266,10 @@ const Radial = (() => {
 
   const isOpen = () => !!wrap && wrap.classList.contains('open');
 
-  return { open, update, close, isOpen, GLYPH };
+  /** Alto que ocupa el bloque, para que quien escribe no quede debajo. */
+  function alto() {
+    return wrap && isOpen() ? Math.round(dock.getBoundingClientRect().height) : 0;
+  }
+
+  return { open, update, close, isOpen, alto, GLYPH };
 })();

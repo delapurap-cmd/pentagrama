@@ -19,14 +19,18 @@
   <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
   <div class="bar-tools" id="barTools">
     <button class="btn" id="btnNew">＋</button>
-    <button class="btn" id="btnClef">Clave <span class="chip" id="chipClef">Sol</span></button>
-    <button class="btn" id="btnKey">Armadura <span class="chip" id="chipKey">Do M</span></button>
-    <button class="btn" id="btnTime">Compás <span class="chip" id="chipTime">4/4</span></button>
-    <button class="btn" id="btnTap">Tiempos <span class="chip" id="chipTempo">♩ = 90</span></button>
+    <button class="btn" id="btnClef" title="Clave"><span class="lab">Clave</span> <span class="chip" id="chipClef">Sol</span></button>
+    <button class="btn" id="btnKey" title="Armadura"><span class="lab">Armadura</span> <span class="chip" id="chipKey">Do M</span></button>
+    <button class="btn" id="btnTime" title="Compás"><span class="lab">Compás</span> <span class="chip" id="chipTime">4/4</span></button>
+    <button class="btn" id="btnTap"><span class="lab">Tiempos</span> <span class="chip" id="chipTempo">♩ = 90</span></button>
+    <!-- Segunda fila: lo de arriba es lo que se toca al escribir; lo de abajo,
+         lo que se toca de vez en cuando. Así nada queda fuera de la pantalla. -->
+    <span class="br"></span>
     <div class="zoom">
       <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
       <span class="chip" id="chipZoom">100%</span>
       <button class="btn ghost icon" id="btnZoomIn" title="Ampliar">+</button>
+      <button class="btn ghost icon" id="btnZoomFit" title="Ajustar la hoja a la pantalla" aria-label="Ajustar la hoja a la pantalla">⤢</button>
     </div>
     <button class="btn ghost icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↺</button>
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
@@ -44,10 +48,14 @@
 <!-- Panel de escritura de tiempos -->
 <section class="panel" id="panel" aria-label="Escribir tiempos">
   <div class="row">
-    <input class="num" id="bpm" type="number" min="30" max="300" step="1" value="90" inputmode="numeric" title="Tempo">
+    <div class="bpm-step">
+      <button class="btn ghost icon" id="bpmDown" title="Bajar el tempo" aria-label="Bajar el tempo">−</button>
+      <output class="num" id="bpm" title="Tempo">90</output>
+      <button class="btn ghost icon" id="bpmUp" title="Subir el tempo" aria-label="Subir el tempo">＋</button>
+    </div>
     <button class="btn" id="btnMetro">Metrónomo</button>
     <button class="btn ghost" id="btnTapUse" hidden>Usar tempo</button>
-    <button class="btn ghost icon" id="btnPanelClose" title="Cerrar" style="margin-left:auto">✕</button>
+    <button class="btn ghost icon" id="btnPanelClose" title="Cerrar">✕</button>
   </div>
 
   <button class="tap" id="btnTapPad">Tap</button>

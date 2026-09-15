@@ -24,21 +24,27 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
   overscroll-behavior: none;
 }
+/* La barra ya no mide siempre lo mismo —se reparte en dos filas cuando hace
+   falta—, así que la hoja se queda con lo que sobre en vez de restarle una
+   altura fija que unas veces sobra y otras falta. */
+body { display: flex; flex-direction: column; }
 
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 
 /* ---------------- Barra superior ---------------- */
 .bar {
-  position: sticky; top: 0; z-index: 40;
-  display: flex; align-items: center; gap: 6px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 10px calc(14px + env(safe-area-inset-left, 0px));
+  position: relative; z-index: 40; flex: 0 0 auto;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: calc(9px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 9px calc(14px + env(safe-area-inset-left, 0px));
   background: rgba(11, 11, 12, 0.92);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
-  overflow-x: auto; scrollbar-width: none;
 }
-.bar::-webkit-scrollbar { display: none; }
 .bar-tools { display: contents; }
+/* Corta la fila: lo que viene detrás baja a la segunda. En pantalla ancha
+   sobra sitio y no hace falta partirla. */
+.bar .br { flex: 1 0 100%; height: 0; margin: -3px 0; }
+@media (min-width: 900px) { .bar .br { display: none; } }
 .embed-only { display: none !important; }
 
 body.embed .standalone-only { display: none !important; }
@@ -105,7 +111,7 @@ body.embed .sheet-head { display: none; }
 
 /* ---------------- Hojas ---------------- */
 .stage {
-  height: calc(100dvh - 59px - env(safe-area-inset-top, 0px));
+  flex: 1 1 auto; min-height: 0;
   overflow: scroll;
   scrollbar-gutter: stable;
   /* el gesto lo maneja la app: un dedo escribe, dos dedos mueven y pellizcan */
@@ -148,28 +154,41 @@ body.embed .sheet-head { display: none; }
 }
 .sheet-sub:empty::before { content: attr(data-ph); color: #b4ac9c; }
 
-/* ---------------- Círculo de figuras ---------------- */
+/* ---------------- Círculo de figuras ----------------
+   El aro y la bandeja son un solo bloque, centrado y apoyado en el borde de
+   abajo: no tapa lo que se escribe y se alcanza con el pulgar. El tamaño lo
+   manda `--aro`, que pone el propio guión a partir del radio con el que
+   coloca los botones. */
 .radial-wrap { position: fixed; inset: 0; z-index: 70; display: none; touch-action: none; }
 .radial-wrap.open { display: block; }
-.radial {
-  position: absolute; width: 0; height: 0;
+.radial-wrap .dock {
+  --aro: 75px;
+  position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 10px 9px;
+  background: rgba(15, 15, 18, .93);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line); border-radius: 20px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .5);
   animation: pop .16s cubic-bezier(.2, .9, .3, 1.2);
 }
-@keyframes pop { from { transform: scale(.86); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.radial .ring {
-  position: absolute; left: -84px; top: -84px; width: 168px; height: 168px;
-  border-radius: 50%;
-  background: rgba(15, 15, 18, .9);
-  backdrop-filter: blur(10px);
-  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 46px, #000 47px);
-  mask: radial-gradient(circle at 50% 50%, transparent 0 46px, #000 47px);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, .45);
-  cursor: grab;
+@keyframes pop { from { transform: translateX(-50%) translateY(10px); opacity: 0; }
+                 to   { transform: translateX(-50%) translateY(0);    opacity: 1; } }
+.radial-wrap .aro {
+  position: relative; flex: 0 0 auto;
+  width: calc(var(--aro) * 2); height: calc(var(--aro) * 2);
 }
-.radial.dragging .ring { cursor: grabbing; }
-.radial .edge { position: absolute; border-radius: 50%; pointer-events: none; }
-.radial .edge.out { left: -84px; top: -84px; width: 168px; height: 168px; border: 1px solid rgba(201, 168, 76, .32); }
-.radial .edge.in { left: -47px; top: -47px; width: 94px; height: 94px; border: 1px solid rgba(255, 255, 255, .08); }
+.radial { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.radial-wrap .ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .035);
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 calc(var(--aro) - 38px), #000 calc(var(--aro) - 37px));
+  mask: radial-gradient(circle at 50% 50%, transparent 0 calc(var(--aro) - 38px), #000 calc(var(--aro) - 37px));
+}
+.radial-wrap .edge { position: absolute; border-radius: 50%; pointer-events: none; }
+.radial-wrap .edge.out { inset: 0; border: 1px solid rgba(201, 168, 76, .3); }
+.radial-wrap .edge.in { inset: 37px; border: 1px solid rgba(255, 255, 255, .07); }
 .radial .rb {
   position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px;
   display: flex; align-items: center; justify-content: center;
@@ -198,39 +217,31 @@ body.embed .sheet-head { display: none; }
   text-align: center; line-height: 1.2; pointer-events: none;
   font-size: 11.5px; font-weight: 600; color: var(--gold); letter-spacing: .03em;
 }
-.radial .grip {
-  position: absolute; left: -13px; top: -84px; width: 26px; height: 26px;
-  display: flex; align-items: center; justify-content: center;
-  color: rgba(236, 233, 226, .5); cursor: grab;
+/* La bandeja ya no cuelga del círculo: es la parte de abajo del mismo bloque,
+   así que no lleva fondo ni sombra propios. */
+.radial-wrap .tray {
+  display: flex; flex-direction: column; gap: 3px;
+  white-space: nowrap; font-size: 12px;
 }
-.radial.dragging .grip { color: var(--gold); cursor: grabbing; }
-
-.radial .tray {
-  position: absolute; left: 50%; top: 96px; transform: translateX(-50%);
-  display: flex; flex-direction: column; gap: 2px; padding: 3px;
-  background: #16161a; border: 1px solid var(--line); border-radius: 9px;
-  box-shadow: var(--shadow); white-space: nowrap; font-size: 12px;
-}
-.radial .tray .row { display: flex; gap: 3px; align-items: center; }
-.radial .tray .row:not(.tabs) { justify-content: center; }
-.radial .tray .row.tabs { border-bottom: 1px solid var(--line); padding-bottom: 2px; }
-.radial .tray button {
-  min-width: 27px; height: 26px; padding: 0 5px; border-radius: 7px;
+.radial-wrap .tray .row { display: flex; gap: 3px; align-items: center; }
+.radial-wrap .tray .row:not(.tabs) { justify-content: center; }
+.radial-wrap .tray .row.tabs { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.radial-wrap .tray button {
+  min-width: 30px; height: 28px; padding: 0 6px; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 14px; color: var(--txt); border: 1px solid transparent;
 }
-.radial .tray button:hover { background: rgba(255, 255, 255, .07); }
-.radial .tray button.on { color: var(--gold); border-color: rgba(201, 168, 76, .5); background: var(--gold-soft); }
-.radial .tray .gl { font-family: Bravura, serif; font-size: 17px; }
-.radial .tray .gl sup { font-family: inherit; }
-.radial .tray .danger:hover { color: #e26d6d; }
-.radial .tray .tab { height: 22px; font-size: 11.5px; color: var(--txt-dim); letter-spacing: .02em; }
-.radial .tray .tab.on { color: var(--gold); }
-.radial .tray .ok { margin-left: auto; }
-.radial .tray .danger { margin-left: auto; }
-.radial .tray .danger + .ok { margin-left: 0; }
-.radial .tray .ancho { min-width: 40px; font-size: 12px; font-weight: 600; }
-.radial .tray .nota-info { padding: 0 5px; font-size: 11px; color: var(--txt-dim); }
+.radial-wrap .tray button:hover { background: rgba(255, 255, 255, .07); }
+.radial-wrap .tray button.on { color: var(--gold); border-color: rgba(201, 168, 76, .5); background: var(--gold-soft); }
+.radial-wrap .tray .gl { font-family: Bravura, serif; font-size: 17px; }
+.radial-wrap .tray .gl sup { font-family: inherit; }
+.radial-wrap .tray .danger:hover { color: #e26d6d; }
+.radial-wrap .tray .tab { height: 24px; font-size: 12px; color: var(--txt-dim); letter-spacing: .02em; }
+.radial-wrap .tray .tab.on { color: var(--gold); }
+.radial-wrap .tray .danger { margin-left: auto; }
+.radial-wrap .tray .danger + .ok { margin-left: 0; }
+.radial-wrap .tray .ancho { min-width: 42px; font-size: 12.5px; font-weight: 600; }
+.radial-wrap .tray .nota-info { padding: 0 6px; font-size: 11.5px; color: var(--txt-dim); }
 
 /* ---------------- Panel de tiempos (tap) ---------------- */
 .panel {
@@ -244,7 +255,10 @@ body.embed .sheet-head { display: none; }
 }
 .panel.open { transform: translateX(-50%) translateY(0); }
 .panel #btnTapUse { color: var(--gold); border-color: rgba(201,168,76,.4); }
-.panel .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.panel .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 34px; }
+/* La equis, en la esquina: con `margin-left:auto` dentro de una fila que se
+   envuelve se caía sola a una segunda línea y dejaba un hueco vacío. */
+.panel #btnPanelClose { position: absolute; top: 9px; right: 10px; margin: 0 !important; }
 .panel .tap {
   display: block; width: 100%; margin-top: 9px; height: 54px; border-radius: 14px;
   border: 1px solid rgba(201, 168, 76, .45); background: var(--gold-soft); color: var(--gold);
@@ -253,11 +267,14 @@ body.embed .sheet-head { display: none; }
 }
 .panel .tap:active { transform: scale(.97); background: rgba(201, 168, 76, .3); }
 .panel .preview {
-  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  min-height: 42px; margin-top: 9px; padding: 4px 10px;
+  display: flex; align-items: center; gap: 3px; flex-wrap: nowrap;
+  height: 46px; margin-top: 9px; padding: 4px 10px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   background: #0d0d0f; border: 1px solid var(--line); border-radius: 12px;
   font-family: Bravura, serif; font-size: 26px; color: var(--txt);
 }
+.panel .preview::-webkit-scrollbar { display: none; }
+.panel .preview .g { flex: 0 0 auto; }
 .panel .preview:empty::before {
   content: "los tiempos aparecerán aquí"; font-family: inherit; font-size: 12.5px; color: var(--txt-dim);
 }
@@ -268,6 +285,17 @@ body.embed .sheet-head { display: none; }
 .panel .actions .btn { flex: 0 0 auto; }
 .panel .actions .btn { justify-content: center; height: 40px; }
 .panel .btn.primary { border-color: var(--gold); color: #1a1509; background: var(--gold); font-weight: 600; }
+
+/* Tempo: menos y más, que se alcanzan con el pulgar. */
+.bpm-step {
+  display: flex; align-items: center; flex: 0 0 auto; height: 42px;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+}
+.bpm-step .btn { width: 42px; height: 40px; border: 0; border-radius: 0; font-size: 19px; }
+.bpm-step .num {
+  width: 56px; height: 40px; display: grid; place-items: center;
+  border: 0; border-radius: 0; background: none; text-align: center;
+}
 
 .num {
   width: 74px; height: 42px; padding: 0 10px;
@@ -299,21 +327,24 @@ body.embed .sheet-head { display: none; }
 }
 
 @media (max-width: 560px) {
-  .radial .ring { left: -81px; top: -81px; width: 162px; height: 162px;
-    -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 44px, #000 45px);
-    mask: radial-gradient(circle at 50% 50%, transparent 0 44px, #000 45px); }
-  .radial .edge.out { left: -81px; top: -81px; width: 162px; height: 162px; }
-  .radial .edge.in { left: -45px; top: -45px; width: 90px; height: 90px; }
+  .radial-wrap .dock { padding: 7px 8px 8px; border-radius: 18px; }
   .radial .rb { width: 27px; height: 27px; margin: -13.5px 0 0 -13.5px; }
   .radial .rb .gl { font-size: 19px; }
   .radial .rb .gl.sm { font-size: 14px; }
   .radial .arrow { width: 32px; height: 19px; margin: -9.5px 0 0 -16px; }
-  .radial .grip { top: -81px; }
   .radial .cap { left: -18px; width: 36px; top: -8px; }
-  .radial .tray { top: 93px; }
+  /* Dos filas justas: arriba lo que se toca al escribir, abajo el resto.
+     Para que quepan, los botones de armadura, compás, clave y tempo se
+     quedan sólo con su valor —«Sol», «Do M», «4/4», «♩ = 90»—, que es lo
+     que de verdad se mira; el nombre sigue en el título emergente. */
+  .bar { gap: 5px; padding-left: calc(9px + env(safe-area-inset-left, 0px)); padding-right: calc(9px + env(safe-area-inset-right, 0px)); }
+  .btn { height: 34px; padding: 0 9px; font-size: 12.5px; gap: 5px; }
+  .btn.icon { padding: 0 8px; }
+  .bar .lab { display: none; }
+  .bar .chip { color: var(--txt); font-size: 13px; }
+  .zoom .chip { min-width: 38px; font-size: 12px; color: var(--txt-dim); }
 }
 
 @media (max-width: 640px) {
-  .sheets { padding: 14px 8px calc(210px + env(safe-area-inset-bottom, 0px)); }
-  .btn { height: 36px; padding: 0 11px; font-size: 13px; }
+  .sheets { padding: 14px 8px calc(240px + env(safe-area-inset-bottom, 0px)); }
 }

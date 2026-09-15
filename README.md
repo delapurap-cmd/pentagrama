@@ -1,17 +1,27 @@
 # Reper
 
-Editor de partituras en clave de sol: tocas el pentagrama y escribes. Funciona
-en el navegador y, empaquetado con Capacitor, como app de Android.
+Editor de partituras: tocas el pentagrama y escribes. Funciona en el
+navegador y, empaquetado con Capacitor, como app de Android.
 
 Grabado con [VexFlow](https://vexflow.com) y la fuente musical Bravura, ambas
 servidas desde el propio repositorio: no hace falta conexión.
 
 ## Cómo se usa
 
-- **Escribir**: toca una línea o un espacio. Se abre un círculo con las figuras
-  a la izquierda, los silencios a la derecha y, en el centro, subir/bajar la
-  altura y pasar a la nota anterior o siguiente. El círculo se arrastra por el
-  asa de arriba.
+- **Escribir**: toca una línea o un espacio. Abajo, apoyado en el borde de la
+  pantalla, aparece un bloque con las figuras a la izquierda, los silencios a
+  la derecha y, en el centro, subir/bajar la altura y pasar a la nota anterior
+  o siguiente. Debajo, una bandeja con pestañas: **Nota** (puntillo, ligadura,
+  alteraciones), **Acorde** (3ª, 5ª, 7ª, 8ª), **Matiz** (pp…ff), **Signos**
+  (cifrado y articulaciones) y **Grupo** (tresillo, quintillo, seisillo,
+  septillo). Si la nota queda detrás del bloque, la hoja sube sola.
+- **Acordes**: varias alturas en la misma figura, cada una con su alteración.
+- **Claves**: sol, sol 8ª baja, fa, do en 3ª y do en 4ª, para toda la
+  partitura o como cambio a partir de un compás.
+- **Figuras**: de la redonda a la semifusa, con puntillo y doble puntillo.
+- **Ejemplos**: «Archivo → Ejemplos» abre las partituras del piano de la web
+  —una escala, la *Gymnopédie n.º 1* de Satie y el *Nocturno op. 9 n.º 2* de
+  Chopin— con el mismo importador que cualquier MusicXML.
 - **Tiempos automáticos**: cada compás se completa solo con silencios y lo que
   no cabe pasa al compás siguiente.
 - **Escribir tiempos (tap)**: pon el tempo, enciende el metrónomo si quieres y
@@ -27,7 +37,8 @@ servidas desde el propio repositorio: no hace falta conexión.
 - **Arrastrar una nota** arriba o abajo cambia su altura.
 - **Piano de verdad**: la reproducción usa muestras de piano, no pitidos.
 - **Armadura** (15 tonalidades), **compás** (4/4, 3/4, 6/8…), escuchar,
-  deshacer, zoom e imprimir.
+  deshacer, zoom —con un botón que encuadra la hoja entera de lado a lado— e
+  imprimir.
 - Se guarda solo en el navegador; «Archivo → Guardar en mis partituras» mantiene
   una pequeña biblioteca local.
 - Con el dedo: **uno escribe**, **dos mueven la hoja** y **el pellizco hace
@@ -41,6 +52,7 @@ style.css
 js/             modelo, grabado, círculo de figuras, sonido, MusicXML, MIDI
 vendor/         VexFlow con la fuente Bravura incrustada
 sonidos/piano/  muestras de piano (una por semitono, de La0 a Sol#6)
+ejemplos/       partituras de muestra en .mxl
 mobile/         proyecto Capacitor que la empaqueta como app de Android
 ```
 
