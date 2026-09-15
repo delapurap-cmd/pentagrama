@@ -1,0 +1,7 @@
+# La clave de firma se guarda fuera del repositorio (secreto de GitHub)
+app/reper-release.jks
+*.jks
+*.keystore
+build/
+.gradle/
+local.properties

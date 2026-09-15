@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reper — Editor de partituras</title>
+<meta name="description" content="Editor de partituras en clave de sol: escribe notas tocando el pentagrama, con relleno automático de silencios, armaduras y escritura de tiempos por tap.">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="btn ghost icon back standalone-only" href="https://morethanmodes.com" title="More Than Modes" aria-label="More Than Modes">←</a>
+  <button class="btn ghost icon embed-only" id="btnEmbedClose" title="Volver al cuaderno">←</button>
+  <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
+  <div class="bar-tools" id="barTools">
+    <button class="btn" id="btnNew">＋</button>
+    <button class="btn" id="btnKey">Armadura <span class="chip" id="chipKey">Do M</span></button>
+    <button class="btn" id="btnTime">Compás <span class="chip" id="chipTime">4/4</span></button>
+    <button class="btn" id="btnTap">Tiempos <span class="chip" id="chipTempo">♩ = 90</span></button>
+    <div class="zoom">
+      <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
+      <span class="chip" id="chipZoom">100%</span>
+      <button class="btn ghost icon" id="btnZoomIn" title="Ampliar">+</button>
+    </div>
+    <button class="btn ghost icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↺</button>
+    <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
+    <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
+    <button class="btn" id="btnFile">Archivo</button>
+  </div>
+  <span class="sp"></span>
+  <button class="btn icon" id="btnPlay" title="Escuchar (espacio)">▶</button>
+</header>
+
+<main class="stage" id="scroller">
+  <div class="sheets" id="stage"></div>
+</main>
+
+<!-- Panel de escritura de tiempos -->
+<section class="panel" id="panel" aria-label="Escribir tiempos">
+  <div class="row">
+    <input class="num" id="bpm" type="number" min="30" max="300" step="1" value="90" inputmode="numeric" title="Tempo">
+    <button class="btn" id="btnMetro">Metrónomo</button>
+    <button class="btn ghost" id="btnTapUse" hidden>Usar tempo</button>
+    <button class="btn ghost icon" id="btnPanelClose" title="Cerrar" style="margin-left:auto">✕</button>
+  </div>
+
+  <button class="tap" id="btnTapPad">Tap</button>
+
+  <div class="preview" id="tapPreview"></div>
+
+  <div class="actions">
+    <span class="tap-info" id="tapInfo"></span>
+    <button class="btn" id="btnTapClear">Borrar</button>
+    <button class="btn primary" id="btnTapOk" disabled>Escribir</button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+window.structuredClone=window.structuredClone||function(v){return JSON.parse(JSON.stringify(v))};
+Promise.allSettled=Promise.allSettled||function(items){return Promise.all(Array.from(items,p=>Promise.resolve(p).then(
+  value=>({status:'fulfilled',value}),reason=>({status:'rejected',reason}))));};
+if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)i+=this.length;return this[i]};
+</script>
+<script src="vendor/vexflow.js"></script>
+<script src="js/native.js"></script>
+<script src="js/model.js"></script>
+<script src="js/musicxml.js"></script>
+<script src="js/midi.js"></script>
+<script src="js/engrave.js"></script>
+<script src="js/radial.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

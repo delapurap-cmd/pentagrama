@@ -1,0 +1,56 @@
+name: APK Cuaderno Musical
+
+# Compila la app del cuaderno. Con los secretos REPER_KEYSTORE_B64 y
+# REPER_KEYSTORE_PASSWORD el APK sale firmado con la clave de siempre y se
+# instala encima del que ya tengas; sin ellos sale firmado en modo depuración
+# (hay que desinstalar la versión anterior antes de instalarlo).
+on:
+  workflow_dispatch:
+  push:
+    branches: [ cuaderno ]
+    paths:
+      - 'cuaderno-musical/**'
+      - '.github/workflows/cuaderno-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Recuperar la clave de firma
+        env:
+          KEYSTORE_B64: ${{ secrets.REPER_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > cuaderno-musical/app/reper-release.jks
+            echo "firmado=si" >> "$GITHUB_ENV"
+          else
+            echo "Sin clave: el APK saldrá firmado en modo depuración."
+            echo "firmado=no" >> "$GITHUB_ENV"
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Compilar
+        working-directory: cuaderno-musical
+        env:
+          REPER_KEYSTORE_PASSWORD: ${{ secrets.REPER_KEYSTORE_PASSWORD }}
+          REPER_KEY_PASSWORD: ${{ secrets.REPER_KEY_PASSWORD }}
+          REPER_KEY_ALIAS: ${{ secrets.REPER_KEY_ALIAS }}
+        run: |
+          if [ "$firmado" = "si" ]; then gradle assembleRelease --no-daemon; else gradle assembleDebug --no-daemon; fi
+
+      - name: Publicar el APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cuaderno-Musical-APK
+          path: cuaderno-musical/app/build/outputs/apk/*/*.apk
+          if-no-files-found: error
