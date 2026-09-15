@@ -72,7 +72,10 @@ body[data-mode="text"] .ink{pointer-events:none}
 body[data-mode="ink"] .ink{touch-action:none}
 body[data-mode="ink"] .editor{pointer-events:none;user-select:none}
 
-#dockwrap{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;touch-action:none}
+/* Por encima del reproductor (45). Estaba por debajo, y como la barra se
+   puede arrastrar, la que acababa debajo del reproductor no recibía los
+   toques: se pulsaba el botón de formato y no pasaba nada. */
+#dockwrap{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:46;touch-action:none}
 #dockwrap.free{transform:none}
 #dock{display:flex;align-items:center;gap:3px;padding:5px;height:46px;background:var(--pill);color:var(--ink);
   border-radius:999px;box-shadow:0 12px 32px rgba(0,0,0,.42);backdrop-filter:blur(14px)}
@@ -199,8 +202,8 @@ body[data-lock="1"] #addPage,body[data-lock="1"] #voiceRecord{display:none!impor
 .lyrics-pane{min-height:100%;outline:none;padding:32px 24px 70px 46px;white-space:pre-wrap;user-select:text;-webkit-user-select:text;
   font-family:"Iowan Old Style","Palatino Linotype",Palatino,Charter,Georgia,serif;font-size:19px;line-height:1.72}
 .lyrics-pane:empty::before,.chord-lyric:empty::before{content:attr(data-ph);opacity:.28;font-style:italic}
-.chords-pane{padding:12px 12px 80px 40px;min-height:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.chord-tools{position:sticky;top:7px;z-index:9;display:flex;align-items:center;gap:5px;padding:5px;border-radius:11px;
+.chords-pane{padding:12px 12px 16px 40px;display:flex;flex-direction:column;justify-content:flex-start;min-height:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.chord-tools{position:sticky;bottom:7px;top:auto;z-index:9;display:flex;align-items:center;gap:5px;padding:5px;border-radius:11px;
   background:#181a1ff2;color:#f3f1eb;box-shadow:0 5px 16px #0005;overflow-x:auto;scrollbar-width:none}
 .chord-tools::-webkit-scrollbar{display:none}
 .chord-tools>button,.chord-step{flex:0 0 auto;height:30px;border:1px solid #ffffff16;border-radius:7px;background:#ffffff09}
@@ -208,8 +211,8 @@ body[data-lock="1"] #addPage,body[data-lock="1"] #voiceRecord{display:none!impor
 .chord-step{display:flex;align-items:center;overflow:hidden}
 .chord-step button{width:28px;height:30px;color:#d6b36a;font-size:16px}
 .chord-step output{min-width:58px;text-align:center;font:700 9px/1 ui-monospace,monospace}
-.chord-help{padding:10px 3px 5px;color:var(--soft);font:10px/1.3 ui-sans-serif,sans-serif}
-.chord-lines{padding-top:3px}
+.chord-help{order:-1;padding:4px 3px 8px;color:var(--soft);font:10px/1.3 ui-sans-serif,sans-serif}
+.chord-lines{order:-1;flex:1;padding-top:3px}
 .chord-line{position:relative;min-height:67px;border-bottom:1px solid #0000000b}
 .chord-lane{position:relative;height:31px;cursor:crosshair}
 .chord-lane::after{content:"";position:absolute;left:0;right:0;bottom:2px;border-bottom:1px dashed #00000013}
@@ -267,21 +270,21 @@ body.score-editing #dockwrap,body.score-editing #player{display:none!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 /* ═══ reproductor de ensayo ═══ */
-body.player-open #scroller{padding-bottom:126px}
-body.player-open #dockwrap{bottom:136px}
-#player{position:fixed;left:0;right:0;bottom:0;z-index:45;height:126px;padding:6px 10px max(6px,env(safe-area-inset-bottom));
+body.player-open #scroller{padding-bottom:148px}
+body.player-open #dockwrap{bottom:158px}
+#player{position:fixed;left:0;right:0;bottom:0;z-index:45;height:148px;padding:6px 10px max(6px,env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(31,33,39,.985),rgba(12,14,17,.995));border-top:1px solid #d6b36a3d;
   border-radius:18px 18px 0 0;box-shadow:0 -14px 38px #0009;backdrop-filter:blur(22px);display:none}
 body.player-open #player{display:block}
-.phead{display:flex;align-items:center;gap:7px;height:30px}
+.phead{display:flex;align-items:center;gap:7px;height:40px}
 #nowTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 12.5px/1.2 ui-sans-serif,sans-serif;color:#f3f1eb}
-#pageAction{max-width:38%;height:28px;padding:0 12px;border-radius:999px;background:#d6b36a;color:#17130b;font:700 11px/1 ui-sans-serif,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pageAction{max-width:38%;height:36px;padding:0 12px;border-radius:999px;background:#d6b36a;color:#17130b;font:700 11px/1 ui-sans-serif,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #pageAction:disabled{background:#ffffff12;color:#ffffff66}
-.ptab{flex:0 0 34px;width:34px;height:28px;border-radius:9px;background:#ffffff0d;color:#ffffffb4;font:700 11px/1 ui-monospace,monospace}
+.ptab{flex:0 0 44px;width:44px;height:38px;border-radius:11px;background:#ffffff12;color:#ffffffd0;font:700 14px/1 ui-monospace,monospace}
 .ptab:active{background:#ffffff1c}
 .ptab.on{background:#d6b36a;color:#17130b}
 #playerPanel{position:absolute;left:6px;right:6px;bottom:calc(100% + 5px);display:none;max-height:46vh;overflow:hidden;border:1px solid #ffffff16;border-radius:11px;background:#111318f7;color:#f2efe7;box-shadow:0 -12px 30px #0008;backdrop-filter:blur(18px)}
-#playerPanel.open{display:block}.player-pane{display:none;padding:7px}.player-pane.on{display:block}.panehead{display:flex;align-items:center;gap:5px;min-height:26px}.panehead strong{flex:1;font-size:10px;color:#d6b36a;letter-spacing:.06em;text-transform:uppercase}.panehead button{height:30px;padding:0 12px;border-radius:9px;background:#ffffff09;font:700 10px/1 ui-monospace,monospace}.panehead button.on{background:#d6b36a;color:#17130b}
+#playerPanel.open{display:block}.player-pane{display:none;padding:7px;max-height:46vh;overflow:auto}.player-pane.on{display:block}.panehead{display:flex;align-items:center;gap:5px;min-height:26px}.panehead strong{flex:1;font-size:10px;color:#d6b36a;letter-spacing:.06em;text-transform:uppercase}.panehead button{height:30px;padding:0 12px;border-radius:9px;background:#ffffff09;font:700 10px/1 ui-monospace,monospace}.panehead button.on{background:#d6b36a;color:#17130b}
 #idxSearchRow{display:flex;align-items:center;gap:6px;margin:2px 0 8px}
 #idxSearch{flex:1;height:40px;padding:0 12px;border:1px solid #ffffff1c;border-radius:11px;background:#ffffff0a;color:#f2efe7;font:600 13px/1 ui-sans-serif,sans-serif}
 #idxSearch::placeholder{color:#ffffff5c}
@@ -289,6 +292,22 @@ body.player-open #player{display:block}
 #idxClear{width:38px;height:40px;border-radius:11px;background:#ffffff0c;color:#ffffffa0;font-size:18px}
 .idx-empty{padding:18px 4px;text-align:center;color:#ffffff7a;font:500 12px/1.5 ui-sans-serif,sans-serif}
 #queueList,#voiceList{max-height:34vh;overflow:auto}.queue-row,.voice-row{display:flex;align-items:center;gap:6px;min-height:31px;padding:3px 4px;border-top:1px solid #ffffff0b}.queue-row.on{color:#d6b36a}.queue-row button:first-child,.voice-row button:first-child{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.voice-row .trash{width:24px;color:#ffaaaa}
+/* El editor A–B de la página de bases de More Than Modes, tal cual: onda oscura,
+   franja ámbar entre las dos marcas y dos banderitas con letra negra sobre un
+   carril bajo. Las banderas van en el carril y no sobre la onda para que la
+   mano que arrastra no tape justo lo que se quiere ver. */
+#abStage{position:relative;height:104px;margin-top:6px;border:1px solid #ffffff14;border-radius:10px;background:#0c0e12;overflow:hidden;touch-action:none;user-select:none}
+#abWave{width:100%;height:104px;display:block}
+.ab-lane{position:absolute;left:0;right:0;bottom:0;height:22px;background:#0006;border-top:1px solid #ffffff14;pointer-events:none}
+.ab-handle{position:absolute;top:0;bottom:0;width:0;display:none}
+#abStage.armed .ab-handle{display:block}
+/* Caja táctil ancha e invisible: la bandera mide 34px y el dedo, bastante más. */
+.ab-hit{position:absolute;left:-30px;width:60px;top:0;bottom:0;display:block}
+.ab-line{position:absolute;left:-1px;width:2px;top:0;bottom:22px;display:block;background:#d6b36a;box-shadow:0 0 6px #d6b36a55}
+.ab-flag{position:absolute;bottom:2px;width:34px;height:18px;display:grid;place-items:center;border:1.5px solid #0b0c0f;border-radius:4px;background:#d6b36a;color:#17130b;font:800 10px/1 ui-monospace,monospace;box-shadow:0 2px 5px #0008}
+.ab-handle[data-h="a"] .ab-flag{left:0;border-top-left-radius:0;border-bottom-right-radius:0}
+.ab-handle[data-h="b"] .ab-flag{left:-34px;border-top-right-radius:0;border-bottom-left-radius:0}
+.ab-handle.grab .ab-flag{box-shadow:0 0 0 2px #d6b36a66,0 3px 8px #000a}
 .ab-grid{display:grid;gap:6px;margin-top:6px}
 .ab-point{display:flex;align-items:center;gap:6px}
 .ab-point .ab-tag{width:26px;height:32px;display:grid;place-items:center;border-radius:8px;background:#d6b36a;color:#17130b;font:800 12px/1 ui-monospace,monospace}
@@ -297,16 +316,27 @@ body.player-open #player{display:block}
 .ab-point button:active{background:#ffffff1e}
 .ab-readout{display:flex;align-items:center;gap:5px;margin-top:6px;font:10px/1 ui-monospace,monospace;color:#ffffffa0}.ab-readout span{padding:5px 7px;border-radius:5px;background:#ffffff08}.ab-readout .spacer{flex:1;background:none}.ab-readout button{height:30px;min-width:34px;padding:0 8px;border-radius:8px;background:#ffffff0b;color:#d6b36a;font-weight:800}
 #voiceRecord.recording{background:#b33;color:#fff}.voice-status{font:9px/1.3 ui-monospace,monospace;color:#ffffff88;padding:5px 1px}
-.pmain{display:flex;align-items:center;gap:9px;height:52px}
+.pmain{display:flex;align-items:center;gap:10px;height:60px}
 .wavebox{position:relative;flex:1;min-width:0;height:46px;border-radius:10px;background:#ffffff07;touch-action:none}
 #wave{width:100%;height:46px;display:block}
 .ptime{position:absolute;left:8px;right:8px;bottom:2px;display:flex;justify-content:space-between;pointer-events:none;font:600 10px/1 ui-monospace,monospace;color:#ffffffa8;text-shadow:0 1px 2px #000a}
-#playToggle{flex:0 0 50px;width:50px;height:50px;border-radius:50%;background:#f2efe7;color:#111;font-size:19px;box-shadow:0 6px 16px #0006;transition:transform .12s}
+#playToggle{flex:0 0 58px;width:58px;height:58px;border-radius:50%;background:#f2efe7;color:#111;display:grid;place-items:center;box-shadow:0 6px 16px #0006;transition:transform .12s,background .18s,box-shadow .18s}
 #playToggle:active{transform:scale(.94)}
-.trackskip{flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:#ffffff0c;color:#d6b36a;font:800 15px/1 ui-monospace,monospace}
+/* Sonando se pone del color de la casa y con un halo: se sabe de un vistazo
+   si hay música sin tener que mirar el icono. */
+#player.sonando #playToggle{background:#d6b36a;color:#17130b;box-shadow:0 6px 18px #d6b36a4d,0 0 0 5px #d6b36a1f}
+#player svg{width:24px;height:24px;fill:currentColor;stroke:none}
+#playToggle .i-pause,#player.sonando #playToggle .i-play{display:none}
+#player.sonando #playToggle .i-pause{display:block}
+.trackskip{flex:0 0 48px;width:48px;height:48px;border-radius:50%;background:#ffffff12;color:#d6b36a;display:grid;place-items:center}
+.trackskip svg{width:21px;height:21px}
 .trackskip:active{background:#ffffff1e}
+/* Hilo de posición en el canto de arriba del reproductor: dice dónde va la
+   pista aunque el panel tape la onda. */
+#posLine{position:absolute;left:0;right:0;top:0;height:2px;background:#ffffff0e;overflow:hidden;border-radius:2px 2px 0 0}
+#posLine i{display:block;width:0;height:100%;background:linear-gradient(90deg,#d6b36a88,#d6b36a)}
 #queuePos{flex:0 0 auto;color:#ffffff65;font:700 8px/1 ui-monospace,monospace;letter-spacing:.05em}
-#loopToggle{flex:0 0 auto;height:40px;padding:0 12px;border-radius:12px;background:#ffffff0c;color:#ffffffa8;font:700 11px/1 ui-monospace,monospace}
+#loopToggle{flex:0 0 auto;height:48px;padding:0 12px;border-radius:12px;background:#ffffff0c;color:#ffffffa8;font:700 11px/1 ui-monospace,monospace}
 #loopToggle.on{background:#d6b36a;color:#17130b}
 #downloadProgress{position:absolute;left:0;right:0;top:0;height:2px;background:#ffffff12;overflow:hidden;display:none}
 #downloadProgress i{display:block;width:0;height:100%;background:#d6b36a}
@@ -345,19 +375,26 @@ body.player-open #player{display:block}
   <div id="playerPanel">
     <section class="player-pane" data-pane="queue"><div class="panehead"><strong>Lista descargada</strong><button id="repeatTrack" class="on">↻ CANCIÓN</button><button id="repeatList">↻ LISTA</button></div><div id="queueList"></div></section>
     <section class="player-pane" data-pane="ab"><div class="panehead"><strong>Bucle A–B</strong><button id="abPanelToggle">ACTIVAR</button></div>
+      <div id="abStage">
+        <canvas id="abWave"></canvas>
+        <div class="ab-lane"></div>
+        <div class="ab-handle" data-h="a"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">A</b></div>
+        <div class="ab-handle" data-h="b"><i class="ab-hit"></i><i class="ab-line"></i><b class="ab-flag">B</b></div>
+      </div>
       <div class="ab-grid">
         <div class="ab-point" data-point="a"><span class="ab-tag">A</span><output id="aRead">0:00</output><button data-ab="a-set">AQUÍ</button><button data-ab="a-back">−0,1</button><button data-ab="a-fwd">+0,1</button></div>
         <div class="ab-point" data-point="b"><span class="ab-tag">B</span><output id="bRead">0:00</output><button data-ab="b-set">AQUÍ</button><button data-ab="b-back">−0,1</button><button data-ab="b-fwd">+0,1</button></div>
       </div>
       <div class="ab-readout"><span id="abLen">Tramo 0:00</span><span class="spacer"></span><button data-ab="whole" title="Todo el tema">TODO</button><button id="waveZoomOut">−</button><span id="waveZoomRead">1×</span><button id="waveZoomIn">＋</button></div>
-      <div class="voice-status">Arrastra A y B sobre la onda, o fíjalos con AQUÍ mientras suena.</div></section>
+      <div class="voice-status">Arrastra las banderas A y B sobre la onda, o fíjalas con AQUÍ mientras suena.</div></section>
     <section class="player-pane" data-pane="voice"><div class="panehead"><strong>Notas de voz</strong><button id="voiceRecord">● GRABAR</button></div><div id="voiceStatus" class="voice-status">Grabación AAC · 48 kHz · alta calidad</div><div id="voiceList"></div></section>
   </div>
   <div class="phead"><div id="nowTitle">Selecciona una canción</div><span id="queuePos">0 / 0</span><button class="ptab" data-player-tab="queue" title="Lista">☷</button><button class="ptab" data-player-tab="ab" title="Bucle A–B">AB</button><button class="ptab" data-player-tab="voice" title="Notas de voz">●</button><button id="pageAction" disabled>Sin audio</button></div>
-  <div class="pmain"><button id="prevTrack" class="trackskip" title="Anterior">|◀</button><button id="playToggle">▶</button><button id="nextTrack" class="trackskip" title="Siguiente">▶|</button><div class="wavebox"><canvas id="wave"></canvas><div class="ptime"><span id="posTime">0:00</span><span id="durTime">0:00</span></div></div><button id="loopToggle">A–B</button></div>
+  <div class="pmain"><button id="prevTrack" class="trackskip" title="Anterior" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M18 5.6v12.8L9.2 12z"/><rect x="5.4" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><button id="playToggle" aria-label="Reproducir o pausar"><svg class="i-play" viewBox="0 0 24 24"><path d="M8.4 5.3v13.4L19 12z"/></svg><svg class="i-pause" viewBox="0 0 24 24"><rect x="7.6" y="5.4" width="3.4" height="13.2" rx="1.3"/><rect x="13" y="5.4" width="3.4" height="13.2" rx="1.3"/></svg></button><button id="nextTrack" class="trackskip" title="Siguiente" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M6 5.6v12.8L14.8 12z"/><rect x="16" y="5.6" width="2.6" height="12.8" rx="1.1"/></svg></button><div class="wavebox"><canvas id="wave"></canvas><div class="ptime"><span id="posTime">0:00</span><span id="durTime">0:00</span></div></div><button id="loopToggle">A–B</button></div>
   <div class="adjust"><div class="stepper"><button id="pitchDown">‹</button><output id="pitchOut">TONO 0</output><button id="pitchUp">›</button></div>
     <div class="stepper"><button id="speedDown">‹</button><output id="speedOut">VEL 1×</output><button id="speedUp">›</button></div></div>
   <div id="downloadProgress"><i></i></div>
+  <div id="posLine"><i></i></div>
 </div>
 
 <div id="dockwrap">
@@ -647,7 +684,28 @@ scroller.addEventListener('pointermove',e=>{
     }
   }
 },true);
-const pzEnd=e=>{pz.delete(e.pointerId);if(pz.size<2){pzBase=null;setTimeout(()=>zooming=false,120)}};
+/* Arrastrar con un dedo cuando la hoja está ampliada.
+   Ampliada, `.sheet` lleva `touch-action:none` para que el pellizco no pelee
+   con el desplazamiento del navegador; el efecto colateral era que ya no se
+   podía mover la hoja con un dedo y había que usar dos. Aquí se devuelve ese
+   arrastre. En modo tinta no, que ahí un dedo dibuja. */
+let pan=null;
+scroller.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse'||pz.size!==1||zoom<=1.02||mode==='ink')return;
+  const sh=pages[cur]&&pages[cur].sheet; if(!sh)return;
+  pan={x:e.clientX,y:e.clientY,sl:sh.scrollLeft,st:sh.scrollTop,sh,moved:false};
+},true);
+scroller.addEventListener('pointermove',e=>{
+  if(!pan||pz.size!==1)return;
+  const dx=e.clientX-pan.x, dy=e.clientY-pan.y;
+  if(!pan.moved&&Math.hypot(dx,dy)<6)return;      // un toque no es un arrastre
+  pan.moved=true; zooming=true; sw=null;
+  pan.sh.scrollLeft=pan.sl-dx; pan.sh.scrollTop=pan.st-dy;
+  e.preventDefault();
+},true);
+
+const pzEnd=e=>{pz.delete(e.pointerId);if(pan&&pz.size===0){const m=pan.moved;pan=null;if(m)setTimeout(()=>zooming=false,120)}
+  if(pz.size<2){pzBase=null;setTimeout(()=>zooming=false,120)}};
 scroller.addEventListener('pointerup',pzEnd,true); scroller.addEventListener('pointercancel',pzEnd,true);
 addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();setZoom(zoom-e.deltaY*.002)}},{passive:false});
 
@@ -871,7 +929,12 @@ grip.addEventListener('pointermove',e=>{if(dg)placeDock(e.clientX-dg.dx,e.client
 grip.addEventListener('pointerup',()=>{if(dg){dg=null;saveDock()}});
 function placeDock(x,y){
   const w=wrap.offsetWidth,h=wrap.offsetHeight;
-  x=Math.max(6,Math.min(innerWidth-w-6,x)); y=Math.max(50,Math.min(innerHeight-h-6,y));
+  // Con el reproductor abierto, el suelo es su techo: si no, la barra se
+  // queda encima de los controles de la canción y estorba a los dos.
+  const abajo=document.body.classList.contains('player-open')
+    ? Math.max(56,innerHeight-(document.getElementById('player').offsetHeight||0)-h-8)
+    : innerHeight-h-6;
+  x=Math.max(6,Math.min(innerWidth-w-6,x)); y=Math.max(50,Math.min(abajo,y));
   wrap.classList.add('free'); wrap.style.left=x+'px'; wrap.style.top=y+'px'; wrap.style.bottom='auto';
   wrap.classList.toggle('below',y<innerHeight*.42);
 }
@@ -1005,6 +1068,7 @@ let repeatMode=localStorage.getItem('player.repeat')||'track',activePlayerPane='
 if(!['track','list'].includes(repeatMode))repeatMode='track';
 const voiceWaveCache={};
 const wave=document.getElementById('wave'), wctx=wave.getContext('2d');
+const cajaPlayer=document.getElementById('player');
 const fmtTime=ms=>{const s=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function trackState(p){
   if(!p||!window.Native)return {};
@@ -1043,35 +1107,62 @@ function playlistStep(direction,fromId=(now.songId||now.id),wrap=false){
   if(!next)return toast(direction>0?'Fin de la lista':'Inicio de la lista');
   playPage(next);
 }
+let cambioDePista=0;
 function updatePlayerPage(){
   if(!pages.length)return;
   const p=pages[cur], st=trackState(p), different=now.id&&(now.kind==='voice'||(now.songId||now.id)!==p.id);
   const ready=downloadedPages(),qi=ready.findIndex(x=>x.id===(now.songId||now.id));
   queuePos.textContent=ready.length?(qi>=0?(qi+1)+' / '+ready.length:'— / '+ready.length):'0 / 0';
   nowTitle.textContent=now.id?('Suena · '+now.title):pageTitle(p);
-  playToggle.textContent=now.playing?'❚❚':'▶';
+  cajaPlayer.classList.toggle('sonando',!!now.playing);
   if(!st.downloaded){
     pageAction.style.display='block';pageAction.disabled=!p.link;
     pageAction.textContent=p.link?'↓ Descargar':'Sin audio';
     pageAction.onclick=()=>downloadPage(p);
+  }else if(different){
+    // Llegar a la página de otra canción descargada es elegirla. Si ya había
+    // música sonando se cambia sola —nada de dejar una segunda pista servida
+    // esperando—; si no sonaba nada, queda el botón para tocarla.
+    pageAction.style.display='block';pageAction.disabled=false;
+    pageAction.textContent='▶ Reproducir';
+    pageAction.onclick=()=>playPage(p);
+    clearTimeout(cambioDePista);
+    if(now.playing&&now.kind==='song'){
+      // un respiro: pasar veinte páginas de corrido no arranca veinte pistas
+      cambioDePista=setTimeout(()=>{
+        if(pages[cur]===p&&now.playing&&now.kind==='song'&&(now.songId||now.id)!==p.id)playPage(p);
+      },420);
+    }
   }else{
-    pageAction.style.display='none';
+    pageAction.style.display='none';clearTimeout(cambioDePista);
   }
   refreshClock();drawWave();if(activePlayerPane==='queue')renderQueue();if(activePlayerPane==='voice'&&playerPanel.classList.contains('open'))renderVoiceNotes();syncRepeatButtons();
 }
-function refreshClock(){posTime.textContent=fmtTime(now.position);durTime.textContent=fmtTime(now.duration)}
+function refreshClock(){
+  posTime.textContent=fmtTime(now.position);durTime.textContent=fmtTime(now.duration);
+  posLine.firstElementChild.style.width=(now.duration?Math.max(0,Math.min(100,now.position/now.duration*100)):0)+'%';
+}
 playToggle.onclick=()=>{
-  const p=pages[cur], mine=p&&now.id&&now.kind==='song'&&(now.songId||now.id)===p.id;
-  // el play siempre suena lo que estás mirando: si es otra canción, cambia ya
-  if(p&&!mine&&trackState(p).downloaded)return playPage(p);
+  // El botón de transporte transporta. Antes, si estabas oyendo una canción y
+  // te ibas a leer otra página, este botón arrancaba **esa otra** en vez de
+  // pausar: de ahí que «el pause no pausa». Cambiar de canción es cosa de la
+  // lista y del botón de la página, no del play.
   if(now.id)return Native.toggle();
+  const p=pages[cur];
   if(p)playPage(p);
 };
 let prevTap=0;
 prevTrack.onclick=()=>{
   const fresh=Date.now()-prevTap<1400;   // dos toques seguidos: pista anterior
   prevTap=Date.now();
-  if(!fresh&&now.id&&now.position>1500){Native.seek(0);now.position=0;refreshClock();drawWave();return}
+  // Un toque manda la aguja al principio; dos seguidos saltan a la anterior.
+  // Se mira la posición **viva**, no la del último aviso del motor: entre
+  // aviso y aviso pasan cien milisegundos y `now.position` se queda corta,
+  // asi que justo al empezar una canción el primer toque se comportaba como
+  // si ya estuviera en el principio y saltaba de pista.
+  if(!fresh&&now.id&&livePosition()>1200){
+    saltarA(0);return;
+  }
   playlistStep(-1,undefined,true);
 };
 nextTrack.onclick=()=>playlistStep(1,undefined,true);
@@ -1154,41 +1245,50 @@ speedDown.onclick=()=>changeSpeed(-.05);speedUp.onclick=()=>changeSpeed(.05);
 tPlayer.onclick=()=>{
   const open=!document.body.classList.contains('player-open');document.body.classList.toggle('player-open',open);
   tPlayer.classList.toggle('on',open);localStorage.setItem('player.open',open?'1':'0');setTimeout(drawWave,40);
+  // abrir el reproductor sube el suelo; la barra de herramientas se recoloca
+  if(wrap.classList.contains('free'))placeDock(wrap.offsetLeft,wrap.offsetTop);
 };
 document.body.classList.toggle('player-open',localStorage.getItem('player.open')!=='0');
 tPlayer.classList.toggle('on',document.body.classList.contains('player-open'));
-function drawWave(){
-  const dpr=devicePixelRatio||1,r=wave.getBoundingClientRect(),W=Math.max(1,Math.round(r.width*dpr)),H=Math.max(1,Math.round(r.height*dpr));
-  if(wave.width!==W||wave.height!==H){wave.width=W;wave.height=H}wctx.clearRect(0,0,W,H);
+/** Pinta la onda en un lienzo. `carrilCss` son los píxeles de abajo que no le
+ *  tocan: en el editor grande ahí va el carril de las banderas. */
+function pintarOnda(cv,ctx,carrilCss){
+  const dpr=devicePixelRatio||1,r=cv.getBoundingClientRect();
+  if(!r.width)return; // el panel cerrado no mide nada y todo saldría en cero
+  const W=Math.max(1,Math.round(r.width*dpr)),H=Math.max(1,Math.round(r.height*dpr));
+  if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}ctx.clearRect(0,0,W,H);
+  const util=Math.max(1,H-(carrilCss||0)*dpr);
   const all=now.wave&&now.wave.length?now.wave:Array.from({length:80},(_,i)=>.12+.08*Math.sin(i*.7));
   const range=waveRange(),i0=Math.floor(range.start/Math.max(1,now.duration)*all.length),i1=Math.max(i0+1,Math.ceil(range.end/Math.max(1,now.duration)*all.length));
   const data=all.slice(i0,i1);
-  const base=H*.5, span=Math.max(1,range.end-range.start);
+  const base=util*.5, span=Math.max(1,range.end-range.start);
   const px=now.duration?Math.max(0,Math.min(W,(now.position-range.start)/span*W)):-1;
   const bw=Math.max(1.5*dpr,W/data.length-1.4*dpr), radius=bw/2;
   data.forEach((v,i)=>{
-    const x=i*W/data.length, bar=Math.max(2*dpr,v*H*.42);
-    wctx.fillStyle=(x<=px)?'#d6b36a':'#6f7683';
-    wctx.beginPath();
-    if(wctx.roundRect)wctx.roundRect(x,base-bar,bw,bar*2,radius); else wctx.rect(x,base-bar,bw,bar*2);
-    wctx.fill();
+    const x=i*W/data.length, bar=Math.max(2*dpr,v*util*.42);
+    ctx.fillStyle=(x<=px)?'#d6b36a':'#6f7683';
+    ctx.beginPath();
+    if(ctx.roundRect)ctx.roundRect(x,base-bar,bw,bar*2,radius); else ctx.rect(x,base-bar,bw,bar*2);
+    ctx.fill();
   });
   if(now.duration){
     if(loopOn||pointB<now.duration||pointA>0){
       const ax=(pointA-range.start)/span*W,bx=(pointB-range.start)/span*W;
-      wctx.fillStyle=loopOn?'#d6b36a20':'#ffffff10';
-      wctx.fillRect(Math.max(0,ax),0,Math.max(0,Math.min(W,bx)-Math.max(0,ax)),H);
-      wctx.fillStyle=loopOn?'#d6b36a':'#ffffff5c';
-      if(ax>=0&&ax<=W)wctx.fillRect(ax,0,2*dpr,H);
-      if(bx>=0&&bx<=W)wctx.fillRect(bx-2*dpr,0,2*dpr,H);
+      ctx.fillStyle=loopOn?'#d6b36a20':'#ffffff10';
+      ctx.fillRect(Math.max(0,ax),0,Math.max(0,Math.min(W,bx)-Math.max(0,ax)),util);
+      ctx.fillStyle=loopOn?'#d6b36a':'#ffffff5c';
+      if(ax>=0&&ax<=W)ctx.fillRect(ax,0,2*dpr,util);
+      if(bx>=0&&bx<=W)ctx.fillRect(bx-2*dpr,0,2*dpr,util);
     }
     if(px>=0){
-      wctx.fillStyle='#fffdf7';
-      wctx.fillRect(px-1*dpr,3*dpr,2*dpr,H-14*dpr);
-      wctx.beginPath();wctx.arc(px,3*dpr,3.2*dpr,0,Math.PI*2);wctx.fill();
+      ctx.fillStyle='#fffdf7';
+      ctx.fillRect(px-1*dpr,3*dpr,2*dpr,util-11*dpr);
+      ctx.beginPath();ctx.arc(px,3*dpr,3.2*dpr,0,Math.PI*2);ctx.fill();
     }
   }
 }
+function abALaVista(){return activePlayerPane==='ab'&&playerPanel.classList.contains('open')}
+function drawWave(){pintarOnda(wave,wctx,0);if(abALaVista())pintarAB()}
 function waveRange(){const span=now.duration/Math.max(1,waveZoom);if(waveZoom>1&&now.playing&&(now.position<waveOffset||now.position>waveOffset+span))waveOffset=now.position-span*.18;waveOffset=Math.max(0,Math.min(Math.max(0,now.duration-span),waveOffset));return{start:waveOffset,end:Math.min(now.duration,waveOffset+span)}}
 function wavePoint(e){const r=wave.getBoundingClientRect(),v=waveRange();return v.start+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(v.end-v.start)}
 function setWaveZoom(delta){
@@ -1196,11 +1296,57 @@ function setWaveZoom(delta){
   waveOffset=center-now.duration/waveZoom/2;waveRange();refreshAB();drawWave();
 }
 waveZoomOut.onclick=()=>setWaveZoom(-1);waveZoomIn.onclick=()=>setWaveZoom(1);
+/* ---- Editor A–B, calcado del de la página de bases de More Than Modes ---- */
+const abStage=document.getElementById('abStage'), abWave=document.getElementById('abWave'), abctx=abWave.getContext('2d');
+const ABCARRIL=22; // alto del carril donde viven las banderas
+let abDrag='';
+/** Dónde cae cada bandera. La aguja marca el sitio exacto; la bandera se corre
+ *  hacia dentro cuando la marca está pegada a un borde, que si no, se sale. */
+function colocarBanderas(){
+  const r=abStage.getBoundingClientRect(); if(!r.width)return;
+  const v=waveRange(), span=Math.max(1,v.end-v.start);
+  abStage.classList.toggle('armed',!!now.duration);
+  document.querySelectorAll('.ab-handle').forEach(h=>{
+    const ms=h.dataset.h==='a'?pointA:pointB, x=(ms-v.start)/span*r.width;
+    h.style.left=x+'px';
+    h.style.visibility=(x<-40||x>r.width+40)?'hidden':'visible';
+    const f=h.querySelector('.ab-flag');
+    let corre=0;
+    if(h.dataset.h==='a'&&x+34>r.width)corre=r.width-x-34;
+    if(h.dataset.h==='b'&&x-34<0)corre=34-x;
+    f.style.transform='translateX('+corre+'px)';
+  });
+}
+function pintarAB(){pintarOnda(abWave,abctx,ABCARRIL);colocarBanderas()}
+function abTiempo(clientX){
+  const r=abStage.getBoundingClientRect(), v=waveRange();
+  return v.start+Math.max(0,Math.min(1,(clientX-r.left)/r.width))*(v.end-v.start);
+}
+document.querySelectorAll('.ab-handle').forEach(h=>{
+  h.addEventListener('pointerdown',e=>{
+    if(!now.duration)return;
+    e.preventDefault();e.stopPropagation();
+    abDrag=h.dataset.h;h.classList.add('grab');h.setPointerCapture(e.pointerId);
+  });
+  h.addEventListener('pointermove',e=>{if(abDrag===h.dataset.h)setPoint(abDrag,abTiempo(e.clientX))});
+  const soltar=()=>{if(!abDrag)return;abDrag='';h.classList.remove('grab')};
+  h.addEventListener('pointerup',soltar);h.addEventListener('pointercancel',soltar);
+});
+// Tocar la onda: con el bucle puesto acerca la marca de al lado, sin bucle
+// salta ahí. Es lo mismo que hace la onda chica, pero con sitio para el dedo.
+abStage.addEventListener('pointerdown',e=>{
+  if(abDrag)return;
+  if(!now.duration)return toast('Reproduce una canción primero');
+  const v=abTiempo(e.clientX);
+  if(loopOn)return setPoint(Math.abs(v-pointA)<Math.abs(v-pointB)?'a':'b',v);
+  saltarA(v);
+});
 function refreshAB(){
   aRead.textContent=fmtTime(pointA);bRead.textContent=fmtTime(pointB);
   if(window.abLen)abLen.textContent='Tramo '+fmtTime(Math.max(0,pointB-pointA));
   waveZoomRead.textContent=waveZoom+'×';
   abPanelToggle.classList.toggle('on',loopOn);abPanelToggle.textContent=loopOn?'ACTIVO':'ACTIVAR';
+  if(abALaVista())pintarAB();
 }
 /** Mueve A o B y mantiene el bucle vivo mientras se ajusta. */
 function setPoint(which,value){
@@ -1219,7 +1365,7 @@ document.querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>{
 wave.addEventListener('pointerdown',e=>{
   if(!now.duration)return;wave.setPointerCapture(e.pointerId);const v=wavePoint(e);
   if(loopOn){waveDrag=Math.abs(v-pointA)<Math.abs(v-pointB)?'a':'b';moveWavePoint(v)}
-  else{Native.seek(v);now.position=v;posAnchor={at:performance.now(),pos:v,playing:now.playing};refreshClock();drawWave()}
+  else saltarA(v);
 });
 wave.addEventListener('pointermove',e=>{if(waveDrag)moveWavePoint(wavePoint(e))});
 wave.addEventListener('pointerup',()=>waveDrag='');wave.addEventListener('pointercancel',()=>waveDrag='');
@@ -1242,7 +1388,15 @@ window.nativeDownloadState=d=>{
     if(d.state==='ready'&&p===pages[cur])updatePlayerPage();
   }
 };
-let posAnchor={at:0,pos:0,playing:false};
+let posAnchor={at:0,pos:0,playing:false}, saltoHasta=0;
+/** Lleva la aguja a `v` y se lo pide al motor, las dos cosas a la vez. */
+function saltarA(v){
+  v=Math.max(0,Math.min(now.duration||v,v));
+  saltoHasta=performance.now()+300;
+  Native.seek(v);now.position=v;
+  posAnchor={at:performance.now(),pos:v,playing:now.playing};
+  refreshClock();drawWave();
+}
 /** El motor manda su posición cada poco; entre aviso y aviso la aguja se
    interpola con el reloj de la página para que marque el punto real. */
 function livePosition(){
@@ -1260,8 +1414,15 @@ function followTrack(){
   raf=requestAnimationFrame(followTrack);
 }
 window.nativePlayerState=d=>{
-  const changed=d.id!==now.id;Object.assign(now,d);
-  posAnchor={at:performance.now(),pos:d.position||0,playing:!!d.playing};
+  const changed=d.id!==now.id;
+  // Un salto tarda en cuajar en el motor, y mientras tanto sigue avisando de
+  // la posición vieja: la aguja se iba al sitio nuevo y volvía de un tirón.
+  // Durante ese cuarto de segundo manda lo que se pidió, no lo que se oye.
+  const enSalto=!changed&&performance.now()<saltoHasta;
+  const pos=enSalto?now.position:(d.position||0);
+  Object.assign(now,d);
+  if(enSalto)now.position=pos;
+  posAnchor={at:performance.now(),pos:pos,playing:!!d.playing};
   if(d.playing&&!raf)raf=requestAnimationFrame(followTrack);
   if(!d.playing&&raf){cancelAnimationFrame(raf);raf=0}
   if(changed){
@@ -1269,7 +1430,7 @@ window.nativePlayerState=d=>{
     else{const p=pages.find(x=>x.id===(d.songId||d.id)),st=trackState(p);now.wave=st.wave||[]}
     pointA=0;pointB=d.duration||0;loopOn=false;waveZoom=1;waveOffset=0;loopToggle.classList.remove('on');refreshAB();
   }
-  playToggle.textContent=d.playing?'❚❚':'▶';refreshClock();updatePlayerPage();
+  cajaPlayer.classList.toggle('sonando',!!d.playing);refreshClock();updatePlayerPage();
 };
 window.nativeTrackEnded=id=>{if(loopOn)return;if(repeatMode==='track')Native.replay();else playlistStep(1,now.songId||id,true)};
 window.nativeVoiceState=d=>{
@@ -1332,15 +1493,30 @@ function searchScore(text,query){
   return total;
 }
 let idxQuery='';
+/* Dónde busca el índice. Antes miraba sólo los apuntes y el enlace, así que
+   buscar por una palabra de la letra —o por el artista, si está escrito ahí—
+   no encontraba nada. */
+function searchText(p){
+  return [p.ed&&p.ed.innerText, p.lyrics, p.link,
+          p.lyricsPane&&p.lyricsPane.innerText,
+          p.chordsPane&&p.chordsPane.innerText].filter(Boolean).join(' ');
+}
+
 function buildIndex(){
   listEl.innerHTML='';
   const q=idxQuery.trim();
   let shown=0;
-  pages.forEach((p,i)=>{
-    if(q){
-      const title=(p.ed.innerText||'')+' '+(p.link||'');
-      if(searchScore(title,q)<0)return;
-    }
+  // Con búsqueda, lo que más se parece primero; sin búsqueda, el orden del
+  // cuaderno. El número que se ve sigue siendo el de la página y no el del
+  // resultado, que si no, reordenar la lista mentiría sobre dónde está cada
+  // canción.
+  let orden=pages.map((p,i)=>({p,i}));
+  if(q){
+    orden=orden.map(o=>Object.assign({sc:searchScore(searchText(o.p),q)},o))
+               .filter(o=>o.sc>=0)
+               .sort((a,b)=>b.sc-a.sc||a.i-b.i);
+  }
+  orden.forEach(({p,i})=>{
     shown++;
     const r=el('div','row'); r._p=p;
     const t=(p.ed.innerText||'').trim().replace(/\s+/g,' ').slice(0,40);
@@ -1413,7 +1589,7 @@ listEl.addEventListener('pointerup',()=>{
 /* ═══ autoguardado ═══ */
 const boxData=p=>[...p.doc.querySelectorAll('.tbox')].map(b=>({x:+b.dataset.x,y:+b.dataset.y,w:+b.dataset.w,
   html:b.innerHTML.replace(/<button[^>]*class="b[hr]"[^>]*><\/button>/g,'')}));
-const serialize=()=>({v:13,savedAt:Date.now(),zoom,pages:pages.map(p=>({id:p.id,html:p.ed.innerHTML,strokes:p.strokes,style:p.style,
+const serialize=()=>({v:14,savedAt:Date.now(),zoom,pages:pages.map(p=>({id:p.id,html:p.ed.innerHTML,strokes:p.strokes,style:p.style,
   boxes:boxData(p),scores:ScoreBlocks.serialize(p),views:SongViews.serialize(p),link:p.link}))});
 let sT,warned=false;
 async function flush(){
@@ -1456,7 +1632,7 @@ function load(d){
 }
 /* Catálogo comprobado por el título real de cada video, no por su posición. */
 const CATALOG=[
-  ["Me Vale – Maná","IhnOpwOMHgk"],
+  ["Me Vale – Maná","i35z5Q3t_xc"],
   ["La Flaca – Jarabe de Palo","fcHtRIaxeT4"],
   ["Afuera – Caifanes","95QZvA7swMU"],
   ["Lamento Boliviano – Enanitos Verdes","l9kXym1doYA"],
@@ -1483,7 +1659,7 @@ const CATALOG=[
   ["Chau – No Te Va Gustar","YglZ5BzPbYs"],
   ["Candela – Aterciopelados","lw5DYMfy9Xg"],
   ["Calaveras y Diablitos – Fabulosos Cadillacs","Pev2i1f1DWg"],
-  ["Lobo Hombre en París – La Unión",""]
+  ["Lobo Hombre en París – La Unión","IhnOpwOMHgk"]
 ];
 const OLD_SEED_TITLES=["Corazón Espinado","Camisa Negra","Cosita Seria","Luz Azul","El Álbum","Rompecabezas",
   "Maligno","El Estuche","Baracunatana","Florecita Rockera","Bolero Falaz","Sortilegio","Candela","Vasos Vacíos",
@@ -1497,9 +1673,28 @@ function seed(){
   CATALOG.forEach(([title,id])=>newPage(pages.length,{html:'<h2>'+title+'</h2><div><br></div>',link:id?'https://youtu.be/'+id:''}));
   buildIndex(); goto(0); save();
 }
+/* Dos canciones tenían el enlace cambiado: el identificador que figuraba en
+   «Me Vale – Maná» era en realidad el de «Lobo-hombre en París» —comprobado
+   contra el título que devuelve YouTube— y Lobo Hombre se había quedado sin
+   ninguno, así que estaba en la lista y no sonaba. Esto lo corrige también en
+   los cuadernos ya guardados, donde el enlace equivocado ya está escrito. */
+// Ojo: `titleKey` corta en el guion y se queda con lo de delante, asi que la
+// clave es «me vale», no «me vale mana».
+const MAL_ENLAZADAS=new Set(['me vale','lobo hombre en paris']);
 function repairCatalog(version){
-  if(version>=10)return false;
   let changed=false;
+  if(version<14){
+    pages.forEach(p=>{
+      const key=titleKey(pageTitle(p));
+      if(!MAL_ENLAZADAS.has(key))return;
+      const correct=LINK_BY_TITLE.get(key)||'';
+      if(correct&&p.link!==correct){
+        if(window.Native)Native.removeTrack(p.id);   // el audio bajado tampoco vale
+        setLink(p,correct,true);changed=true;
+      }
+    });
+  }
+  if(version>=10)return changed;
   const present=new Set();
   pages.forEach(p=>{
     const key=titleKey(pageTitle(p));present.add(key);

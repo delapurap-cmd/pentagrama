@@ -269,7 +269,14 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface public void seek(long millis) {
-            runOnUiThread(() -> { if (player != null) player.seekTo((int) millis); });
+            runOnUiThread(() -> {
+                if (player == null) return;
+                player.seekTo((int) millis);
+                // Avisar del sitio pedido sin esperar al siguiente latido: el
+                // reloj de la página se quedaba cien milisegundos en el punto
+                // viejo y la aguja daba un tirón hacia atrás.
+                sendPlayerState(millis);
+            });
         }
 
         @JavascriptInterface public void setLoop(long a, long b, boolean enabled) {
