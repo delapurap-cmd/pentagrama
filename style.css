@@ -60,7 +60,8 @@ body.embed .bar-tools {
 body.embed.tools-open .bar-tools { display: flex; }
 body.embed #btnTools.on { border-color: var(--gold); color: var(--gold); }
 body.embed .stage { flex: 1 1 auto; min-height: 0; height: auto; }
-body.embed .sheets { padding: 0 2px 14px; gap: 4px; }
+/* dentro del cuaderno la hoja también deja sitio al bloque de edición */
+body.embed .sheets { padding: 0 2px calc(230px + env(safe-area-inset-bottom, 0px)); gap: 4px; }
 body.embed .sheet-head { display: none; }
 
 
