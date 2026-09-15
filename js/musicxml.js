@@ -14,10 +14,31 @@ const MusicXML = (() => {
   };
   const TYPE_TO_DUR = {
     whole: 'w', half: 'h', quarter: 'q', eighth: '8', '16th': '16',
-    // valores que Reper aún no distingue: se aproximan al más cercano
-    breve: 'w', long: 'w', '32nd': '16', '64th': '16', '128th': '16'
+    '32nd': '32', '64th': '64',
+    // valores que aún no se distinguen: se aproximan al más cercano
+    breve: 'w', long: 'w', '128th': '64'
   };
   const STEP_INDEX = { C: 0, D: 1, E: 2, F: 3, G: 4, A: 5, B: 6 };
+  const ART_ENTRA = {
+    staccato: 'staccato', staccatissimo: 'staccatissimo', accent: 'acento',
+    'strong-accent': 'marcato', tenuto: 'tenuto'
+  };
+  const MATICES = ['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'sf', 'sfz', 'fp', 'rf', 'rfz'];
+
+  /** Marca el evento con su grupo irregular, si la nota venía en uno. */
+  let grupoActual = null;
+  function ponerGrupo(ev, node) {
+    const tm = node.querySelector(':scope > time-modification');
+    if (!tm) { grupoActual = null; return; }
+    const num = parseInt(tm.querySelector('actual-notes')?.textContent, 10) || 3;
+    const den = parseInt(tm.querySelector('normal-notes')?.textContent, 10) || 2;
+    const arranca = node.querySelector('notations > tuplet[type="start"]');
+    if (arranca || !grupoActual || grupoActual.num !== num || grupoActual.den !== den) {
+      grupoActual = { id: Model.uid(), num, den };
+    }
+    ev.tup = { id: grupoActual.id, num, den };
+    if (node.querySelector('notations > tuplet[type="stop"]')) grupoActual = null;
+  }
 
   const text = (el, tag) => {
     const n = el.querySelector(':scope > ' + tag);
@@ -165,11 +186,21 @@ const MusicXML = (() => {
             else if (beats !== score.time.num || beatType !== score.time.den) drop('cambios de compás');
           }
         }
-        const sign = attrs.querySelector('clef > sign');
-        if (sign) {
-          const s = sign.textContent.trim();
-          if (!clefSeen) clefSeen = s;
-          if (s !== 'G') drop('claves distintas de sol (se lee en clave de sol)');
+        const clefEl = attrs.querySelector('clef');
+        if (clefEl) {
+          const sign = (clefEl.querySelector('sign')?.textContent || 'G').trim();
+          const line = parseInt(clefEl.querySelector('line')?.textContent, 10) || 0;
+          const oct = parseInt(clefEl.querySelector('clef-octave-change')?.textContent, 10) || 0;
+          const id = sign === 'F' ? 'bass'
+            : sign === 'C' ? (line === 4 ? 'tenor' : 'alto')
+            : (oct === -1 ? 'treble-8v' : 'treble');
+          if (!clefSeen) { clefSeen = id; score.clef = id; }
+          else if (id !== clefSeen) {
+            // Cambio de clave a mitad: se anota en el compás donde ocurre.
+            measure.clef = id;
+            clefSeen = id;
+          }
+          if (sign === 'percussion' || sign === 'TAB') drop('claves de percusión y tablatura');
         }
       }
 
@@ -179,14 +210,48 @@ const MusicXML = (() => {
       }
 
       let skipRest = false;     // tras un <backup> vienen otras voces
+      // El cifrado y el matiz llegan **antes** de la nota a la que acompañan,
+      // como hermanos dentro del compás: se guardan y se cuelgan de la
+      // siguiente nota que aparezca.
+      let cifradoPendiente = null, matizPendiente = null;
+      grupoActual = null;
       [...mEl.children].forEach((node) => {
         const tag = node.tagName;
         if (tag === 'backup') { skipRest = true; drop('voces adicionales'); return; }
         if (tag === 'forward') return;
+        if (tag === 'harmony') {
+          const paso = node.querySelector('root > root-step')?.textContent || '';
+          const alt = parseInt(node.querySelector('root > root-alter')?.textContent, 10) || 0;
+          const kind = node.querySelector('kind');
+          const texto = (kind?.getAttribute('text') || '').trim();
+          if (paso) cifradoPendiente = paso + (alt === 1 ? '#' : alt === -1 ? 'b' : '') + texto;
+          return;
+        }
+        if (tag === 'direction') {
+          const din = node.querySelector('direction-type > dynamics > *');
+          if (din && MATICES.includes(din.tagName)) matizPendiente = din.tagName;
+          return;
+        }
         if (tag !== 'note' || skipRest) return;
 
         if (node.querySelector(':scope > grace')) { drop('notas de adorno'); return; }
-        if (node.querySelector(':scope > chord')) { drop('acordes (se queda la primera nota)'); return; }
+
+        // Un <chord/> no es una nota nueva: es otra cabeza de la anterior.
+        if (node.querySelector(':scope > chord')) {
+          const base = measure.events[measure.events.length - 1];
+          const p = node.querySelector(':scope > pitch');
+          if (base && base.kind === 'note' && p) {
+            const st = (p.querySelector('step')?.textContent || 'C').trim().toUpperCase();
+            const oc = parseInt(p.querySelector('octave')?.textContent, 10) || 4;
+            const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
+            const d2 = oc * 7 + (STEP_INDEX[st] ?? 0);
+            const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
+            const porArmadura = Model.keyAlter(score.key, Model.diLetter(d2));
+            const acc = esc || (al !== porArmadura ? (al === 1 ? '#' : al === -1 ? 'b' : 'n') : null);
+            Model.anadirAltura(base, d2, acc);
+          }
+          return;
+        }
 
         const voice = text(node, 'voice');
         const staff = text(node, 'staff');
@@ -198,8 +263,6 @@ const MusicXML = (() => {
           if (mainStaff == null) mainStaff = staff;
           else if (staff !== mainStaff) { drop('pentagramas adicionales'); return; }
         }
-        if (node.querySelector(':scope > time-modification')) drop('grupos irregulares (tresillos)');
-
         const dots = node.querySelectorAll(':scope > dot').length;
         const type = text(node, 'type');
         let dur = type ? TYPE_TO_DUR[type] : null;
@@ -208,12 +271,12 @@ const MusicXML = (() => {
           const fig = Model.exactFigure(ticks) || Model.exactFigure(Model.Q);
           dur = fig.dur;
         }
-        if (type && !TYPE_TO_DUR[type]) drop('figuras fuera del rango redonda-semicorchea');
-        if (dots > 1) drop('doble puntillo');
+        if (type && !TYPE_TO_DUR[type]) drop('figuras más breves que la semifusa');
 
         const isRest = !!node.querySelector(':scope > rest');
         if (isRest) {
-          const r = Model.rest(dur, dots ? 1 : 0);
+          const r = Model.rest(dur, dots);
+          ponerGrupo(r, node);
           measure.events.push(r);
           return;
         }
@@ -225,7 +288,7 @@ const MusicXML = (() => {
         const alter = parseInt(pitch.querySelector('alter')?.textContent, 10) || 0;
         const di = octave * 7 + (STEP_INDEX[step] ?? 0);
 
-        const ev = Model.note(di, dur, dots ? 1 : 0);
+        const ev = Model.note(di, dur, dots);
         const accEl = text(node, 'accidental');
         const written = { sharp: '#', flat: 'b', natural: 'n' }[accEl];
         const byKey = Model.keyAlter(score.key, Model.diLetter(di));
@@ -235,10 +298,17 @@ const MusicXML = (() => {
         const ties = [...node.querySelectorAll(':scope > tie')].map((t) => t.getAttribute('type'));
         if (ties.includes('start')) ev.tie = true;
 
-        if (node.querySelector('notations > articulations, notations > dynamics, notations > slur')) {
-          drop('articulaciones, matices y ligaduras de expresión');
-        }
+        ponerGrupo(ev, node);
+
+        const arts = [...node.querySelectorAll('notations > articulations > *')]
+          .map((x) => ART_ENTRA[x.tagName]).filter(Boolean);
+        if (node.querySelector('notations > fermata')) arts.push('calderon');
+        if (arts.length) ev.art = arts;
+
+        if (node.querySelector('notations > slur')) drop('ligaduras de expresión');
         if (node.querySelector(':scope > lyric')) drop('letra');
+        if (matizPendiente) { ev.matiz = matizPendiente; matizPendiente = null; }
+        if (cifradoPendiente) { ev.cifrado = cifradoPendiente; cifradoPendiente = null; }
 
         measure.events.push(ev);
         report.notes++;

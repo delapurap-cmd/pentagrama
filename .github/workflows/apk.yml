@@ -1,8 +1,8 @@
 name: APK Android (Reper)
 
-# Construye el APK del editor de partituras.
-# Ejecútalo desde la pestaña Actions → "Run workflow"; el APK queda
-# como artefacto descargable al final de la ejecución.
+# Construye el APK del editor de partituras. Además del artefacto —que sólo
+# se baja con sesión iniciada— deja una publicación con un enlace fijo que
+# siempre apunta al último APK compilado.
 on:
   workflow_dispatch:
   push:
@@ -13,6 +13,14 @@ on:
       - 'vendor/**'
       - 'mobile/**'
       - '.github/workflows/apk.yml'
+
+permissions:
+  contents: write
+
+# una compilación a la vez: si empieza otra, la anterior se cancela
+concurrency:
+  group: reper-apk
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -43,7 +51,8 @@ jobs:
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # sin consola interactiva: cualquier pregunta falla en vez de colgarse
+          ./gradlew assembleDebug --no-daemon --console=plain < /dev/null
 
       - name: Publicar el APK
         uses: actions/upload-artifact@v4
@@ -51,3 +60,13 @@ jobs:
           name: mtm-escritura-apk
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Dejar el APK descargable por enlace
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk mtm-escritura.apk
+          gh release delete escritura-latest --yes --cleanup-tag || true
+          gh release create escritura-latest mtm-escritura.apk \
+            --title "MTM Escritura (último APK)" \
+            --notes "APK del commit ${{ github.sha }}, rama ${{ github.ref_name }}."

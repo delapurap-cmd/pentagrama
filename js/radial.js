@@ -9,19 +9,69 @@ const Radial = (() => {
   'use strict';
 
   const GLYPH = {
-    note: { w: '\uE1D2', h: '\uE1D3', q: '\uE1D5', '8': '\uE1D7', '16': '\uE1D9' },
-    rest: { w: '\uE4E3', h: '\uE4E4', q: '\uE4E5', '8': '\uE4E6', '16': '\uE4E7' },
+    note: { w: '\uE1D2', h: '\uE1D3', q: '\uE1D5', '8': '\uE1D7', '16': '\uE1D9', '32': '\uE1DB', '64': '\uE1DD' },
+    rest: { w: '\uE4E3', h: '\uE4E4', q: '\uE4E5', '8': '\uE4E6', '16': '\uE4E7', '32': '\uE4E8', '64': '\uE4E9' },
     dot: '\uE1E7', sharp: '\uE262', flat: '\uE260', natural: '\uE261'
   };
-  const ORDER = ['w', 'h', 'q', '8', '16'];
-  const NAMES = { w: 'Redonda', h: 'Blanca', q: 'Negra', '8': 'Corchea', '16': 'Semicorchea' };
+  const ORDER = ['w', 'h', 'q', '8', '16', '32', '64'];
+  const NAMES = { w: 'Redonda', h: 'Blanca', q: 'Negra', '8': 'Corchea', '16': 'Semicorchea',
+    '32': 'Fusa', '64': 'Semifusa' };
+  /* Intervalos que se ofrecen para engordar un acorde, en grados de la escala.
+     Tercera, quinta y séptima cubren casi todo lo que se escribe a mano; el
+     resto se construye repitiendo. */
+  const INTERVALOS = [
+    { grados: 2, nombre: '3ª' },
+    { grados: 4, nombre: '5ª' },
+    { grados: 6, nombre: '7ª' },
+    { grados: 7, nombre: '8ª' }
+  ];
+  const MATICES = ['pp', 'p', 'mp', 'mf', 'f', 'ff'];
+  /* Los matices se dibujan con la Bravura, como en la partitura, para que lo
+     que se elige y lo que se ve sean el mismo signo. */
+  const GL_MATIZ = { p: '', m: '', f: '' };
+  const matizGl = (m) => m.split('').map((c) => GL_MATIZ[c] || c).join('');
+
+  const ARTICULACIONES = [
+    { id: 'staccato',     gl: '', nombre: 'Picado' },
+    { id: 'acento',       gl: '', nombre: 'Acento' },
+    { id: 'tenuto',       gl: '', nombre: 'Tenuto' },
+    { id: 'marcato',      gl: '', nombre: 'Marcato' },
+    { id: 'staccatissimo',gl: '', nombre: 'Picado corto' },
+    { id: 'calderon',     gl: '', nombre: 'Calderón' }
+  ];
+  const GRUPOS = [
+    { num: 3, den: 2, nombre: 'Tresillo' },
+    { num: 5, den: 4, nombre: 'Quintillo' },
+    { num: 6, den: 4, nombre: 'Seisillo' },
+    { num: 7, den: 4, nombre: 'Septillo' }
+  ];
+
+  /* La bandeja tiene más de lo que cabe en una fila, así que se reparte en
+     pestañas. La de «nota» es la de siempre: quien no busque acordes ni
+     matices no nota el cambio. */
+  const PAGINAS = [
+    { id: 'nota',   label: 'Nota' },
+    { id: 'acorde', label: 'Acorde' },
+    { id: 'matiz',  label: 'Matiz' },
+    { id: 'signos', label: 'Signos' },
+    { id: 'grupo',  label: 'Grupo' }
+  ];
 
   const small = () => window.innerWidth < 560;
-  const radius = () => (small() ? 56 : 59);   // radio donde se colocan los botones
+  const radius = () => (small() ? 63 : 66);   // radio donde se colocan los botones
+  /* Con siete figuras por lado el aro se llena: se reparten en 150°, que a
+     este radio deja 28 px entre centros —más que el botón— y guarda hueco
+     arriba y abajo para que los dos arcos no se toquen. */
+  const ARCO = 150;
+  const INICIO_FIGURAS = 255;                 // hacia arriba a la izquierda
+  const INICIO_SILENCIOS = -75;               // hacia arriba a la derecha
 
   let wrap, disc, handlers = {}, state = {};
   let moved = false;                           // el usuario lo ha reubicado
+  let page = 'nota';                           // pestaña visible de la bandeja
   let pos = { x: 0, y: 0 };
+
+  const escapa = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
   function build() {
     wrap = document.createElement('div');
@@ -40,7 +90,7 @@ const Radial = (() => {
       if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
       if (e.key === 'ArrowUp') { e.preventDefault(); fire('step', 1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); fire('step', -1); }
-      const map = { '1': 'w', '2': 'h', '3': 'q', '4': '8', '5': '16' };
+      const map = { '1': 'w', '2': 'h', '3': 'q', '4': '8', '5': '16', '6': '32', '7': '64' };
       if (map[e.key]) { e.preventDefault(); fire('figure', map[e.key]); }
     });
   }
@@ -93,8 +143,9 @@ const Radial = (() => {
     const R = radius();
 
     // Figuras: arco izquierdo (de arriba hacia abajo)
+    const paso = ARCO / Math.max(1, ORDER.length - 1);
     ORDER.forEach((id, i) => {
-      const p = polar(238 - i * 29, R);
+      const p = polar(INICIO_FIGURAS - i * paso, R);
       const on = state.kind === 'note' && state.dur === id;
       const b = btn('', `<span class="gl">${GLYPH.note[id]}</span>`, p.x, p.y, NAMES[id], on);
       b.addEventListener('click', () => fire('figure', id));
@@ -103,7 +154,7 @@ const Radial = (() => {
 
     // Silencios: arco derecho
     ORDER.forEach((id, i) => {
-      const p = polar(-58 + i * 29, R);
+      const p = polar(INICIO_SILENCIOS + i * paso, R);
       const on = state.kind === 'rest' && state.dur === id;
       const b = btn('', `<span class="gl sm">${GLYPH.rest[id]}</span>`, p.x, p.y, 'Silencio de ' + NAMES[id].toLowerCase(), on);
       b.addEventListener('click', () => fire('rest', id));
@@ -136,28 +187,80 @@ const Radial = (() => {
       '<path d="M12 6.5v11M6.5 12h11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>';
     disc.appendChild(grip);
 
-    // Bandeja inferior: puntillo, alteraciones, borrar
+    // Bandeja inferior: pestañas arriba, lo que cada una ofrece abajo
     const tray = document.createElement('div');
     tray.className = 'tray';
-    const mk = (html, title, on, fn, extra = '') => {
+    const tabs = document.createElement('div');
+    tabs.className = 'row tabs';
+    const fila = document.createElement('div');
+    fila.className = 'row';
+    tray.appendChild(tabs);
+    tray.appendChild(fila);
+
+    const mk = (destino, html, title, on, fn, extra = '') => {
       const b = document.createElement('button');
       b.innerHTML = html; b.title = title; b.setAttribute('aria-label', title);
       if (on) b.classList.add('on');
       if (extra) b.classList.add(extra);
       b.addEventListener('click', fn);
-      tray.appendChild(b);
+      destino.appendChild(b);
+      return b;
     };
-    mk(`<span class="gl">${GLYPH.dot}</span>`, 'Puntillo', !!state.dots, () => fire('dot'));
-    if (state.kind === 'note') {
-      mk('⌒', 'Ligar con la siguiente', !!state.tie, () => fire('tie'));
+    const esNota = state.kind === 'note';
+
+    PAGINAS.forEach((p) => {
+      // en un silencio sólo tienen sentido la página de nota y la de grupo
+      if (!esNota && p.id !== 'nota' && p.id !== 'grupo') return;
+      mk(tabs, p.label, p.label, page === p.id, () => { page = p.id; paint(); }, 'tab');
+    });
+    mk(tabs, '✕', 'Borrar', false, () => fire('delete'), 'danger');
+    mk(tabs, '✓', 'Listo', false, () => close(), 'ok');
+
+    if (!esNota && page !== 'nota' && page !== 'grupo') page = 'nota';
+
+    if (page === 'nota') {
+      const dots = state.dots || 0;
+      mk(fila, `<span class="gl">${GLYPH.dot}</span>${dots > 1 ? '<sup>2</sup>' : ''}`,
+        'Puntillo (se repite para el doble)', !!dots, () => fire('dot'));
+      if (esNota) {
+        mk(fila, '⌒', 'Ligar con la siguiente', !!state.tie, () => fire('tie'));
+        mk(fila, `<span class="gl">${GLYPH.flat}</span>`, 'Bemol', state.acc === 'b', () => fire('acc', 'b'));
+        mk(fila, `<span class="gl">${GLYPH.natural}</span>`, 'Becuadro', state.acc === 'n', () => fire('acc', 'n'));
+        mk(fila, `<span class="gl">${GLYPH.sharp}</span>`, 'Sostenido', state.acc === '#', () => fire('acc', '#'));
+      }
+    } else if (page === 'acorde') {
+      const grados = state.grados || [];          // grados ya presentes, relativos a la base
+      INTERVALOS.forEach((iv) => {
+        mk(fila, iv.nombre, 'Añadir o quitar la ' + iv.nombre, grados.indexOf(iv.grados) >= 0,
+          () => fire('acorde', iv.grados));
+      });
+      mk(fila, '−', 'Quitar la nota más aguda del acorde', false, () => fire('acordeQuitar'));
+      const n = grados.length;
+      const info = document.createElement('span');
+      info.className = 'nota-info';
+      info.textContent = n ? (n + 1) + ' notas' : 'sola';
+      fila.appendChild(info);
+    } else if (page === 'matiz') {
+      MATICES.forEach((m) => {
+        mk(fila, `<span class="gl">${matizGl(m)}</span>`, m, state.matiz === m, () => fire('matiz', m));
+      });
+      mk(fila, '∅', 'Sin matiz', !state.matiz, () => fire('matiz', null));
+    } else if (page === 'signos') {
+      mk(fila, state.cifrado ? escapa(state.cifrado) : 'C7', 'Cifrado de acorde',
+        !!state.cifrado, () => fire('cifrado'), 'ancho');
+      const art = state.art || [];
+      ARTICULACIONES.forEach((a) => {
+        mk(fila, `<span class="gl">${a.gl}</span>`, a.nombre, art.indexOf(a.id) >= 0, () => fire('art', a.id));
+      });
+    } else if (page === 'grupo') {
+      GRUPOS.forEach((g) => {
+        const on = !!(state.tup && state.tup.num === g.num);
+        mk(fila, String(g.num), g.nombre + ' (' + g.num + ' en el tiempo de ' + g.den + ')', on,
+          () => fire('grupo', on ? null : g));
+      });
+      mk(fila, '∅', 'Deshacer el grupo', !state.tup, () => fire('grupo', null));
     }
-    if (state.kind === 'note') {
-      mk(`<span class="gl">${GLYPH.flat}</span>`, 'Bemol', state.acc === 'b', () => fire('acc', 'b'));
-      mk(`<span class="gl">${GLYPH.natural}</span>`, 'Becuadro', state.acc === 'n', () => fire('acc', 'n'));
-      mk(`<span class="gl">${GLYPH.sharp}</span>`, 'Sostenido', state.acc === '#', () => fire('acc', '#'));
-    }
-    mk('✕', 'Borrar', false, () => fire('delete'), 'danger');
-    mk('✓', 'Listo', false, () => close());
+
     disc.appendChild(tray);
     adjustTray();
   }
@@ -191,6 +294,7 @@ const Radial = (() => {
     handlers = h || {};
     state = st || {};
     moved = false;
+    page = 'nota';
     wrap.classList.add('open');   // visible antes de medir la bandeja
     place(at.x, at.y);
     paint();

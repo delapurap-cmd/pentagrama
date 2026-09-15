@@ -59,6 +59,7 @@
         measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
       });
       bindHeadFields();
+      $('#chipClef').textContent = Model.clefById(state.score.clef).label;
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
@@ -168,12 +169,20 @@
   }
 
   function radialState(ev) {
+    const alturas = Model.alturas(ev);
     return {
       kind: ev.kind,
       dur: ev.dur,
-      dots: ev.dots,
+      dots: ev.dots || 0,
       acc: ev.acc,
       tie: !!ev.tie,
+      // grados que ya están sonando por encima de la base, para marcar los
+      // intervalos que el acorde ya tiene
+      grados: alturas.slice(1).map((n) => n.di - alturas[0].di),
+      matiz: ev.matiz || null,
+      cifrado: ev.cifrado || '',
+      art: ev.art || [],
+      tup: ev.tup || null,
       pitch: ev.kind === 'note' ? pitchName(ev) : ''
     };
   }
@@ -221,7 +230,8 @@
       });
     },
     dot() {
-      mutate((ev) => { ev.dots = ev.dots ? 0 : 1; });   // sólo afecta a esta nota
+      // se cicla 0 → 1 → 2 → 0: el doble puntillo se pide repitiendo el botón
+      mutate((ev) => { ev.dots = ((ev.dots || 0) + 1) % 3; });
     },
     acc(a) {
       mutate((ev) => { if (ev.kind === 'note') ev.acc = ev.acc === a ? null : a; });
@@ -244,6 +254,71 @@
         return;
       }
       mutate((ev) => { ev.tie = !ev.tie; });
+    },
+    /** Añade o quita la nota que está a `grados` grados de la más grave. */
+    acorde(grados) {
+      mutate((ev) => {
+        if (ev.kind !== 'note') return;
+        const base = Model.alturas(ev)[0].di;
+        const di = base + grados;
+        if (di > 48 || di < 20) { toast('Esa nota se sale del pentagrama'); return; }
+        if (!Model.quitarAltura(ev, di)) Model.anadirAltura(ev, di);
+      });
+    },
+    acordeQuitar() {
+      mutate((ev) => {
+        const alt = Model.alturas(ev);
+        if (alt.length < 2) { toast('Ya es una nota sola'); return; }
+        Model.quitarAltura(ev, alt[alt.length - 1].di);
+      });
+    },
+    matiz(m) {
+      mutate((ev) => { if (m) ev.matiz = m; else delete ev.matiz; });
+    },
+    art(a) {
+      mutate((ev) => {
+        const lista = ev.art || [];
+        ev.art = lista.indexOf(a) >= 0 ? lista.filter((x) => x !== a) : lista.concat([a]);
+        if (!ev.art.length) delete ev.art;
+      });
+    },
+    cifrado() {
+      const found = currentEvent();
+      if (!found) return;
+      const v = prompt('Cifrado del acorde (vacío para quitarlo)', found.ev.cifrado || '');
+      if (v == null) return;
+      mutate((ev) => { const t = v.trim(); if (t) ev.cifrado = t; else delete ev.cifrado; });
+    },
+    /** Marca —o deshace— un grupo irregular a partir de la nota seleccionada. */
+    grupo(g) {
+      const found = currentEvent();
+      if (!found) return;
+      snapshot();
+      const m = state.score.measures[found.mi];
+      if (!g) {
+        const id = found.ev.tup && found.ev.tup.id;
+        if (id) m.events.forEach((ev) => { if (ev.tup && ev.tup.id === id) delete ev.tup; });
+      } else {
+        // el grupo se forma con esta nota y las que le siguen; si no hay
+        // bastantes en el compás, se escriben copiándola
+        const id = Model.uid();
+        for (let k = 0; k < g.num; k++) {
+          let ev = m.events[found.index + k];
+          if (!ev) {
+            ev = found.ev.kind === 'rest'
+              ? Model.rest(found.ev.dur, found.ev.dots || 0)
+              : Model.note(found.ev.di, found.ev.dur, found.ev.dots || 0);
+            m.events.splice(found.index + k, 0, ev);
+          }
+          ev.tup = { id, num: g.num, den: g.den };
+        }
+      }
+      Model.reflow(state.score);
+      render();
+      requestAnimationFrame(() => {
+        const f2 = currentEvent();
+        if (f2) Radial.update(radialState(f2.ev), Engrave.screenPosOf(f2.ev.id));
+      });
     },
     next() { hop(1); },
     prev() { hop(-1); },
@@ -432,6 +507,32 @@
       { sep: true },
       { label: 'Partitura nueva', hint: '4 sistemas', fn: () => newScore(4) }
     ], e.currentTarget));
+
+    $('#btnClef').addEventListener('click', (e) => {
+      const found = currentEvent();
+      const items = [{ head: 'Clave de la partitura' }];
+      Model.CLEFS.forEach((c) => items.push({
+        label: c.label,
+        sel: (state.score.clef || 'treble') === c.id,
+        fn: () => { snapshot(); state.score.clef = c.id; render(); }
+      }));
+      if (found) {
+        // un cambio de clave a mitad de obra se guarda en el compás, no en la
+        // partitura, y rige desde ahí hasta el siguiente cambio
+        const m = state.score.measures[found.mi];
+        items.push({ sep: true }, { head: 'Cambio desde el compás ' + (found.mi + 1) });
+        Model.CLEFS.forEach((c) => items.push({
+          label: c.label,
+          sel: m.clef === c.id,
+          fn: () => {
+            snapshot();
+            if (m.clef === c.id) delete m.clef; else m.clef = c.id;
+            render();
+          }
+        }));
+      }
+      menu(items, e.currentTarget);
+    });
 
     $('#btnKey').addEventListener('click', (e) => menu(
       Model.KEYS.map((k) => ({
@@ -679,6 +780,57 @@
   }
 
   /* ---------------- Exportar ---------------- */
+
+  const CLAVE_XML = {
+    treble: '<sign>G</sign><line>2</line>',
+    'treble-8v': '<sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change>',
+    bass: '<sign>F</sign><line>4</line>',
+    alto: '<sign>C</sign><line>3</line>',
+    tenor: '<sign>C</sign><line>4</line>'
+  };
+  const claveXML = (clef) =>
+    `        <clef>${CLAVE_XML[clef.id] || CLAVE_XML.treble}</clef>\n`;
+
+  /** El cifrado va como <harmony>, que es lo que leen MuseScore y Sibelius. */
+  function cifradoXML(texto) {
+    const m = /^([A-G])([#b]?)(.*)$/.exec(String(texto).trim());
+    if (!m) return '';
+    const alter = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0;
+    const resto = m[3].trim();
+    const KIND = { '': 'major', m: 'minor', min: 'minor', '-': 'minor', maj7: 'major-seventh',
+      M7: 'major-seventh', 7: 'dominant', m7: 'minor-seventh', dim: 'diminished',
+      '°': 'diminished', aug: 'augmented', '+': 'augmented', sus4: 'suspended-fourth',
+      sus2: 'suspended-second', 6: 'major-sixth', m6: 'minor-sixth', 9: 'dominant-ninth' };
+    const kind = KIND[resto] || 'other';
+    return '      <harmony><root>' +
+      `<root-step>${m[1]}</root-step>` + (alter ? `<root-alter>${alter}</root-alter>` : '') +
+      `</root><kind text="${escXml(resto)}">${kind}</kind></harmony>\n`;
+  }
+
+  const matizXML = (t) =>
+    `      <direction placement="below"><direction-type><dynamics><${t}/></dynamics></direction-type></direction>\n`;
+
+  const ART_XML = { staccato: 'staccato', staccatissimo: 'staccatissimo', acento: 'accent',
+    marcato: 'strong-accent', tenuto: 'tenuto' };
+  function artXML(lista) {
+    const dentro = lista.map((a) => ART_XML[a]).filter(Boolean)
+      .map((a) => `<${a}/>`).join('');
+    const calderon = lista.includes('calderon') ? '<fermata/>' : '';
+    return (dentro ? `<articulations>${dentro}</articulations>` : '') + calderon;
+  }
+
+  /** <tuplet> abre en la primera nota del grupo y cierra en la última. */
+  function tupletXML(ev, evs) {
+    const mismos = evs.filter((x) => x.tup && x.tup.id === ev.tup.id);
+    if (mismos.length < 2) return '';
+    if (mismos[0] === ev) return '<tuplet type="start" bracket="yes"/>';
+    if (mismos[mismos.length - 1] === ev) return '<tuplet type="stop"/>';
+    return '';
+  }
+
+  const escXml = (t) => String(t).replace(/[&<>"]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
   async function download(name, data, type) {
     // En la app de Android el archivo se guarda y se comparte con el sistema.
     if (typeof data === 'string' && await Native.saveFile(name, data, type)) return;
@@ -777,7 +929,7 @@
           `        <divisions>${div}</divisions>\n` +
           `        <key><fifths>${Model.keyBySpec(s.key).fifths}</fifths></key>\n` +
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
-          '        <clef><sign>G</sign><line>2</line></clef>\n' +
+          claveXML(Model.clefAt(s, 0)) +
           '      </attributes>\n' +
           `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
       }
@@ -785,25 +937,38 @@
       evs.forEach((ev) => {
         const d = Model.evTicks(ev);
         const type = Model.durById(ev.dur).xml;
+        const puntos = '<dot/>'.repeat(ev.dots || 0);
         if (ev.kind === 'rest') {
           xml += '      <note>' + (ev.measureRest ? '<rest measure="yes"/>' : '<rest/>') +
-            `<duration>${d}</duration><type>${type}</type>${ev.dots ? '<dot/>' : ''}</note>\n`;
+            `<duration>${d}</duration><type>${type}</type>${puntos}</note>\n`;
         } else {
-          const letter = Model.diLetter(ev.di);
-          const alter = ev.acc == null ? Model.keyAlter(s.key, letter) : (ALT[ev.acc] || 0);
           const prev = tiedFrom;
           tiedFrom = !!ev.tie;
-          xml += '      <note><pitch>' +
-            `<step>${letter.toUpperCase()}</step>` +
-            (alter ? `<alter>${alter}</alter>` : '') +
-            `<octave>${Model.diOctave(ev.di)}</octave></pitch>` +
-            (prev ? '<tie type="stop"/>' : '') + (ev.tie ? '<tie type="start"/>' : '') +
-            `<duration>${d}</duration><type>${type}</type>${ev.dots ? '<dot/>' : ''}` +
-            (ev.acc ? `<accidental>${({ '#': 'sharp', b: 'flat', n: 'natural' })[ev.acc]}</accidental>` : '') +
-            (prev || ev.tie
-              ? '<notations>' + (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') + '</notations>'
-              : '') +
-            '</note>\n';
+          if (ev.cifrado) xml += cifradoXML(ev.cifrado);
+          if (ev.matiz) xml += matizXML(ev.matiz);
+          // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
+          // adelante llevan <chord/> y comparten la duración de la primera.
+          Model.alturas(ev).forEach((n, iN) => {
+            const letter = Model.diLetter(n.di);
+            const alter = n.acc == null ? Model.keyAlter(s.key, letter) : (ALT[n.acc] || 0);
+            const base = iN === 0;
+            const notaciones =
+              (base && (prev || ev.tie) ? (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') : '') +
+              (base && ev.tup && ev.tup.id ? tupletXML(ev, evs) : '') +
+              (base && ev.art ? artXML(ev.art) : '');
+            xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
+              `<step>${letter.toUpperCase()}</step>` +
+              (alter ? `<alter>${alter}</alter>` : '') +
+              `<octave>${Model.diOctave(n.di)}</octave></pitch>` +
+              (base && prev ? '<tie type="stop"/>' : '') + (base && ev.tie ? '<tie type="start"/>' : '') +
+              `<duration>${d}</duration><type>${type}</type>${puntos}` +
+              (n.acc ? `<accidental>${({ '#': 'sharp', b: 'flat', n: 'natural', '##': 'double-sharp', bb: 'flat-flat' })[n.acc] || 'natural'}</accidental>` : '') +
+              (ev.tup && ev.tup.id
+                ? `<time-modification><actual-notes>${ev.tup.num}</actual-notes><normal-notes>${ev.tup.den}</normal-notes></time-modification>`
+                : '') +
+              (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
+              '</note>\n';
+          });
         }
       });
       xml += '    </measure>\n';

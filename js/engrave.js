@@ -9,7 +9,8 @@ const Engrave = (() => {
   'use strict';
 
   const VF = window.VexFlow || {};
-  const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot, StaveTie } = VF;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot, StaveTie,
+          Tuplet, ChordSymbol, Annotation, Articulation } = VF;
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
   const PAGE = { w: 1150, h: 1626 };
@@ -28,24 +29,130 @@ const Engrave = (() => {
 
   const durStr = (ev) => ev.dur + (ev.kind === 'rest' ? 'r' : '');
 
-  function buildNote(ev) {
+  /* Los matices se dibujan con la propia fuente musical: en Bravura cada letra
+     tiene su signo —p es E520, m E521, f E522— y encadenarlos da «mf», «pp» o
+     «sfz» con la forma de una partitura de verdad, no con una cursiva. */
+  const GLIFO_MATIZ = { p: '\uE520', m: '\uE521', f: '\uE522', r: '\uE523', s: '\uE524', z: '\uE525', n: '\uE526' };
+  const matizEnBravura = (t) => String(t).split('').map((c) => GLIFO_MATIZ[c] || c).join('');
+
+  /* Códigos de articulación de VexFlow. Las que van pegadas a la cabeza se
+     colocan en el lado contrario a la plica, como en cualquier edición; el
+     marcato y el calderón van siempre encima, que es donde se leen. */
+  const ARTICULACIONES = {
+    staccato: 'a.', staccatissimo: 'av', acento: 'a>', marcato: 'a^',
+    tenuto: 'a-', calderon: 'a@a'
+  };
+  const SIEMPRE_ENCIMA = { marcato: true, calderon: true };
+
+  /* El cifrado se escribe con una serif, pero las alteraciones y el signo de
+     aumentado sólo existen en la fuente musical: cada trozo lleva la suya. */
+  const SERIF = '"Iowan Old Style","Palatino Linotype",Georgia,serif';
+  const GLIFO_CIFRADO = { '#': '', b: '', '+': '', '/': '' };
+  function ponerCifrado(cs, txt) {
+    const s = String(txt);
+    let buf = '';
+    const suelta = () => { if (buf) { cs.setFont(SERIF, 12, 600); cs.addText(buf); buf = ''; } };
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      // una «b» inicial es la nota Si, no un bemol
+      const g = (c === 'b' && i === 0) ? null : GLIFO_CIFRADO[c];
+      if (g) { suelta(); cs.setFont('Bravura,Academico,serif', 12, 400); cs.addText(g); }
+      else buf += c;
+    }
+    suelta();
+  }
+
+  function buildNote(ev, clef) {
     const isRest = ev.kind === 'rest';
+    const notas = isRest ? [] : Model.alturas(ev);
     const opts = {
-      keys: [isRest ? (ev.measureRest ? 'd/5' : 'b/4') : Model.diToKeyStr(ev.di)],
+      keys: isRest
+        ? [ev.measureRest ? 'd/5' : 'b/4']
+        : notas.map((n) => Model.diToKeyStr(n.di)),
       duration: durStr(ev),
+      clef: clef ? clef.vex : 'treble',
       autoStem: !isRest
     };
     if (ev.measureRest) opts.alignCenter = true;
     const n = new StaveNote(opts);
     if (ev.dots) Dot.buildAndAttach([n], { all: true });
-    if (!isRest && ev.acc) n.addModifier(new Accidental(ev.acc), 0);
+    // Una alteración por cabeza, y en su índice: en un acorde no valen todas
+    // pegadas a la primera.
+    if (!isRest) notas.forEach((alt, i) => { if (alt.acc) n.addModifier(new Accidental(alt.acc), i); });
+
+    /* Las articulaciones que van pegadas a la cabeza se ponen en el lado
+       contrario a la plica; el marcato y el calderón, siempre encima. Se
+       calcula antes que el cifrado porque VexFlow no las apila entre sí y
+       hay que apartar el cifrado a mano. */
+    const P = VF && VF.Modifier ? VF.Modifier.Position : null;
+    const plicaArriba = n.getStemDirection ? n.getStemDirection() === 1 : true;
+    let encima = 0;
+    if (!isRest && ev.art && ev.art.length && Articulation && P) {
+      ev.art.forEach((nombre) => {
+        const cod = ARTICULACIONES[nombre];
+        if (!cod) return;
+        const arriba = SIEMPRE_ENCIMA[nombre] || !plicaArriba;
+        if (arriba) encima++;
+        try {
+          n.addModifier(new Articulation(cod).setPosition(arriba ? P.ABOVE : P.BELOW), 0);
+        } catch (e) { }
+      });
+    }
+
+    if (!isRest && ev.cifrado && ChordSymbol) {
+      /* Sin decirle la fuente, el cifrado hereda la musical de la hoja y la
+         «C» de Do sale dibujada como un glifo de Bravura: por eso `ponerCifrado`
+         reparte cada trozo con la suya, y lo hace antes de añadirlo, que es
+         cuando el bloque se queda con la fuente que hubiera puesta. */
+      try {
+        const cs = new ChordSymbol();
+        ponerCifrado(cs, ev.cifrado);
+        /* El cifrado manda sobre todo lo demás: si la nota lleva signos
+           encima, hay que subirlo. `setYShift` del modificador no vale —
+           `draw` lo ignora y toma la altura del pentagrama—, así que se
+           desplaza cada trozo, que es lo que sí se dibuja movido. */
+        if (encima) cs.symbolBlocks.forEach((b) => b.setYShift(b.getYShift() - 15 * encima));
+        n.addModifier(cs, 0);
+      } catch (e) { }
+    }
+    if (ev.matiz && Annotation) {
+      try {
+        const a = new Annotation(matizEnBravura(ev.matiz))
+          .setFont('Bravura,Academico,serif', 22)
+          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+        n.addModifier(a, 0);
+      } catch (e) { }
+    }
     return n;
+  }
+
+  /** Agrupa los eventos consecutivos que comparten grupo irregular. */
+  function construirGrupos(all, notes) {
+    if (!Tuplet) return [];
+    const out = [];
+    let i = 0;
+    while (i < all.length) {
+      const t = all[i].tup;
+      if (!t || !t.id) { i++; continue; }
+      let j = i;
+      while (j + 1 < all.length && all[j + 1].tup && all[j + 1].tup.id === t.id) j++;
+      if (j > i) {
+        try {
+          out.push(new Tuplet(notes.slice(i, j + 1), {
+            numNotes: t.num || 3, notesOccupied: t.den || 2
+          }));
+        } catch (e) { }
+      }
+      i = j + 1;
+    }
+    return out;
   }
 
   /** Ancho extra del primer compás de cada sistema (clave, armadura, compás). */
   function leadWidth(score, isFirstSystem) {
     const fifths = Math.abs(Model.keyBySpec(score.key).fifths);
-    return 54 + fifths * 14 + (isFirstSystem ? 38 : 0);
+    const clef = Model.clefAt(score, 0);
+    return 54 + fifths * 14 + (isFirstSystem ? 38 : 0) + (clef.ottava ? 10 : 0);
   }
 
   /** Dibuja la partitura completa dentro de `root`. */
@@ -65,8 +172,23 @@ const Engrave = (() => {
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
     }
 
+    /* Cuánto aire pide un sistema por encima y por debajo del pentagrama.
+       Los cifrados van arriba y los matices abajo: sin esto, el «mf» de un
+       sistema y el «G7» del siguiente se pisan en el hueco de en medio. */
+    const holgura = (sys) => {
+      let arriba = 0, abajo = 0;
+      sys.measures.forEach((m) => m.events.forEach((ev) => {
+        if (ev.cifrado) arriba = Math.max(arriba, 24);
+        else if (ev.art && ev.art.length) arriba = Math.max(arriba, 12);
+        if (ev.matiz) abajo = Math.max(abajo, 20);
+      }));
+      return { arriba, abajo };
+    };
+
     try { pages.forEach((systems, pageIndex) => {
-      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight) : PAGE.h;
+      const holguras = systems.map(holgura);
+      const extra = holguras.reduce((s, h) => s + h.arriba + h.abajo, 0);
+      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight + extra) : PAGE.h;
       const pageEl = document.createElement('div');
       pageEl.className = 'sheet';
       pageEl.style.aspectRatio = `${pageWidth} / ${pageHeight}`;
@@ -97,11 +219,13 @@ const Engrave = (() => {
 
       const top = compact ? 13 : (pageIndex === 0 ? M.topFirst : M.top);
 
+      let y = top;
       systems.forEach((sys, sysIndex) => {
+        y += holguras[sysIndex].arriba;
         drawSystem(score, sys, {
           ctx, svg, pageIndex,
           systemKey: pageIndex + ':' + sysIndex,
-          y: top + sysIndex * systemHeight,
+          y,
           x: marginLeft,
           width: pageWidth - marginLeft - marginRight,
           systemHeight,
@@ -110,6 +234,7 @@ const Engrave = (() => {
           playingId: opts.playingId,
           lastSystem: pageIndex === pages.length - 1 && sysIndex === systems.length - 1
         });
+        y += systemHeight + holguras[sysIndex].abajo;
       });
     }); } catch (error) {
       console.warn('VexFlow no pudo dibujar; usando pentagrama compatible.', error);
@@ -162,14 +287,20 @@ const Engrave = (() => {
           const noteMap = [];
           all.forEach((ev, i) => {
             const x = mx0 + (i + 1) * measureW / (all.length + 1);
-            const noteY = y + 20 - ((ev.di == null ? Model.MIDDLE_LINE_DI : ev.di) - Model.MIDDLE_LINE_DI) * 5;
+            const centro = Model.clefAt(score, sys.from + mi).midLine;
+            const alturaY = (di) => y + 20 - (di - centro) * 5;
             const color = ev.id === opts.selectedId ? COLORS.selected : ev.id === opts.playingId ? COLORS.playing : COLORS.ink;
             if (ev.kind === 'rest') {
               const rest = make('rect', { x: x - 5, y: y + 17, width: 10, height: 5, rx: 1, fill: color, opacity: ev.auto ? .34 : 1 });
               svg.appendChild(rest);
             } else {
-              svg.appendChild(make('ellipse', { cx: x, cy: noteY, rx: 6, ry: 4.5, fill: color, transform: `rotate(-18 ${x} ${noteY})` }));
-              svg.appendChild(make('line', { x1: x + 5, y1: noteY, x2: x + 5, y2: noteY - 30, stroke: color, 'stroke-width': 2 }));
+              const alt = Model.alturas(ev);
+              alt.forEach((n) => {
+                const ny = alturaY(n.di);
+                svg.appendChild(make('ellipse', { cx: x, cy: ny, rx: 6, ry: 4.5, fill: color, transform: `rotate(-18 ${x} ${ny})` }));
+              });
+              const top = alturaY(alt[alt.length - 1].di), bot = alturaY(alt[0].di);
+              svg.appendChild(make('line', { x1: x + 5, y1: bot, x2: x + 5, y2: top - 30, stroke: color, 'stroke-width': 2 }));
             }
             noteMap.push({ ev, index: i, real: i < measure.events.length, x });
           });
@@ -210,18 +341,25 @@ const Engrave = (() => {
 
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
+      const mi = sys.from + i;
+      const clef = Model.clefAt(score, mi);
+      const clefPrevia = mi > 0 ? Model.clefAt(score, mi - 1) : null;
       const stave = new Stave(x, o.y, w);
       if (i === 0) {
-        stave.addClef('treble');
+        stave.addClef(clef.vex, undefined, clef.ottava);
         stave.addKeySignature(score.key);
         if (o.isFirstSystemOfScore) stave.addTimeSignature(Model.timeLabel(score.time));
+      } else if (clefPrevia && clefPrevia.id !== clef.id) {
+        // Cambio de clave a media línea: va pequeña y antes de la barra.
+        stave.addClef(clef.vex, 'small', clef.ottava);
       }
       if (i === measures.length - 1 && o.lastSystem) stave.setEndBarType(VF.Barline.type.END);
       stave.setContext(o.ctx).draw();
 
       const auto = Model.autoRests(m, score.time);
       const all = m.events.concat(auto);
-      const notes = all.map(buildNote);
+      const notes = all.map((ev) => buildNote(ev, clef));
+      const grupos = construirGrupos(all, notes);
 
       all.forEach((ev, idx) => {
         if (ev.id === o.selectedId) notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
@@ -240,6 +378,7 @@ const Engrave = (() => {
         });
         voice.draw(o.ctx, stave);
         beams.forEach((b) => b.setContext(o.ctx).draw());
+        grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
         // los silencios automáticos se ven atenuados en pantalla (en papel, tinta normal)
         all.forEach((ev, idx) => {
           if (!ev.auto) return;
@@ -253,7 +392,8 @@ const Engrave = (() => {
       });
 
       hits.push({
-        mi: sys.from + i,
+        mi,
+        midLine: clef.midLine,
         pageIndex: o.pageIndex,
         svg: o.svg,
         systemHeight: o.systemHeight,
@@ -304,7 +444,11 @@ const Engrave = (() => {
 
     const midY = (best.yTop + best.yBottom) / 2;
     const step = best.spacing / 2;
-    const di = Model.MIDDLE_LINE_DI + Math.round((midY - bestP.y) / step);
+    // La tercera línea no es siempre Si4: en clave de fa es Re3. Sin esto,
+    // tocar el pentagrama escribía la nota equivocada en cuanto se cambiaba
+    // de clave.
+    const centro = best.midLine == null ? Model.MIDDLE_LINE_DI : best.midLine;
+    const di = centro + Math.round((midY - bestP.y) / step);
 
     let hitEvent = null, nearest = Infinity, insertIndex = 0;
     best.notes.forEach((n) => {
@@ -324,7 +468,12 @@ const Engrave = (() => {
         if (n.ev.id !== id) continue;
         const { r, k } = pageGeom(h.svg);
         const midY = (h.yTop + h.yBottom) / 2;
-        const y = n.ev.kind === 'rest' ? midY : midY - (n.ev.di - Model.MIDDLE_LINE_DI) * (h.spacing / 2);
+        const centro = h.midLine == null ? Model.MIDDLE_LINE_DI : h.midLine;
+        // En un acorde el círculo va sobre la cabeza más aguda, que es donde
+        // el dedo no tapa el resto.
+        const alt = Model.alturas(n.ev);
+        const diRef = n.ev.kind === 'rest' ? centro : (alt.length ? alt[alt.length - 1].di : n.ev.di);
+        const y = n.ev.kind === 'rest' ? midY : midY - (diRef - centro) * (h.spacing / 2);
         return { x: r.left + n.x * k, y: r.top + y * k };
       }
     }

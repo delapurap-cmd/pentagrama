@@ -26,18 +26,23 @@ const Midi = (() => {
     const events = [];            // { tick, data[] }
     let tick = 0, carry = null;
 
-    score.measures.forEach((m) => {
+    score.measures.forEach((m, mi) => {
       const cap = Model.capacity(score.time);
       let used = 0;
       m.events.forEach((ev) => {
         const d = Model.evTicks(ev);
         if (ev.kind === 'note') {
-          const midi = Model.midiOf(ev, score.key);
+          // Un acorde son varias notas a la vez. La ligadura sólo alarga la
+          // nota base, que es la que `tie` describe.
+          const clef = Model.clefAt(score, mi);
+          const midis = Model.midisOf(ev, score.key, clef);
+          const midi = midis[0];
           if (carry && carry.midi === midi) carry.end += d;       // ligadura
           else {
             if (carry) events.push(carry);
             carry = { midi, start: tick, end: tick + d };
           }
+          midis.slice(1).forEach((m2) => events.push({ midi: m2, start: tick, end: tick + d }));
           if (!ev.tie) { events.push(carry); carry = null; }
         } else if (carry) { events.push(carry); carry = null; }
         tick += d; used += d;

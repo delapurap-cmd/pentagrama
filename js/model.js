@@ -6,20 +6,53 @@
 const Model = (() => {
   'use strict';
 
-  const Q = 48;                       // ticks por negra
-  const WHOLE = Q * 4;                // 192
+  /* Ticks por negra. Eran 48, que bastaban mientras la figura más breve era la
+     semicorchea y el puntillo era uno solo. Con semifusas y doble puntillo ya
+     no: una fusa con dos puntillos salían 10,5 ticks, y un `<duration>` con
+     decimales es MusicXML inválido.
+
+     Hace falta que la negra sea divisible por:
+
+       64  la semifusa con doble puntillo son 7/64 de negra
+        9  tresillos, seisillos y grupos de nueve
+        5  quintillos
+        7  septillos
+
+     64 × 9 × 5 × 7 = 20160, y con eso salen exactos todos los grupos que se
+     escriben de verdad —3, 5, 6, 7, 9 y sus productos—. Para los raros de
+     verdad, 11 y 13, `evTicks` redondea: perder medio tick de veinte mil no
+     lo oye nadie, y lo que no se puede permitir es un `<duration>` con
+     decimales, que es MusicXML inválido.
+
+     Es un número grande de leer, así que se escribe factorizado y se ve de
+     dónde sale cada factor. Nada de esto se guarda en las partituras, que
+     almacenan figura y puntillos, así que subirlo no toca lo ya escrito. */
+  const Q = 64 * 9 * 5 * 7;           // 20160 ticks por negra
+  const WHOLE = Q * 4;
 
   /* ---------- Figuras ---------- */
   const DURS = [
-    { id: 'w',  ticks: WHOLE,   name: 'Redonda',      xml: 'whole'   },
-    { id: 'h',  ticks: WHOLE/2, name: 'Blanca',       xml: 'half'    },
-    { id: 'q',  ticks: Q,       name: 'Negra',        xml: 'quarter' },
-    { id: '8',  ticks: Q/2,     name: 'Corchea',      xml: 'eighth'  },
-    { id: '16', ticks: Q/4,     name: 'Semicorchea',  xml: '16th'    }
+    { id: 'w',  ticks: WHOLE,    name: 'Redonda',      xml: 'whole'   },
+    { id: 'h',  ticks: WHOLE/2,  name: 'Blanca',       xml: 'half'    },
+    { id: 'q',  ticks: Q,        name: 'Negra',        xml: 'quarter' },
+    { id: '8',  ticks: Q/2,      name: 'Corchea',      xml: 'eighth'  },
+    { id: '16', ticks: Q/4,      name: 'Semicorchea',  xml: '16th'    },
+    { id: '32', ticks: Q/8,      name: 'Fusa',         xml: '32nd'    },
+    { id: '64', ticks: Q/16,     name: 'Semifusa',     xml: '64th'    }
   ];
   const durById = (id) => DURS.find((d) => d.id === id) || DURS[2];
-  const durTicks = (id, dots) => durById(id).ticks * (dots ? 1.5 : 1);
-  const evTicks = (ev) => durTicks(ev.dur, ev.dots);
+
+  /* Puntillos: 1 añade la mitad, 2 añade además la cuarta parte. El factor es
+     2 - 1/2^n, que da 1, 1,5 y 1,75. Con negra = 48 la semifusa vale 3 ticks y
+     el doble puntillo de una corchea 42: todo sigue siendo entero. */
+  const dotFactor = (dots) => 2 - Math.pow(2, -(dots || 0));
+  const durTicks = (id, dots) => durById(id).ticks * dotFactor(dots);
+
+  /* Grupo irregular: `ev.tup = {id, num, den}` — num notas en el tiempo de den.
+     La rejilla ya lo aguanta sin redondeos: con negra = 48, una corchea de
+     tresillo son 16 ticks justos y una negra de tresillo, 32. */
+  const tupFactor = (ev) => (ev && ev.tup && ev.tup.num ? ev.tup.den / ev.tup.num : 1);
+  const evTicks = (ev) => Math.round(durTicks(ev.dur, ev.dots) * tupFactor(ev));
 
   /* ---------- Armaduras (clave de sol) ---------- */
   const KEYS = [
@@ -65,6 +98,29 @@ const Model = (() => {
   /* ---------- Alturas ----------
      di = índice diatónico: octava * 7 + letra (do=0 … si=6).
      Do4 = 28, Si4 (3ª línea en clave de sol) = 34.                          */
+  /* ---------- Claves ----------
+     `midLine` es el índice diatónico que cae en la tercera línea, que es lo
+     único que el dibujo necesita saber para colocar una altura. En clave de
+     sol es Si4 (34); en la de fa, Re3 (22). La de sol con el 8 debajo suena
+     una octava más grave pero se escribe igual, así que su línea es la misma
+     y sólo cambia lo que se oye: por eso lleva `octava`. */
+  const CLEFS = [
+    { id: 'treble',    vex: 'treble',    label: 'Sol',        midLine: 34, octava: 0 },
+    { id: 'treble-8v', vex: 'treble',    label: 'Sol 8ª baja', midLine: 34, octava: -12, ottava: 'bajo' },
+    { id: 'bass',      vex: 'bass',      label: 'Fa',         midLine: 22, octava: 0 },
+    { id: 'alto',      vex: 'alto',      label: 'Do en 3ª',   midLine: 28, octava: 0 },
+    { id: 'tenor',     vex: 'tenor',     label: 'Do en 4ª',   midLine: 26, octava: 0 }
+  ];
+  const clefById = (id) => CLEFS.find((c) => c.id === id) || CLEFS[0];
+  /** La clave vigente en un compás: la del compás, o la del score. */
+  function clefAt(score, mi) {
+    for (let i = mi; i >= 0; i--) {
+      const c = score.measures[i] && score.measures[i].clef;
+      if (c) return clefById(c);
+    }
+    return clefById(score.clef);
+  }
+
   const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
   const SEMIS   = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const MIDDLE_LINE_DI = 34;
@@ -73,13 +129,72 @@ const Model = (() => {
   const diOctave = (di) => Math.floor(di / 7);
   const diToKeyStr = (di) => `${diLetter(di)}/${diOctave(di)}`;
 
-  /** MIDI de un evento, teniendo en cuenta armadura y alteración escrita. */
-  function midiOf(ev, keySpec) {
-    const letter = diLetter(ev.di);
-    const alt = ev.acc == null
-      ? keyAlter(keySpec, letter)
-      : ({ '#': 1, 'b': -1, 'n': 0, '##': 2, 'bb': -2 })[ev.acc] || 0;
-    return (diOctave(ev.di) + 1) * 12 + SEMIS[letter] + alt;
+  /* ---------- Acordes ----------
+     Un evento tenía una altura: `ev.di` con su `ev.acc`. Ahora puede tener
+     varias, y las de más van en `ev.mas = [{di, acc}]`.
+
+     Podría haberse cambiado a una lista y ya, pero `ev.di` se quedó como la
+     nota base **a propósito**: hay partituras guardadas —en el navegador y
+     dentro de las páginas del Cuaderno— que no llevan `mas`, y así siguen
+     abriéndose tal cual, sin migración y sin riesgo de estropear el trabajo
+     de nadie. Todo lo que quiera leer un acorde entero pasa por `alturas()`,
+     que devuelve siempre una lista ordenada de grave a agudo. */
+  const ALT = { '#': 1, 'b': -1, 'n': 0, '##': 2, 'bb': -2 };
+
+  /** Todas las alturas de un evento, de grave a aguda. */
+  function alturas(ev) {
+    if (!ev || ev.kind !== 'note') return [];
+    const todas = [{ di: ev.di, acc: ev.acc == null ? null : ev.acc }];
+    (ev.mas || []).forEach((n) => todas.push({ di: n.di, acc: n.acc == null ? null : n.acc }));
+    return todas.sort((x, y) => x.di - y.di);
+  }
+
+  /** Añade una altura al evento. Si ya está, no la duplica. */
+  function anadirAltura(ev, di, acc = null) {
+    if (ev.kind !== 'note') return false;
+    if (alturas(ev).some((n) => n.di === di)) return false;
+    (ev.mas || (ev.mas = [])).push({ di, acc });
+    return true;
+  }
+
+  /** Quita una altura. La base no se puede quitar si es la única que queda. */
+  function quitarAltura(ev, di) {
+    if (ev.kind !== 'note') return false;
+    if (ev.mas && ev.mas.some((n) => n.di === di)) {
+      ev.mas = ev.mas.filter((n) => n.di !== di);
+      if (!ev.mas.length) delete ev.mas;
+      return true;
+    }
+    // Quitar la base: la más grave de las restantes ocupa su sitio.
+    if (ev.di === di && ev.mas && ev.mas.length) {
+      const resto = ev.mas.slice().sort((a, b) => a.di - b.di);
+      const nueva = resto.shift();
+      ev.di = nueva.di; ev.acc = nueva.acc;
+      ev.mas = resto.length ? resto : undefined;
+      if (!ev.mas) delete ev.mas;
+      return true;
+    }
+    return false;
+  }
+
+  const esAcorde = (ev) => !!(ev && ev.mas && ev.mas.length);
+
+  /** MIDI de una altura suelta, teniendo en cuenta armadura y clave. */
+  function midiDe(n, keySpec, clef) {
+    const letter = diLetter(n.di);
+    const alt = n.acc == null ? keyAlter(keySpec, letter) : (ALT[n.acc] || 0);
+    const oct = clef ? clefById(clef.id || clef).octava : 0;
+    return (diOctave(n.di) + 1) * 12 + SEMIS[letter] + alt + oct;
+  }
+
+  /** MIDI de la nota base. Se conserva por compatibilidad. */
+  function midiOf(ev, keySpec, clef) {
+    return midiDe({ di: ev.di, acc: ev.acc }, keySpec, clef);
+  }
+
+  /** Todos los MIDI que suenan en un evento. */
+  function midisOf(ev, keySpec, clef) {
+    return alturas(ev).map((n) => midiDe(n, keySpec, clef));
   }
 
   /* ---------- Eventos y compases ---------- */
@@ -99,6 +214,7 @@ const Model = (() => {
       title: opts.title || 'Sin título',
       composer: opts.composer || '',
       key: opts.key || 'C',
+      clef: opts.clef || 'treble',
       time: opts.time || { num: 4, den: 4 },
       tempo: opts.tempo || 90,
       measuresPerSystem: opts.measuresPerSystem || 2,
@@ -276,8 +392,10 @@ const Model = (() => {
   function clone(score) { return JSON.parse(JSON.stringify(score)); }
 
   return {
-    Q, WHOLE, DURS, KEYS, TIMES, MIDDLE_LINE_DI, LETTERS, SEMIS,
-    durById, durTicks, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
+    Q, WHOLE, DURS, KEYS, TIMES, CLEFS, MIDDLE_LINE_DI, LETTERS, SEMIS,
+    durById, durTicks, dotFactor, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
+    clefById, clefAt,
+    alturas, anadirAltura, quitarAltura, esAcorde, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,

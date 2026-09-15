@@ -144,8 +144,8 @@ const Sound = (() => {
     // media melodía con oscilador y la otra media con piano
     try {
       const midis = [];
-      score.measures.forEach((m) => m.events.forEach((ev) => {
-        if (ev.kind === 'note') midis.push(Model.midiOf(ev, score.key));
+      score.measures.forEach((m, mi) => m.events.forEach((ev) => {
+        if (ev.kind === 'note') Model.midisOf(ev, score.key, Model.clefAt(score, mi)).forEach((x) => midis.push(x));
       }));
       if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
@@ -153,7 +153,7 @@ const Sound = (() => {
     const items = [];
     let t = 0;
     let carry = null;                      // nota ligada que sigue sonando
-    score.measures.forEach((m) => {
+    score.measures.forEach((m, mi) => {
       const cap = Model.capacity(score.time);
       let used = 0;
       m.events.forEach((ev) => {
@@ -162,7 +162,7 @@ const Sound = (() => {
           carry.dur += d;                  // la ligadura alarga la misma nota
           carry.tail.push(ev);
         } else {
-          carry = { ev, at: t, dur: d, tail: [] };
+          carry = { ev, at: t, dur: d, tail: [], mi };
           items.push(carry);
         }
         if (!(ev.kind === 'note' && ev.tie)) carry = null;
@@ -174,7 +174,10 @@ const Sound = (() => {
 
     const t0 = c.currentTime + 0.12;
     items.forEach((it) => {
-      if (it.ev.kind === 'note') tone(t0 + it.at, Model.midiOf(it.ev, score.key), it.dur);
+      if (it.ev.kind !== 'note') return;
+      // Todas las notas del acorde arrancan juntas y duran lo mismo.
+      Model.midisOf(it.ev, score.key, Model.clefAt(score, it.mi || 0))
+        .forEach((m2) => tone(t0 + it.at, m2, it.dur));
     });
     const timers = items.map((it) =>
       setTimeout(() => onNote && onNote(it.ev), it.at * 1000 + 120));
