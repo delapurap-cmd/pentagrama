@@ -297,16 +297,29 @@ const MusicXML = (() => {
         });
       }
 
-      if (tempo == null) {
-        const per = mEl.querySelector('direction sound[tempo], sound[tempo]');
-        if (per) tempo = Math.round(parseFloat(per.getAttribute('tempo')));
-      }
+      /* El tempo cambia a lo largo de la obra: el Nocturno trae diez marcas,
+         que son su rubato escrito. El primero es el de la partitura; los
+         demás se cuelgan de la nota que venga detrás, como los matices. */
+      const marcas = [...mEl.querySelectorAll(':scope > direction')].map((d) => {
+        const snd = d.querySelector('sound[tempo]');
+        if (snd) return Math.round(parseFloat(snd.getAttribute('tempo')));
+        const met = d.querySelector('direction-type > metronome');
+        if (!met) return null;
+        const unidad = (met.querySelector('beat-unit')?.textContent || 'quarter').trim();
+        const punto = !!met.querySelector('beat-unit-dot');
+        const pm = parseFloat(met.querySelector('per-minute')?.textContent);
+        const EN_NEGRAS = { whole: 4, half: 2, quarter: 1, eighth: .5, '16th': .25, '32nd': .125 };
+        if (!pm) return null;
+        return Math.round(pm * (EN_NEGRAS[unidad] || 1) * (punto ? 1.5 : 1));
+      }).filter((x) => x && x >= 20 && x <= 400);
+      if (tempo == null && marcas.length) tempo = marcas[0];
 
       // El cifrado y el matiz llegan **antes** de la nota a la que acompañan,
       // como hermanos dentro del compás: se guardan y se cuelgan de la
       // siguiente nota que aparezca.
       let cifradoPendiente = null, matizPendiente = null;
       let pedalPendiente = null, regPendiente = null, octavaPendiente = null, textoPendiente = null;
+      let tempoPendiente = null;
       let adornos = [];                 // notas de adorno a la espera de su nota
       grupoActual = null;
       [...mEl.children].forEach((node) => {
@@ -348,6 +361,20 @@ const MusicXML = (() => {
             // «up» en MusicXML significa que lo escrito está una octava por
             // encima de lo que suena, así que la nota escrita baja
             octavaPendiente = t === 'stop' ? 0 : (t === 'up' ? -1 : 1) * (tam === 15 ? 15 : 8);
+          }
+          const snd = node.querySelector('sound[tempo]');
+          const met = node.querySelector('direction-type > metronome');
+          if (snd || met) {
+            let bpm = null;
+            if (snd) bpm = Math.round(parseFloat(snd.getAttribute('tempo')));
+            else {
+              const unidad = (met.querySelector('beat-unit')?.textContent || 'quarter').trim();
+              const punto = !!met.querySelector('beat-unit-dot');
+              const pm = parseFloat(met.querySelector('per-minute')?.textContent);
+              const EN_NEGRAS = { whole: 4, half: 2, quarter: 1, eighth: .5, '16th': .25, '32nd': .125 };
+              if (pm) bpm = Math.round(pm * (EN_NEGRAS[unidad] || 1) * (punto ? 1.5 : 1));
+            }
+            if (bpm && bpm >= 20 && bpm <= 400) tempoPendiente = bpm;
           }
           const pal = node.querySelector('direction-type > words');
           if (pal) {
@@ -448,6 +475,7 @@ const MusicXML = (() => {
         if (regPendiente) { ev.reg = regPendiente; regPendiente = null; }
         if (octavaPendiente != null) { ev.octava = octavaPendiente; octavaPendiente = null; }
         if (textoPendiente) { ev.texto = textoPendiente; textoPendiente = null; }
+        if (tempoPendiente) { ev.tempo = tempoPendiente; tempoPendiente = null; }
 
         aqui.events.push(ev);
         report.notes++;

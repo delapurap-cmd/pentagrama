@@ -45,6 +45,43 @@
   <div class="sheets" id="stage"></div>
 </main>
 
+<!-- Panel de reproducción -->
+<section class="panel play" id="panelPlay" aria-label="Reproducción">
+  <div class="row">
+    <button class="btn icon primary" id="ppPlay" title="Reproducir / pausa">▶</button>
+    <button class="btn ghost icon" id="ppStop" title="Volver al principio">■</button>
+    <span class="lbl" id="ppPos">c. 1</span>
+    <button class="btn ghost icon" id="ppClose" title="Cerrar">✕</button>
+  </div>
+
+  <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición">
+
+  <div class="row">
+    <div class="bpm-step" title="Velocidad">
+      <button class="btn ghost icon" id="ppLento" title="Más despacio">−</button>
+      <output class="num ancho" id="ppVel">100%</output>
+      <button class="btn ghost icon" id="ppRapido" title="Más deprisa">＋</button>
+    </div>
+    <button class="btn" id="ppMetro" title="Metrónomo mientras suena">Metrónomo</button>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="ppBucle" title="Repetir el tramo elegido">🔁 Bucle</button>
+    <span class="lbl">c.</span>
+    <div class="bpm-step" title="Primer compás del bucle">
+      <button class="btn ghost icon" id="ppAmenos">−</button>
+      <output class="num" id="ppA">1</output>
+      <button class="btn ghost icon" id="ppAmas">＋</button>
+    </div>
+    <span class="lbl">a</span>
+    <div class="bpm-step" title="Último compás del bucle">
+      <button class="btn ghost icon" id="ppBmenos">−</button>
+      <output class="num" id="ppB">1</output>
+      <button class="btn ghost icon" id="ppBmas">＋</button>
+    </div>
+  </div>
+</section>
+
 <!-- Panel de escritura de tiempos -->
 <section class="panel" id="panel" aria-label="Escribir tiempos">
   <div class="row">

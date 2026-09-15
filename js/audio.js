@@ -172,7 +172,8 @@ const Sound = (() => {
   }
 
   /* ---------- Reproducción de la partitura ---------- */
-  async function play(score, { onNote, onEnd } = {}) {
+  async function play(score, opts = {}) {
+    const { onNote, onEnd } = opts;
     stop();
     const c = ac();
     // las muestras del piano se piden antes de empezar, para que no entre
@@ -187,9 +188,10 @@ const Sound = (() => {
       if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
 
-    const secPerTick = (60 / score.tempo) / Model.Q;
-    // dónde empieza cada compás: no todos duran lo mismo si el compás cambia
-    // a mitad de obra o hay anacrusa
+    /* El tiempo no es lineal: el mapa de tempo dice a qué segundo cae cada
+       tick, contando todos los cambios de velocidad escritos. */
+    const mapa = Model.mapaTempo(score);
+    const seg = (tick) => Model.segundosEn(mapa, tick) / (opts.factor || 1);
     const inicios = Model.inicios(score);
     /* Se recorre voz a voz de principio a fin, no compás a compás: así una
        ligadura que cruza la barra sigue siendo una sola nota, y las dos manos
@@ -211,11 +213,11 @@ const Sound = (() => {
         v.events.forEach((ev) => {
           const d = Model.evTicks(ev);
           if (carry) {
-            carry.dur += d * secPerTick;   // la ligadura alarga la misma nota
+            carry.dur = seg(t + d) - carry.desde;   // la ligadura alarga la misma nota
             carry.tail.push(ev);
           } else {
-            carry = { ev, at: t * secPerTick, dur: d * secPerTick, tail: [], mi, clef,
-                      vi: v.vi, pent: v.pent };
+            carry = { ev, at: seg(t), desde: seg(t), dur: seg(t + d) - seg(t), tick: t,
+                      tail: [], mi, clef, vi: v.vi, pent: v.pent };
             items.push(carry);
           }
           if (!(ev.kind === 'note' && ev.tie)) carry = null;
@@ -254,10 +256,21 @@ const Sound = (() => {
        se va programando por delante, en ventanas de dos segundos, y al parar
        se cortan las que estén sonando. */
     const VENTANA = 2.0;        // cuánto se adelanta el motor
-    const PASO = 700;           // cada cuánto vuelve a mirar
+    const PASO = 120;           // cada cuánto vuelve a mirar
 
-    const t0 = c.currentTime + 0.15;
-    const sonar = (it, cfg) => {
+    /* Región: se toca de un compás a otro, y con `bucle` se vuelve al
+       principio de la región al llegar al final en vez de parar. */
+    const desdeTick = opts.desde != null ? opts.desde : 0;
+    const finTick = opts.hasta != null ? opts.hasta
+      : inicios[score.measures.length - 1] + Model.capacityAt(score, score.measures.length - 1);
+    const segIni = seg(desdeTick), segFin = seg(finTick);
+    const largo = Math.max(0.2, segFin - segIni);
+    const region = items
+      .map((it, i) => ({ it, cfg: cambios[i] }))
+      .filter((x) => x.it.at >= segIni - 1e-6 && x.it.at < segFin - 1e-6);
+    if (!region.length) { if (onEnd) onEnd(); return; }
+
+    const sonar = (it, cfg, cuando) => {
       if (it.ev.kind !== 'note') return;
       // con el pedal pisado la nota no se corta al soltar la tecla
       const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
@@ -265,7 +278,7 @@ const Sound = (() => {
       // las notas de adorno roban un poco de tiempo a la que llevan delante
       const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        tone(t0 + it.at + k * 0.075, Model.midiDe(a, score.key, it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
+        tone(cuando + k * 0.075, Model.midiDe(a, score.key, it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
       });
       const midis = Model.midisOf(it.ev, score.key, it.clef);
       midis.forEach((m2, iN) => {
@@ -274,21 +287,17 @@ const Sound = (() => {
         const partes = (it.ev.orn && iN === midis.length - 1)
           ? desarrollar(it.ev.orn, mid, dur - robo, escala)
           : [[mid, dur - robo]];
-        let t = t0 + it.at + robo;
+        let t = cuando + robo;
         partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol); t += d; } });
       });
     };
 
-    /* El cursor sigue una sola voz —la de arriba del primer pentagrama—: si
-       lo mueven las dos manos a la vez, salta de una a otra y parece que se
-       está saltando notas. */
-    const notas = items.filter((it) => it.ev.kind === 'note');
-    /* Una por golpe: de las que arrancan a la vez se señala la de la pauta de
-       arriba, y si en ese momento sólo suena la izquierda, esa. Así el cursor
-       avanza siempre —no se queda quieto quince segundos esperando a que
-       entre la melodía— y nunca vuelve atrás. */
+    /* El cursor señala una nota por golpe: la de la pauta de arriba, y si en
+       ese momento sólo suena la izquierda, esa. Así avanza siempre —no se
+       queda quieto esperando a que entre la melodía— y nunca vuelve atrás. */
     const porGolpe = new Map();
-    notas.forEach((it) => {
+    region.forEach(({ it }) => {
+      if (it.ev.kind !== 'note') return;
       const k = Math.round(it.at * 1000);
       const previa = porGolpe.get(k);
       const mejor = (a, b) => {
@@ -299,28 +308,78 @@ const Sound = (() => {
     });
     const aSenalar = [...porGolpe.values()].sort((a, b) => a.at - b.at);
 
-    let siguiente = 0, siguienteAviso = 0;
-    const total = items.reduce((s2, it) => Math.max(s2, it.at + it.dur), 0);
-    const adelantar = () => {
-      const hasta = c.currentTime - t0 + VENTANA;
-      while (siguiente < items.length && items[siguiente].at <= hasta) {
-        sonar(items[siguiente], cambios[siguiente]);
-        siguiente++;
+    // Pulsos del metrónomo dentro de la región, si se pide.
+    const pulsos = [];
+    if (opts.metronomo) {
+      let t = desdeTick, k = 0;
+      let guard = 0;
+      while (t < finTick && guard++ < 20000) {
+        const mi = Math.max(0, inicios.findIndex((x, i) =>
+          x <= t && (inicios[i + 1] == null || inicios[i + 1] > t)));
+        const compas = Model.timeAt(score, mi);
+        const pulso = Model.beatTicks(compas);
+        const enCompas = Math.round((t - inicios[mi]) / pulso);
+        pulsos.push({ at: seg(t), fuerte: enCompas === 0 });
+        t += pulso; k++;
       }
-      while (siguienteAviso < aSenalar.length && aSenalar[siguienteAviso].at <= c.currentTime - t0) {
-        const it = aSenalar[siguienteAviso++];
+    }
+
+    const t0 = c.currentTime + 0.15;
+    let ciclo = 0;              // cuántas vueltas lleva el bucle
+    let ultimaFirma = null;     // qué sonaba la última vez que se miró
+    let iNota = 0, iAviso = 0, iPulso = 0;
+    const base = () => t0 + ciclo * largo;
+
+    const adelantar = () => {
+      const ahora = c.currentTime;
+      const hasta = ahora - base() + segIni + VENTANA;
+
+      while (iNota < region.length && region[iNota].it.at <= hasta) {
+        const { it, cfg } = region[iNota++];
+        sonar(it, cfg, base() + (it.at - segIni));
+      }
+      while (iPulso < pulsos.length && pulsos[iPulso].at <= hasta) {
+        const p = pulsos[iPulso++];
+        click(base() + (p.at - segIni), p.fuerte);
+      }
+      const reloj = ahora - base() + segIni;
+      while (iAviso < aSenalar.length && aSenalar[iAviso].at <= reloj) {
+        const it = aSenalar[iAviso++];
         if (onNote) onNote(it.ev);
       }
-      if (siguiente >= items.length && c.currentTime - t0 > total + 0.2) {
-        clearInterval(reloj);
-        player = null;
-        vivos = [];
-        if (onEnd) onEnd();
+      /* Lo que de verdad está sonando en este instante: en un piano son las
+         dos manos a la vez, no una nota. Con esto el cursor puede marcar
+         todas y no ir dando saltos de una pauta a otra. */
+      if (opts.onSonando) {
+        const ids = [];
+        for (const { it } of region) {
+          if (it.at > reloj) break;
+          if (it.ev.kind === 'note' && it.at + it.dur > reloj) ids.push(it.ev.id);
+        }
+        const firma = ids.join(',');
+        if (firma !== ultimaFirma) { ultimaFirma = firma; opts.onSonando(ids); }
+      }
+      if (opts.onPos) {
+        opts.onPos(Math.min(1, Math.max(0, (reloj - segIni) / largo)), reloj,
+                   Model.tickEn(mapa, reloj * (opts.factor || 1)));
+      }
+
+      if (reloj >= segFin) {
+        if (opts.bucle) {
+          ciclo++; iNota = 0; iAviso = 0; iPulso = 0;
+          return;
+        }
+        if (iNota >= region.length && ahora - base() > largo + 0.25) {
+          clearInterval(reloj2);
+          player = null;
+          vivos = [];
+          if (onEnd) onEnd();
+        }
       }
     };
     adelantar();
-    const reloj = setInterval(adelantar, PASO);
-    player = { reloj };
+    const reloj2 = setInterval(adelantar, PASO);
+    player = { reloj: reloj2 };
   }
 
   function stop() {

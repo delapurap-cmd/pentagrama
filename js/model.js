@@ -179,6 +179,68 @@ const Model = (() => {
     }
     return cap;
   }
+  /* ---------- Mapa de tempo ----------
+     Una obra no va a un solo tempo. El Nocturno de Chopin trae diez marcas
+     —60, 35, 40, 60, 70, 80, 50, 35, 20 y otra vez 60—, que son su rubato
+     escrito. Leyendo sólo la primera, los pasajes marcados ♩=20 sonaban al
+     triple de lo que pide la partitura.
+
+     El mapa es una lista de {tick, bpm} ordenada, y `segundosEn` integra por
+     tramos: dentro de cada uno el tiempo es lineal, y en el cambio se enlaza
+     con lo acumulado. */
+  function mapaTempo(score) {
+    const ini = inicios(score);
+    const puntos = [{ tick: 0, bpm: score.tempo || 90 }];
+    score.measures.forEach((m, mi) => {
+      if (m.tempo) puntos.push({ tick: ini[mi], bpm: m.tempo });
+      voces(m).forEach((v) => {
+        let t = ini[mi];
+        v.events.forEach((ev) => {
+          if (ev.tempo) puntos.push({ tick: t, bpm: ev.tempo });
+          t += evTicks(ev);
+        });
+      });
+    });
+    puntos.sort((a, b) => a.tick - b.tick);
+    // si dos marcas caen en el mismo sitio —una por voz— manda la última
+    const limpio = [];
+    puntos.forEach((p) => {
+      if (limpio.length && limpio[limpio.length - 1].tick === p.tick) limpio[limpio.length - 1] = p;
+      else limpio.push(p);
+    });
+    // se precalcula el segundo en el que empieza cada tramo
+    let seg = 0;
+    limpio.forEach((p, i) => {
+      p.seg = seg;
+      const sig = limpio[i + 1];
+      if (sig) seg += (sig.tick - p.tick) * (60 / Math.max(1, p.bpm)) / Q;
+    });
+    return limpio;
+  }
+
+  /** Segundo en el que cae un tick, siguiendo el mapa de tempo. */
+  function segundosEn(mapa, tick) {
+    let i = 0;
+    while (i + 1 < mapa.length && mapa[i + 1].tick <= tick) i++;
+    const p = mapa[i];
+    return p.seg + (tick - p.tick) * (60 / Math.max(1, p.bpm)) / Q;
+  }
+
+  /** Tick que cae en un segundo dado: la inversa de `segundosEn`. */
+  function tickEn(mapa, segundos) {
+    let i = 0;
+    while (i + 1 < mapa.length && mapa[i + 1].seg <= segundos) i++;
+    const p = mapa[i];
+    return p.tick + (segundos - p.seg) * Q / (60 / Math.max(1, p.bpm));
+  }
+
+  /** Tempo vigente en un tick. */
+  function tempoEn(mapa, tick) {
+    let i = 0;
+    while (i + 1 < mapa.length && mapa[i + 1].tick <= tick) i++;
+    return mapa[i].bpm;
+  }
+
   /** Tick en el que empieza cada compás, contando cambios de compás. */
   function inicios(score) {
     const out = [];
@@ -529,7 +591,7 @@ const Model = (() => {
     Q, WHOLE, DURS, KEYS, TIMES, CLEFS, MIDDLE_LINE_DI, LETTERS, SEMIS,
     durById, durTicks, dotFactor, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
-    timeAt, capacityAt, inicios,
+    timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
     alturas, anadirAltura, quitarAltura, esAcorde, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,

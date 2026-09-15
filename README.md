@@ -47,9 +47,13 @@ servidas desde el propio repositorio: no hace falta conexión.
   por encima de la barra, y puedes ligar a mano desde el círculo.
 - **Arrastrar una nota** arriba o abajo cambia su altura.
 - **Piano de verdad**: la reproducción usa muestras de piano, no pitidos.
-- **Armadura** (15 tonalidades), **compás** (4/4, 3/4, 6/8…), escuchar,
-  deshacer, zoom —con un botón que encuadra la hoja entera de lado a lado— e
-  imprimir.
+- **Escuchar**: un toque en ▶ arranca y para; **manteniéndolo pulsado** se
+  abre el panel de reproducción, con barra de posición, velocidad del 25 al
+  200 %, metrónomo y **bucle entre dos compases**, que es como se saca un
+  pasaje difícil. Una línea recorre el sistema y se marcan todas las notas
+  que suenan, las dos manos a la vez.
+- **Armadura** (15 tonalidades), **compás** (4/4, 3/4, 6/8…), deshacer, zoom
+  —con un botón que encuadra la hoja entera de lado a lado— e imprimir.
 - Se guarda solo en el navegador; «Archivo → Guardar en mis partituras» mantiene
   una pequeña biblioteca local.
 - Con el dedo: **uno escribe**, **dos mueven la hoja** y **el pellizco hace

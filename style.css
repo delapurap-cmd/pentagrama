@@ -249,6 +249,49 @@ body.embed .sheet-head { display: none; }
 .radial-wrap .tray .ancho { min-width: 42px; font-size: 12.5px; font-weight: 600; }
 .radial-wrap .tray .nota-info { padding: 0 6px; font-size: 11.5px; color: var(--txt-dim); }
 
+/* ---------------- Cursor de reproducción ----------------
+   Una línea que recorre el sistema, como la de cualquier editor. Va por
+   encima del grabado y no lo toca: moverla no cuesta un redibujado. */
+.sheet .cursor {
+  position: absolute; width: 2px; margin-left: -1px;
+  background: linear-gradient(to bottom, rgba(28,122,87,0), #1c7a57 12%, #1c7a57 88%, rgba(28,122,87,0));
+  box-shadow: 0 0 6px rgba(28, 122, 87, .45);
+  pointer-events: none; z-index: 2;
+  transition: left .08s linear;
+}
+.sheet-svg .sonando, .sheet-svg .sonando * { fill: #1c7a57 !important; stroke: #1c7a57 !important; }
+
+/* ---------------- Panel de reproducción ---------------- */
+.panel.play .barra {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; height: 26px; margin: 8px 0 2px;
+  background: none; cursor: pointer;
+}
+.panel.play .barra::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px; background: #26262b;
+}
+.panel.play .barra::-moz-range-track { height: 6px; border-radius: 3px; background: #26262b; }
+.panel.play .barra::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
+  background: var(--gold); border: 0; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+}
+.panel.play .barra::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--gold); border: 0;
+}
+.panel.play .row { gap: 7px; }
+.panel.play .row + .row { margin-top: 8px; }
+/* las etiquetas de aquí son de una o dos letras: sin versalitas ni espaciado */
+.panel.play .lbl { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--txt-dim); }
+.panel.play #ppPos { margin-left: 2px; font-variant-numeric: tabular-nums; color: var(--txt); font-size: 13.5px; }
+.panel.play #ppClose { margin-left: auto; }
+.panel.play .bpm-step { height: 36px; }
+.panel.play .bpm-step .btn { width: 32px; height: 34px; font-size: 17px; padding: 0; }
+.panel.play .bpm-step .num { width: 42px; height: 34px; font-size: 13.5px; white-space: nowrap; }
+.panel.play .bpm-step .num.ancho { width: 58px; }
+.panel.play #ppPlay { width: 50px; justify-content: center; font-size: 16px; }
+.panel.play #ppMetro { margin-left: auto; }
+
 /* ---------------- Panel de tiempos (tap) ---------------- */
 .panel {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(140%);

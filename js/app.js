@@ -41,6 +41,7 @@
     bindBar();
     bindStage();
     bindPanel();
+    bindPlayPanel();
     bindKeys();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
@@ -655,7 +656,17 @@
     $('#btnUndo').addEventListener('click', undo);
     $('#btnRedo').addEventListener('click', redo);
     $('#btnTap').addEventListener('click', () => togglePanel());
-    $('#btnPlay').addEventListener('click', togglePlay);
+    /* Un toque arranca o para; mantenerlo pulsado abre el panel con la
+       posición, la velocidad y el bucle. */
+    let largo = 0;
+    const play = $('#btnPlay');
+    play.addEventListener('pointerdown', () => {
+      largo = setTimeout(() => { largo = 0; togglePlayPanel(true); }, 480);
+    });
+    const suelta = () => { if (largo) { clearTimeout(largo); largo = 0; togglePlay(); } };
+    play.addEventListener('pointerup', suelta);
+    play.addEventListener('pointercancel', () => { clearTimeout(largo); largo = 0; });
+    play.addEventListener('contextmenu', (e) => e.preventDefault());
     if (Native.isApp()) $('#btnPrint').hidden = true;
     else $('#btnPrint').addEventListener('click', () => window.print());
   }
@@ -675,25 +686,148 @@
     if (!isNaN(v) && v >= min && v <= max) fn(v);
   }
 
-  /* ---------------- Reproducción ---------------- */
+  /* ---------------- Reproducción ----------------
+     El botón de la barra arranca y para. El panel añade lo que hace falta
+     para estudiar una obra: posición, velocidad, metrónomo y bucle entre dos
+     compases, que es como se saca un pasaje difícil. */
+  const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1, pos: 0 };
+
+  function nCompases() { return state.score.measures.length; }
+  const tickDeCompas = (n) => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))];
+  function finDeCompas(n) {
+    const i = Math.max(0, Math.min(nCompases() - 1, n - 1));
+    return Model.inicios(state.score)[i] + Model.capacityAt(state.score, i);
+  }
+
   function togglePlay() {
-    if (Sound.playing()) {
-      Sound.stop();
-      state.playingId = null;
-      $('#btnPlay').classList.remove('on');
-      render();
-      if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
-      return;
-    }
-    if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
+    if (Sound.playing()) { pararTodo(); return; }
+    arrancar();
+  }
+
+  function arrancar(desdeFraccion) {
+    const usaBucle = rep.bucle;
+    const a = usaBucle ? Math.min(rep.a, rep.b) : 1;
+    const b = usaBucle ? Math.max(rep.a, rep.b) : nCompases();
+    let desde = tickDeCompas(a);
+    const hasta = finDeCompas(b);
+    // arrastrar la barra empieza por donde se haya soltado
+    if (desdeFraccion != null) desde = Math.round(desde + (hasta - desde) * desdeFraccion);
+
     $('#btnPlay').classList.add('on');
+    $('#ppPlay').textContent = '⏸';
+    if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
     Sound.play(state.score, {
-      onNote: (ev) => { state.playingId = ev.id; render(); },
-      onEnd: () => {
-        state.playingId = null; $('#btnPlay').classList.remove('on'); render();
-        if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
-      }
+      desde, hasta, bucle: usaBucle,
+      factor: rep.velocidad,
+      metronomo: rep.metronomo,
+      /* Ni una nota marcada ni un redibujado por golpe: una línea vertical
+         que recorre el sistema y todas las cabezas que suenan pintadas a la
+         vez, encima de lo ya grabado. El Nocturno son mil notas; redibujar
+         la partitura en cada una era lo que hacía saltar el cursor. */
+      onSonando: (ids) => Engrave.resaltar(ids),
+      onPos: (frac, seg, tick) => {
+        pintarPosicion(frac);
+        const c = Engrave.moverCursor(state.score, tick);
+        if (c) seguirLaHoja(c);
+      },
+      onEnd: () => { pararTodo(); }
     });
+  }
+
+  function pararTodo() {
+    Sound.stop();
+    Engrave.resaltar([]);
+    Engrave.moverCursor(state.score, null);
+    state.playingId = null;
+    $('#btnPlay').classList.remove('on');
+    $('#ppPlay').textContent = '▶';
+    render();
+    if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
+  }
+
+  /** La hoja acompaña al cursor, sin pelearse con el dedo del usuario. */
+  let ultimoScroll = 0;
+  function seguirLaHoja(cursor) {
+    if (Date.now() - ultimoScroll < 500) return;
+    const el = cursor.pagina && cursor.pagina.el;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const y = r.top + (cursor.yTop / cursor.pagina.h) * r.height;
+    const scroller = $('#scroller');
+    const caja = scroller.getBoundingClientRect();
+    const margen = caja.height * 0.28;
+    if (y > caja.bottom - margen || y < caja.top + margen) {
+      scroller.scrollTop += y - (caja.top + margen);
+      ultimoScroll = Date.now();
+    }
+  }
+
+  function pintarPosicion(frac) {
+    rep.pos = frac;
+    const barra = $('#ppBarra');
+    if (barra && !barra.dataset.arrastrando) barra.value = Math.round(frac * 1000);
+    const a = rep.bucle ? Math.min(rep.a, rep.b) : 1;
+    const b = rep.bucle ? Math.max(rep.a, rep.b) : nCompases();
+    $('#ppPos').textContent = 'c. ' + Math.min(b, a + Math.floor(frac * (b - a + 1)));
+  }
+
+  function bindPlayPanel() {
+    const refresca = () => {
+      rep.a = Math.max(1, Math.min(nCompases(), rep.a));
+      rep.b = Math.max(rep.a, Math.min(nCompases(), rep.b));
+      $('#ppA').textContent = rep.a;
+      $('#ppB').textContent = rep.b;
+      $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
+      $('#ppBucle').classList.toggle('on', rep.bucle);
+      $('#ppMetro').classList.toggle('on', rep.metronomo);
+    };
+    const reinicia = () => { if (Sound.playing()) { pararTodo(); arrancar(); } };
+
+    $('#ppPlay').addEventListener('click', togglePlay);
+    $('#ppStop').addEventListener('click', () => { pararTodo(); pintarPosicion(0); });
+    $('#ppClose').addEventListener('click', () => togglePlayPanel(false));
+
+    $('#ppLento').addEventListener('click', () => {
+      rep.velocidad = Math.max(0.25, +(rep.velocidad - 0.1).toFixed(2)); refresca(); reinicia();
+    });
+    $('#ppRapido').addEventListener('click', () => {
+      rep.velocidad = Math.min(2, +(rep.velocidad + 0.1).toFixed(2)); refresca(); reinicia();
+    });
+    $('#ppMetro').addEventListener('click', () => { rep.metronomo = !rep.metronomo; refresca(); reinicia(); });
+    $('#ppBucle').addEventListener('click', () => {
+      rep.bucle = !rep.bucle;
+      // al encender el bucle sin tramo elegido, se toma el compás de la nota
+      if (rep.bucle && rep.a === rep.b && rep.a === 1) {
+        const found = currentEvent();
+        if (found) { rep.a = found.mi + 1; rep.b = found.mi + 1; }
+      }
+      refresca(); reinicia();
+    });
+    [['#ppAmenos', 'a', -1], ['#ppAmas', 'a', 1], ['#ppBmenos', 'b', -1], ['#ppBmas', 'b', 1]]
+      .forEach(([sel, campo, d]) => $(sel).addEventListener('click', () => {
+        rep[campo] += d;
+        if (campo === 'a' && rep.a > rep.b) rep.b = rep.a;
+        refresca(); reinicia();
+      }));
+
+    const barra = $('#ppBarra');
+    barra.addEventListener('pointerdown', () => { barra.dataset.arrastrando = '1'; });
+    const soltar = () => {
+      if (!barra.dataset.arrastrando) return;
+      delete barra.dataset.arrastrando;
+      const frac = barra.value / 1000;
+      if (Sound.playing()) { pararTodo(); arrancar(frac); } else { pintarPosicion(frac); }
+    };
+    barra.addEventListener('pointerup', soltar);
+    barra.addEventListener('change', soltar);
+    refresca();
+  }
+
+  function togglePlayPanel(force) {
+    const p = $('#panelPlay');
+    const open = force != null ? force : !p.classList.contains('open');
+    p.classList.toggle('open', open);
+    if (open) { togglePanel(false); Radial.close(); }
   }
 
   /* ---------------- Panel de tiempos (tap) ---------------- */
@@ -932,6 +1066,10 @@
     }
     if (ev.texto) {
       out += `      <direction placement="above"${n}><direction-type><words>${xmlEsc(ev.texto)}</words></direction-type></direction>\n`;
+    }
+    if (ev.tempo) {
+      out += `      <direction placement="above"${n}><direction-type><metronome><beat-unit>quarter</beat-unit>` +
+        `<per-minute>${ev.tempo}</per-minute></metronome></direction-type><sound tempo="${ev.tempo}"/></direction>\n`;
     }
     return out;
   }

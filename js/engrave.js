@@ -32,6 +32,8 @@ const Engrave = (() => {
 
   let hits = [];
   let refs = new Map();        // id del evento -> { note, system }
+  let paginas = [];            // { el, w, h } de cada hoja dibujada
+  let resaltadas = [];         // elementos SVG que ahora mismo están marcados
 
   const durStr = (ev) => ev.dur + (ev.kind === 'rest' ? 'r' : '');
 
@@ -238,6 +240,8 @@ const Engrave = (() => {
     root.innerHTML = '';
     hits = [];
     refs = new Map();
+    paginas = [];
+    resaltadas = [];
     const compact = !!opts.compact || document.body.classList.contains('embed');
     const visualPer = opts.measuresPerSystem || score.measuresPerSystem;
     const pages = Model.pages(score, visualPer);
@@ -304,6 +308,8 @@ const Engrave = (() => {
         pageEl.appendChild(head);
       }
 
+      const iPagina = paginas.length;
+      paginas.push({ el: pageEl, w: pageWidth, h: pageHeight });
       const renderer = new Renderer(pageEl, Renderer.Backends.SVG);
       renderer.resize(pageWidth, pageHeight);
       const ctx = renderer.getContext();
@@ -324,7 +330,7 @@ const Engrave = (() => {
       systems.forEach((sys, sysIndex) => {
         y += holguras[sysIndex].arriba;
         drawSystem(score, sys, {
-          ctx, svg, pageIndex,
+          ctx, svg, pageIndex, iPagina,
           systemKey: pageIndex + ':' + sysIndex,
           y,
           x: marginLeft,
@@ -366,6 +372,8 @@ const Engrave = (() => {
       pageEl.style.aspectRatio = pageWidth + ' / ' + pageHeight;
       const svg = make('svg', { viewBox: `0 0 ${pageWidth} ${pageHeight}`, class: 'sheet-svg' });
       pageEl.appendChild(svg); root.appendChild(pageEl);
+      const iPagina = paginas.length;
+      paginas.push({ el: pageEl, w: pageWidth, h: pageHeight });
       const top = compact ? 13 : (pageIndex === 0 ? M.topFirst : M.top);
 
       systems.forEach((sys, sysIndex) => {
@@ -406,7 +414,7 @@ const Engrave = (() => {
             }
             noteMap.push({ ev, vi: 0, index: i, real: i < measure.events.length, x });
           });
-          hits.push({ mi: sys.from + mi, pent: 0, vi: 0, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
+          hits.push({ mi: sys.from + mi, pent: 0, vi: 0, iPagina, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
             yTop: y, yBottom: y + 40, spacing: 10, notes: noteMap });
         });
       });
@@ -609,7 +617,7 @@ const Engrave = (() => {
           x: b.notes[idx] ? b.notes[idx].getAbsoluteX() : 0
         })));
         hits.push({
-          mi, pent: pent.p,
+          mi, pent: pent.p, iPagina: o.iPagina,
           vi: suyos.length ? suyos[0].v.vi : null,
           midLine: pent.clef.midLine,
           pageIndex: o.pageIndex,
@@ -696,10 +704,99 @@ const Engrave = (() => {
     return null;
   }
 
+  /* ---------- Cursor de reproducción ----------
+     Marcar una sola nota y redibujar la partitura entera en cada golpe ni es
+     fiel —en un piano suenan las dos manos a la vez— ni es viable: el
+     Nocturno son mil redibujados. Aquí se mueve una línea vertical por
+     encima de lo ya dibujado y se pintan todas las cabezas que están
+     sonando, sin tocar el grabado. */
+
+  /** Dónde cae un tick en la hoja: página, x y el alto del sistema entero. */
+  function cursorEn(score, tick) {
+    const ini = Model.inicios(score);
+    let mi = 0;
+    while (mi + 1 < ini.length && ini[mi + 1] <= tick) mi++;
+    const delCompas = hits.filter((h) => h.mi === mi);
+    if (!delCompas.length) return null;
+    const arriba = delCompas[0], abajo = delCompas[delCompas.length - 1];
+    const dentro = tick - ini[mi];
+    const cap = Math.max(1, Model.capacityAt(score, mi));
+
+    /* La x se interpola entre las notas de verdad, no linealmente por
+       tiempo: VexFlow no reparte el compás a partes iguales y el cursor se
+       despegaría de las cabezas. Se toman las de TODAS las voces —en la
+       Gymnopédie hay cuatro y la primera apenas tiene notas—, que es lo que
+       de verdad marca dónde cae cada instante. */
+    const porTick = new Map();
+    Model.voces(score.measures[mi]).forEach((voz) => {
+      let t = 0;
+      voz.events.forEach((ev) => {
+        const h = delCompas.find((x) => x.notes.some((n) => n.ev.id === ev.id));
+        const n = h && h.notes.find((x) => x.ev.id === ev.id);
+        if (n && !porTick.has(t)) porTick.set(t, n.x);
+        t += Model.evTicks(ev);
+      });
+    });
+    const puntos = [];
+    porTick.forEach((x, t) => puntos.push({ t, x }));
+    // en el primer tiempo el cursor va SOBRE la primera cabeza, no en el
+    // borde del compás: si no, en cada barra se queda unos píxeles atrás
+    if (!porTick.has(0)) puntos.push({ t: 0, x: puntos.length ? Math.min(...puntos.map((p) => p.x)) : arriba.x0 });
+    puntos.push({ t: cap, x: arriba.x1 });
+    puntos.sort((a, b) => a.t - b.t);
+    /* Las voces no se dibujan a la misma altura de x: una nota posterior de
+       la mano izquierda puede caer a la izquierda de otra anterior de la
+       derecha, y entonces el cursor retrocedía dentro del compás. Se fuerza
+       que la referencia no decrezca nunca. */
+    for (let j = 1; j < puntos.length; j++) {
+      if (puntos[j].x < puntos[j - 1].x) puntos[j].x = puntos[j - 1].x;
+    }
+    let k = 0;
+    while (k + 1 < puntos.length && puntos[k + 1].t <= dentro) k++;
+    const a = puntos[k], b = puntos[k + 1] || { t: cap, x: arriba.x1 };
+    const f = b.t > a.t ? (dentro - a.t) / (b.t - a.t) : 0;
+    const x = a.x + (b.x - a.x) * Math.max(0, Math.min(1, f));
+
+    const pag = paginas[arriba.iPagina];
+    if (!pag) return null;
+    return { pagina: pag, x, yTop: arriba.yTop - 16, yBottom: abajo.yBottom + 16, mi };
+  }
+
+  /** Coloca la línea del cursor; sin tick, la esconde. */
+  function moverCursor(score, tick) {
+    const previo = document.querySelector('.sheet .cursor');
+    if (tick == null) { if (previo) previo.remove(); return null; }
+    const c = cursorEn(score, tick);
+    if (!c) { if (previo) previo.remove(); return null; }
+    let el = previo;
+    if (!el || el.parentElement !== c.pagina.el) {
+      if (previo) previo.remove();
+      el = document.createElement('div');
+      el.className = 'cursor';
+      c.pagina.el.appendChild(el);
+    }
+    el.style.left = (c.x / c.pagina.w * 100) + '%';
+    el.style.top = (c.yTop / c.pagina.h * 100) + '%';
+    el.style.height = ((c.yBottom - c.yTop) / c.pagina.h * 100) + '%';
+    return c;
+  }
+
+  /** Marca las cabezas que suenan ahora mismo, sin volver a grabar nada. */
+  function resaltar(ids) {
+    resaltadas.forEach((el) => el.classList.remove('sonando'));
+    resaltadas = [];
+    (ids || []).forEach((id) => {
+      const r = refs.get(id);
+      const el = r && r.note && r.note.getSVGElement && r.note.getSVGElement();
+      if (el) { el.classList.add('sonando'); resaltadas.push(el); }
+    });
+  }
+
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  return { render, hitTest, screenPosOf, PAGE, COLORS, hits: () => hits };
+  return { render, hitTest, screenPosOf, cursorEn, moverCursor, resaltar,
+           PAGE, COLORS, hits: () => hits };
 })();
