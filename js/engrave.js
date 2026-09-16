@@ -16,7 +16,7 @@ const Engrave = (() => {
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
   const PAGE = { w: 1150, h: 1626 };
-  const M = { left: 96, right: 96, top: 104, topFirst: 206 };
+  const M = { left: 96, right: 96, top: 104, topFirst: 206, bottom: 104 };
   const SYSTEM_H = 132;           // separación vertical entre sistemas de un pentagrama
   const PENT_H = 92;              // separación entre los pentagramas de un mismo sistema
 
@@ -235,6 +235,46 @@ const Engrave = (() => {
     return 54 + fifths * 14 + (isFirstSystem ? 38 : 0) + (ottava ? 10 : 0) + llave;
   }
 
+  /* Cuánto aire pide un sistema por encima y por debajo del pentagrama.
+     Los cifrados van arriba y los matices abajo: sin esto, el «mf» de un
+     sistema y el «G7» del siguiente se pisan en el hueco de en medio.
+
+     Vive fuera de `render` porque el reparto en páginas la necesita ANTES de
+     repartir: un sistema con notas muy graves o con cifrados ocupa bastante
+     más que el alto nominal, y repartir sin contarlo es lo que empujaba media
+     página de música por debajo del papel. */
+  function holguraDe(score, sys, nPentTotal) {
+    let arriba = 0, abajo = 0;
+    sys.measures.forEach((m, k) => {
+      const mi = sys.from + k;
+      Model.voces(m).forEach((v) => {
+        const clef = Model.clefAt(score, mi, v.pent);
+        v.events.forEach((ev) => {
+          // el cifrado va sobre el primer pentagrama y el matiz bajo el último
+          if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
+          else if (ev.art && ev.art.length && v.pent === 0) arriba = Math.max(arriba, 12);
+          if (ev.matiz) abajo = Math.max(abajo, 20);
+          if (ev.kind !== 'note') return;
+          /* Lo que se sale del pentagrama por líneas adicionales, más la
+             plica y la barra. En el bajo de un nocturno la nota grave baja
+             dos líneas y su barra va por debajo: sin reservar ese hueco, un
+             sistema se mete en el siguiente. */
+          const alt = Model.alturas(ev);
+          if (!alt.length) return;
+          if (v.pent === 0) {
+            const fuera = alt[alt.length - 1].di - (clef.midLine + 4);
+            if (fuera > 0) arriba = Math.max(arriba, fuera * 5 + 18);
+          }
+          if (v.pent === nPentTotal - 1) {
+            const fuera = (clef.midLine - 4) - alt[0].di;
+            if (fuera > 0) abajo = Math.max(abajo, fuera * 5 + 34);
+          }
+        });
+      });
+    });
+    return { arriba, abajo };
+  }
+
   /** Dibuja la partitura completa dentro de `root`. */
   function render(score, root, opts = {}) {
     root.innerHTML = '';
@@ -244,51 +284,58 @@ const Engrave = (() => {
     resaltadas = [];
     const compact = !!opts.compact || document.body.classList.contains('embed');
     const visualPer = opts.measuresPerSystem || score.measuresPerSystem;
-    const pages = Model.pages(score, visualPer);
     const pageWidth = compact ? 760 : PAGE.w;
     const marginLeft = compact ? 34 : M.left;
     const marginRight = compact ? 24 : M.right;
     const systemHeight = altoSistema(score, compact ? 108 : SYSTEM_H);
+    const nPentTotal0 = Model.nPent(score);
+
+    /* El reparto en páginas, por ALTO y no por número de sistemas.
+
+       Antes se partía cada `score.systemsPerPage` sistemas y la hoja medía
+       siempre lo mismo, así que en cuanto los sistemas pedían aire —notas
+       graves con líneas adicionales, cifrados, matices— la música se seguía
+       dibujando por debajo del papel. Medido en el Nocturno de Chopin: la hoja
+       medía 1626 y el dibujo llegaba a 3345. Más de la mitad de cada página
+       era invisible, pero sonaba, y por eso el cursor desaparecía un buen rato
+       al final de cada página antes de reaparecer en la siguiente.
+
+       Ahora se van sumando sistemas mientras quepan de verdad. `systemsPerPage`
+       deja de ser un reparto y pasa a ser un tope: quien quiera menos sistemas
+       por hoja los tiene, pero nadie puede pedir más de los que caben.
+
+       En modo encajado (`compact`) la hoja crece con el contenido, así que ahí
+       no hay nada que repartir: todo va en una. */
+    const usable = PAGE.h - M.top - M.bottom;
+    const pages = (() => {
+      const todos = Model.systems(score, visualPer);
+      if (!todos.length) return [[]];
+      if (compact) return [todos];
+      const tope = Math.max(1, score.systemsPerPage || 10);
+      const hojas = [];
+      let actual = [], alto = 0, primera = true;
+      for (const sys of todos) {
+        const h = holguraDe(score, sys, nPentTotal0);
+        const pide = h.arriba + systemHeight + h.abajo;
+        // La primera hoja empieza más abajo, que lleva título y autor.
+        const cabe = usable - (primera ? M.topFirst - M.top : 0);
+        if (actual.length && (alto + pide > cabe || actual.length >= tope)) {
+          hojas.push(actual);
+          actual = []; alto = 0; primera = false;
+        }
+        actual.push(sys);
+        alto += pide;
+      }
+      if (actual.length) hojas.push(actual);
+      return hojas;
+    })();
 
     if (!Renderer || !Stave || !StaveNote || !Voice || !Formatter) {
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
     }
 
-    /* Cuánto aire pide un sistema por encima y por debajo del pentagrama.
-       Los cifrados van arriba y los matices abajo: sin esto, el «mf» de un
-       sistema y el «G7» del siguiente se pisan en el hueco de en medio. */
     const nPentTotal = Model.nPent(score);
-    const holgura = (sys) => {
-      let arriba = 0, abajo = 0;
-      sys.measures.forEach((m, k) => {
-        const mi = sys.from + k;
-        Model.voces(m).forEach((v) => {
-          const clef = Model.clefAt(score, mi, v.pent);
-          v.events.forEach((ev) => {
-            // el cifrado va sobre el primer pentagrama y el matiz bajo el último
-            if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
-            else if (ev.art && ev.art.length && v.pent === 0) arriba = Math.max(arriba, 12);
-            if (ev.matiz) abajo = Math.max(abajo, 20);
-            if (ev.kind !== 'note') return;
-            /* Lo que se sale del pentagrama por líneas adicionales, más la
-               plica y la barra. En el bajo de un nocturno la nota grave baja
-               dos líneas y su barra va por debajo: sin reservar ese hueco, un
-               sistema se mete en el siguiente. */
-            const alt = Model.alturas(ev);
-            if (!alt.length) return;
-            if (v.pent === 0) {
-              const fuera = alt[alt.length - 1].di - (clef.midLine + 4);
-              if (fuera > 0) arriba = Math.max(arriba, fuera * 5 + 18);
-            }
-            if (v.pent === nPentTotal - 1) {
-              const fuera = (clef.midLine - 4) - alt[0].di;
-              if (fuera > 0) abajo = Math.max(abajo, fuera * 5 + 34);
-            }
-          });
-        });
-      });
-      return { arriba, abajo };
-    };
+    const holgura = (sys) => holguraDe(score, sys, nPentTotal);
 
     try { pages.forEach((systems, pageIndex) => {
       const holguras = systems.map(holgura);

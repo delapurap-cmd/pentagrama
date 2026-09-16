@@ -557,15 +557,26 @@ const Model = (() => {
   }
 
   /** Compases agrupados en sistemas y páginas para el grabado. */
-  function pages(score, visualMeasuresPerSystem) {
+  /** Los sistemas de la obra, en fila y sin repartir en páginas. */
+  function systems(score, visualMeasuresPerSystem) {
     const per = Math.max(1, visualMeasuresPerSystem || score.measuresPerSystem);
-    const systems = [];
-    for (let i = 0; i < score.measures.length; i += per) {
-      systems.push({ from: i, measures: score.measures.slice(i, i + per) });
-    }
     const out = [];
-    for (let i = 0; i < systems.length; i += score.systemsPerPage) {
-      out.push(systems.slice(i, i + score.systemsPerPage));
+    for (let i = 0; i < score.measures.length; i += per) {
+      out.push({ from: i, measures: score.measures.slice(i, i + per) });
+    }
+    return out;
+  }
+
+  /* El reparto en páginas vive en el grabador, no aquí: cuánto ocupa un
+     sistema depende de lo que se dibuja encima y debajo —líneas adicionales,
+     cifrados, matices—, y eso sólo lo sabe quien lo graba. Repartir aquí por
+     un número fijo de sistemas era lo que tiraba media página de música por
+     debajo del papel. */
+  function pages(score, visualMeasuresPerSystem) {
+    const todos = systems(score, visualMeasuresPerSystem);
+    const out = [];
+    for (let i = 0; i < todos.length; i += score.systemsPerPage) {
+      out.push(todos.slice(i, i + score.systemsPerPage));
     }
     return out.length ? out : [[]];
   }
@@ -588,6 +599,7 @@ const Model = (() => {
   function clone(score) { return JSON.parse(JSON.stringify(score)); }
 
   return {
+    systems,
     Q, WHOLE, DURS, KEYS, TIMES, CLEFS, MIDDLE_LINE_DI, LETTERS, SEMIS,
     durById, durTicks, dotFactor, evTicks, keyBySpec, keyAlter, timeLabel, capacity, beatTicks, isCompound,
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
