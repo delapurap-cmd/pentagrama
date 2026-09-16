@@ -188,9 +188,26 @@ const Model = (() => {
      El mapa es una lista de {tick, bpm} ordenada, y `segundosEn` integra por
      tramos: dentro de cada uno el tiempo es lineal, y en el cambio se enlaza
      con lo acumulado. */
+  /* El mapa de tempo, con el control de velocidad aplicado en proporción.
+
+     Antes `score.tempo` entraba como el punto del tick 0 — y ahí está el
+     fallo: una partitura importada trae casi siempre una marca escrita en ese
+     mismo tick, y el desempate «a igual tick manda la última» la dejaba ganar.
+     Medido en el Nocturno: subir el tempo de 60 a 200 dejaba la obra durando
+     exactamente los mismos 218,6 s. El control no hacía nada.
+
+     Ahora `tempoEscrito` es el tempo al que está ESCRITA la obra y `tempo` es
+     al que se quiere oír; la razón entre los dos escala el mapa entero. Así
+     mover el tempo mueve la obra completa y las diez marcas del Nocturno se
+     mueven con ella en la misma proporción, en vez de desaparecer bajo un
+     número plano — que es justo lo que no se quería.
+
+     Lo guardado antes no tiene `tempoEscrito`: entonces vale `tempo`, la
+     escala es 1 y todo suena como sonaba. Nada que migrar. */
   function mapaTempo(score) {
     const ini = inicios(score);
-    const puntos = [{ tick: 0, bpm: score.tempo || 90 }];
+    const escrito = score.tempoEscrito || score.tempo || 90;
+    const puntos = [{ tick: 0, bpm: escrito }];
     score.measures.forEach((m, mi) => {
       if (m.tempo) puntos.push({ tick: ini[mi], bpm: m.tempo });
       voces(m).forEach((v) => {
@@ -208,6 +225,10 @@ const Model = (() => {
       if (limpio.length && limpio[limpio.length - 1].tick === p.tick) limpio[limpio.length - 1] = p;
       else limpio.push(p);
     });
+    // El control de velocidad, en proporción sobre todo lo escrito.
+    const escala = (score.tempo || 90) / escrito;
+    if (escala !== 1) limpio.forEach((p) => { p.bpm = p.bpm * escala; });
+
     // se precalcula el segundo en el que empieza cada tramo
     let seg = 0;
     limpio.forEach((p, i) => {
@@ -388,6 +409,7 @@ const Model = (() => {
       clef: opts.clef || 'treble',
       time: opts.time || { num: 4, den: 4 },
       tempo: opts.tempo || 90,
+      tempoEscrito: opts.tempo || 90,
       measuresPerSystem: opts.measuresPerSystem || 2,
       systemsPerPage: opts.systemsPerPage || 10,
       measures: []

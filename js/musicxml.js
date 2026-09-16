@@ -502,6 +502,11 @@ const MusicXML = (() => {
 
     if (mEmpty(score)) throw new Error('El archivo no trae notas que Reper pueda leer.');
     if (tempo) score.tempo = Math.max(30, Math.min(300, tempo));
+    /* Al importar, el tempo que trae el fichero es el ESCRITO. A partir de
+       aquí el control de velocidad mueve `tempo` y el mapa se escala en esa
+       proporción; sin esta línea, `tempoEscrito` se quedaría en los 90 de la
+       partitura en blanco y una obra a 60 arrancaría sonando a dos tercios. */
+    score.tempoEscrito = score.tempo;
     Model.ponerPentagramas(score, nPent,
       Array.from({ length: nPent }, (_, p) => clavesVistas[p] || (p === 0 ? 'treble' : 'bass')));
 
