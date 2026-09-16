@@ -104,6 +104,11 @@ Funcionando y probado. **Lo siguiente acordado, por orden:**
 5. Atajos de teclado en ordenador.
 
 Y pendiente de decidir: **integrar el módulo en la web**. El mecanismo ya
-existe (`?embed=1&id=…` más `postMessage`), pero hay **tres copias** del
-editor —`main`, la rama `editor` y la pegada dentro de `cuaderno`—, y ya
-empezaron a separarse. Antes de integrar nada hay que dejar una sola fuente.
+existe (`?embed=1&id=…` más `postMessage`).
+
+Antes había tres copias del editor —`main`, la rama `editor` y la pegada
+dentro de `cuaderno`— y ya empezaban a separarse. Al partir los proyectos
+quedan **dos**: ésta, que es la buena, y la que el Cuaderno Musical lleva en
+`app/src/main/assets/reper/` dentro del repositorio `repert`, que va por
+detrás y hay que refrescar a mano. Esa segunda copia no se puede quitar sin
+más: es lo que permite que la app edite sin conexión.

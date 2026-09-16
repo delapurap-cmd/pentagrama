@@ -1,7 +1,14 @@
-# Reper
+# Pentagrama
 
 Editor de partituras: tocas el pentagrama y escribes. Funciona en el
 navegador y, empaquetado con Capacitor, como app de Android.
+
+Antes se llamaba **Reper** y compartía repositorio con el Cuaderno Musical.
+Ahora cada uno va por su lado: el cuaderno vive en
+[`repert`](https://github.com/delapurap-cmd/repert) y este repositorio es sólo
+el editor. Los nombres viejos siguen apareciendo por dentro —el identificador
+del APK, los secretos de firma— y se dejan como están a propósito: cambiarlos
+haría que el APK nuevo no se instalara encima del que ya tienes.
 
 Grabado con [VexFlow](https://vexflow.com) y la fuente musical Bravura, ambas
 servidas desde el propio repositorio: no hace falta conexión.
@@ -102,6 +109,12 @@ Los iconos (una corchea dorada) se generan del propio glifo de Bravura con
 Una sola voz en clave de sol. Varias voces, pentagramas, tresillos,
 articulaciones, matices y letra se leen del archivo pero no se escriben
 todavía: al importar, el aviso dice exactamente qué se ha quedado fuera.
+
+## El editor que va dentro del cuaderno es otra copia
+
+El Cuaderno Musical lleva el editor pegado en sus propios `assets/`, para poder
+funcionar sin conexión. Esa copia **no se actualiza sola** cuando este
+repositorio avanza: hay que llevarla a mano. Ahora mismo va por detrás.
 
 ## Licencias
 

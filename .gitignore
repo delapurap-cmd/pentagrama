@@ -1,0 +1,4 @@
+
+# Las pruebas usan playwright; se instala aparte, no se sube.
+node_modules/
+package-lock.json
