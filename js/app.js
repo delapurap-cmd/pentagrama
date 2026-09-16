@@ -691,6 +691,10 @@
      para estudiar una obra: posición, velocidad, metrónomo y bucle entre dos
      compases, que es como se saca un pasaje difícil. */
   const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1, pos: 0 };
+  /* Qué instrumento hace de ayuda visual. Se recuerda entre sesiones porque
+     quien lo usa lo usa siempre, y volver a elegirlo cada vez cansa. */
+  let ayuda = 'ninguno';
+  try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
 
   function nCompases() { return state.score.measures.length; }
   const tickDeCompas = (n) => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))];
@@ -724,7 +728,7 @@
          que recorre el sistema y todas las cabezas que suenan pintadas a la
          vez, encima de lo ya grabado. El Nocturno son mil notas; redibujar
          la partitura en cada una era lo que hacía saltar el cursor. */
-      onSonando: (ids) => Engrave.resaltar(ids),
+      onSonando: (ids, midis) => { Engrave.resaltar(ids); Instrumentos.encender(midis); },
       onPos: (frac, seg, tick) => {
         pintarPosicion(frac);
         const c = Engrave.moverCursor(state.score, tick);
@@ -734,8 +738,41 @@
     });
   }
 
+  /** Pone o quita el instrumento de ayuda y ajusta el aviso de lo que no cabe. */
+  function montaAyuda() {
+    try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
+    const panel = $('#panelAyuda');
+    const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
+    panel.hidden = !puesto;
+    document.body.classList.toggle('con-ayuda', !!puesto);
+    /* El panel de reproducción se sube justo lo que ocupe la ayuda. Se mide
+       después de montarla porque un teclado y un mástil no miden igual. */
+    document.documentElement.style.setProperty(
+      '--ins-alto-dock', puesto ? (panel.getBoundingClientRect().height + 8) + 'px' : '0px');
+    const aviso = $('#insAviso');
+    aviso.textContent = '';
+    if (!puesto) return;
+
+    /* Cuántas notas de esta obra no caben en el instrumento elegido. Con
+       música de piano en una guitarra son muchas, y vale más decirlo que
+       dibujar la mitad y dejar que parezca que falla. */
+    const todas = [];
+    state.score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
+      const clef = Model.clefAt(state.score, mi, v.pent);
+      v.events.forEach((ev) => {
+        if (ev.kind !== 'note') return;
+        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(x); });
+      });
+    }));
+    const fuera = Instrumentos.fuera(todas);
+    if (fuera) {
+      aviso.textContent = `${fuera} de ${todas.length} notas quedan fuera de este instrumento y no se dibujan.`;
+    }
+  }
+
   function pararTodo() {
     Sound.stop();
+    Instrumentos.encender([]);
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
@@ -794,6 +831,19 @@
       rep.velocidad = Math.min(2, +(rep.velocidad + 0.1).toFixed(2)); refresca(); reinicia();
     });
     $('#ppMetro').addEventListener('click', () => { rep.metronomo = !rep.metronomo; refresca(); reinicia(); });
+
+    /* El menú de instrumentos se construye desde el catálogo, no a mano: el
+       día que entren el violín o el saxofón aparecen aquí solos. */
+    const selIns = $('#ppInstrumento');
+    Instrumentos.catalogo.forEach((ins) => {
+      const op = document.createElement('option');
+      op.value = ins.id;
+      op.textContent = ins.nombre;
+      selIns.appendChild(op);
+    });
+    selIns.value = ayuda;
+    selIns.addEventListener('change', (e) => { ayuda = e.target.value; montaAyuda(); });
+    montaAyuda();
     $('#ppBucle').addEventListener('click', () => {
       rep.bucle = !rep.bucle;
       // al encender el bucle sin tramo elegido, se toma el compás de la nota

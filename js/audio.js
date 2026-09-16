@@ -352,12 +352,21 @@ const Sound = (() => {
          todas y no ir dando saltos de una pauta a otra. */
       if (opts.onSonando) {
         const ids = [];
+        const midis = [];
         for (const { it } of region) {
           if (it.at > reloj) break;
-          if (it.ev.kind === 'note' && it.at + it.dur > reloj) ids.push(it.ev.id);
+          if (it.ev.kind === 'note' && it.at + it.dur > reloj) {
+            ids.push(it.ev.id);
+            /* Las alturas ya resueltas, para las ayudas visuales. Se sacan
+               aquí porque aquí está la clave de ese compás y ese pentagrama:
+               calcularlas fuera obligaría a recorrer la obra por segunda vez
+               para averiguar algo que este bucle ya tiene delante. */
+            const ms = Model.midisOf(it.ev, score.key, it.clef);
+            for (const m of ms) if (m != null) midis.push(m);
+          }
         }
         const firma = ids.join(',');
-        if (firma !== ultimaFirma) { ultimaFirma = firma; opts.onSonando(ids); }
+        if (firma !== ultimaFirma) { ultimaFirma = firma; opts.onSonando(ids, midis); }
       }
       if (opts.onPos) {
         opts.onPos(Math.min(1, Math.max(0, (reloj - segIni) / largo)), reloj,

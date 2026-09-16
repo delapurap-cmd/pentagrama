@@ -45,6 +45,14 @@
   <div class="sheets" id="stage"></div>
 </main>
 
+<!-- La ayuda visual: ver en un instrumento lo que suena en la partitura.
+     Va entre la hoja y el panel de reproducción, que es donde se mira sin
+     perder de vista ninguno de los dos. -->
+<section class="ayuda-dock" id="panelAyuda" aria-label="Instrumento" hidden>
+  <div class="ins-caja" id="insCaja"></div>
+  <p class="ins-aviso" id="insAviso"></p>
+</section>
+
 <!-- Panel de reproducción -->
 <section class="panel play" id="panelPlay" aria-label="Reproducción">
   <div class="row">
@@ -63,6 +71,8 @@
       <button class="btn ghost icon" id="ppRapido" title="Más deprisa">＋</button>
     </div>
     <button class="btn" id="ppMetro" title="Metrónomo mientras suena">Metrónomo</button>
+    <label class="lbl" for="ppInstrumento">Ver en</label>
+    <select class="sel" id="ppInstrumento" title="Instrumento de ayuda"></select>
   </div>
 
   <div class="row">
@@ -122,6 +132,7 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/engrave.js"></script>
 <script src="js/radial.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/instrumentos.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

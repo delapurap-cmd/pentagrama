@@ -397,3 +397,97 @@ body.embed .sheet-head { display: none; }
 @media (max-width: 640px) {
   .sheets { padding: 14px 8px calc(240px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* ── Ayudas visuales ──────────────────────────────────────────────────────
+   Ver en un instrumento lo que suena en la partitura. El panel vive entre la
+   hoja y el de reproducción, y sólo aparece cuando se elige un instrumento:
+   quien no lo quiera no paga ni un píxel de pantalla. */
+:root{
+  --ins-alto-cuerda: 26px;
+  --ins-borde: 10px;
+  --ins-cabecera: 38px;
+}
+
+/* La ayuda NO es una de las hojas de `.panel`: ésas comparten sitio al pie y
+   se turnan, y el instrumento tiene que verse A LA VEZ que el de
+   reproducción. Va en su propio anclaje, más abajo y más ancho, y el panel de
+   reproducción se sube lo que ella mida —`--ins-alto-dock`, que se escribe al
+   montarla porque depende del instrumento. */
+.ayuda-dock{
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: min(900px, calc(100vw - 16px)); z-index: 40;
+  background: rgba(18,18,21,.97);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+/* Se mueve el estado ABIERTO, no el `bottom`. Los paneles cerrados se
+   esconden con un `translateY(140%)` medido desde su sitio: subirles el
+   `bottom` les subía también el escondite y asomaban por abajo, encima del
+   instrumento. */
+body.con-ayuda .panel.open{
+  transform: translateX(-50%) translateY(calc(-1 * var(--ins-alto-dock, 0px)));
+}
+.ins-caja{ width: 100%; }
+.ins-scroll{ overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.ins-aviso{ margin: 0; font-size: 11px; color: var(--txt-dim); line-height: 1.45; }
+.ins-aviso:empty{ display: none; }
+
+/* El piano. Las negras van encima, y encendidas toman el oro de la casa. */
+.ins-piano{ position: relative; height: 104px; min-width: 620px; }
+.ins-blanca, .ins-negra{
+  position: absolute; top: 0; border-radius: 0 0 3px 3px;
+  transition: background .06s linear;
+}
+.ins-blanca{
+  height: 104px; background: linear-gradient(#f4f1e9, #cdc9bd);
+  border: 1px solid #17150f; box-shadow: inset 0 -5px 7px rgba(0,0,0,.2);
+}
+.ins-negra{
+  height: 64px; background: linear-gradient(#2a2b28, #0b0c0a);
+  border: 1px solid #000; box-shadow: 0 2px 0 #000; z-index: 2;
+}
+.ins-blanca.on{ background: linear-gradient(#f2e6b4, var(--gold)); }
+.ins-negra.on{ background: linear-gradient(var(--gold), #7a6520); }
+
+/* El mástil. Palo de rosa, cejilla clara y los puntos donde los lleva. */
+.ins-mastil{
+  position: relative; min-width: 620px; padding: var(--ins-borde) 0;
+  background: linear-gradient(#57381f, #3a2414);
+  border: 1px solid #1b1108; border-radius: 4px;
+  box-shadow: inset 0 2px 0 rgba(255,220,180,.15);
+}
+.ins-cuerda{ position: relative; height: var(--ins-alto-cuerda); display: flex; align-items: center; }
+.ins-cuerda::after{
+  content: ''; position: absolute; left: var(--ins-cabecera); right: 8px; height: 1px;
+  background: linear-gradient(90deg, #dacdb2, #998d75); opacity: .8;
+}
+.ins-nombre{
+  width: var(--ins-cabecera); flex: 0 0 var(--ins-cabecera); text-align: center;
+  font-size: 10px; font-weight: 700; color: #e7d9b8; letter-spacing: .4px;
+}
+.ins-traste{ position: absolute; top: 6px; bottom: 6px; width: 2px; background: rgba(238,226,196,.45); }
+.ins-traste.cejilla{ width: 5px; background: #e9e0c6; }
+.ins-marca{
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  background: rgba(255,242,214,.28); transform: translate(-50%,-50%);
+}
+.ins-dedo{
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  transform: translate(-50%,-50%); z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: #1b1507;
+  background: radial-gradient(circle at 35% 30%, #f2e6b4, var(--gold));
+  border: 1px solid #6e5f17; box-shadow: 0 0 12px rgba(201,168,76,.6);
+}
+
+.panel.play .sel{
+  font: inherit; font-size: 13px; color: var(--txt);
+  background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 8px;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .ins-blanca, .ins-negra{ transition: none; }
+}
