@@ -5,7 +5,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+from io import BytesIO
 from pathlib import Path
+
+from pypdf import PdfReader
 
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_PAGES = 16
@@ -23,12 +26,28 @@ def executable() -> str | None:
     return shutil.which(setting)
 
 
-def convert_pdf(data: bytes, *, runner=subprocess.run, program: str | None = None) -> tuple[bytes, str]:
-    """Returns (binary output, extension). No inputs or outputs persist on disk."""
+def check_pdf(data: bytes) -> int:
     if not data.startswith(b"%PDF-"):
         raise OMRFailure("El archivo no tiene una cabecera PDF válida.")
-    if not data or len(data) > MAX_PDF_BYTES:
+    if len(data) > MAX_PDF_BYTES:
         raise OMRFailure("El PDF supera el límite de 12 MB.")
+    try:
+        reader = PdfReader(BytesIO(data), strict=True)
+        if reader.is_encrypted:
+            raise OMRFailure("Quita la contraseña del PDF antes de importarlo.")
+        pages = len(reader.pages)
+    except OMRFailure:
+        raise
+    except Exception as exc:
+        raise OMRFailure("El PDF está dañado o no se pudo leer.") from exc
+    if not 1 <= pages <= MAX_PAGES:
+        raise OMRFailure("Importa entre 1 y 16 páginas por operación.")
+    return pages
+
+
+def convert_pdf(data: bytes, *, runner=subprocess.run, program: str | None = None) -> tuple[bytes, str]:
+    """Returns (binary output, extension). No inputs or outputs persist on disk."""
+    check_pdf(data)
     binary = program or executable()
     if not binary:
         raise OMRFailure("El motor Audiveris no está instalado en este servidor.")
