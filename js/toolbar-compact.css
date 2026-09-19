@@ -1,5 +1,5 @@
-/* Barra contextual: forma parte del editor, justo debajo del encabezado.
-   Mantener intactas las acciones, el buscador y los manejadores de radial.js. */
+/* Barra contextual: forma parte del editor. El diseño lateral sobreescribe
+   su disposición en js/workspace-sides.css sin cambiar comandos. */
 body .bar{order:0}
 body .pt-wrap{
   position:relative;left:auto;bottom:auto;transform:none;
@@ -74,3 +74,8 @@ body .audio-sync-link:hover{border-color:#c9a84c;background:rgba(201,168,76,.22)
   body .pt-wrap .pt-actions .pt-btn{min-height:28px}
   body .bar .audio-sync-link{height:34px;padding:0 8px;font-size:12px}
 }
+/* Bravura's private-use glyphs sometimes paint beyond their line box.
+   A lower-row accidental could receive clicks intended for the dot above.
+   Clip glyph painting to its button and hit-test the button, not the glyph. */
+body:not(.embed) .editor-rail .pt-actions .pt-btn{overflow:hidden;position:relative}
+body:not(.embed) .editor-rail .pt-actions .pt-glyph{pointer-events:none}
