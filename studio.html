@@ -7,16 +7,15 @@
   <title>Pentagrama</title>
   <link rel="icon" href="icon-192.png">
   <script>
-    /* Studio es la entrada web, no un segundo marco de interfaz. La partitura
-       debe ocupar la ventana completa; Audio Sync ya tiene enlace de vuelta. */
+    /* La entrada web sólo redirige al editor; Audio Sync vive en esa misma hoja. */
     (() => {
-      const destination = location.hash.toLowerCase() === '#sync' ? 'sync.html' : 'index.html';
-      location.replace(destination + location.search);
+      const sync = location.hash.toLowerCase() === '#sync';
+      const params = new URLSearchParams(location.search);
+      if (sync) params.set('sync','1');
+      location.replace('index.html' + (params.size ? '?' + params.toString() : ''));
     })();
   </script>
   <noscript><meta http-equiv="refresh" content="0;url=index.html"></noscript>
 </head>
-<body>
-  <a href="index.html">Abrir Pentagrama</a>
-</body>
+<body><a href="index.html">Abrir Pentagrama</a></body>
 </html>
