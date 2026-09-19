@@ -62,7 +62,14 @@ const SyncCore = (() => {
     const reverse = (seconds) => model.tickEn(tempo, seconds);
     return {
       toSeconds: (tick, points) => map(tick, points, 'tick', 'seconds', baseline),
-      toTick: (seconds, points) => map(seconds, points, 'seconds', 'tick', reverse),
+      toTick: (seconds, points) => {
+        const anchors = validate(points);
+        if (anchors.length === 1) {
+          const a = anchors[0];
+          return Math.max(0, reverse(seconds - a.seconds + baseline(a.tick)));
+        }
+        return map(seconds, anchors, 'seconds', 'tick', reverse);
+      },
       timeline: timeline(score, model)
     };
   }
