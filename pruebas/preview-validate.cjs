@@ -1,4 +1,5 @@
-/* La URL histórica de Studio abre ahora el editor directamente. */
+/* Vista externa opcional: raw.githack es un proveedor ajeno y puede bloquear
+   o conservar temporalmente HTML en caché. El editor local se prueba aparte. */
 const {chromium}=require('playwright-core');
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN||'/usr/bin/google-chrome',args:['--no-sandbox']});
@@ -6,13 +7,14 @@ const {chromium}=require('playwright-core');
   const context=await browser.newContext({viewport:{width:1440,height:900}});
   await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
   const page=await context.newPage();
-  await page.goto('https://raw.githack.com/delapurap-cmd/pentagrama/main/studio.html',{waitUntil:'domcontentloaded'});
-  await page.waitForURL(/\/index\.html(?:[?#]|$)/,{timeout:30000});
-  await page.locator('#stage .sheet').first().waitFor({timeout:30000});
-  if(await page.locator('iframe,.left,.right,.guide,.view-bar').count())throw Error('Dashboard elements found in full-screen editor');
-  await page.locator('a[href="sync.html"]').click();
-  await page.waitForURL(/\/sync\.html(?:[?#]|$)/);
-  await page.locator('#syncStage .sheet').first().waitFor({timeout:30000});
-  console.log('PASS: public preview opens full-screen score editor and Audio Sync directly');
+  await page.goto('https://raw.githack.com/delapurap-cmd/pentagrama/main/index.html',{waitUntil:'domcontentloaded',timeout:20000});
+  await page.locator('#stage .sheet').first().waitFor({timeout:15000});
+  if(await page.locator('iframe,.left,.right,.guide,.view-bar').count())throw Error('Dashboard found in the public editor');
+  const link=page.locator('header .audio-sync-link.standalone-only');
+  if(!await link.isVisible())throw Error('Audio Sync is not visible in the public editor');
+  await link.click();
+  await page.waitForURL(/\/sync\.html(?:[?#]|$)/,{timeout:15000});
+  await page.locator('#syncStage .sheet').first().waitFor({timeout:15000});
+  console.log('PASS: public preview has full-screen editor and visible Audio Sync');
  }finally{await browser.close();}
-})().catch(e=>{console.error(e);process.exitCode=1});
+})().catch(e=>{console.error('OPTIONAL EXTERNAL PREVIEW: '+e.message);process.exitCode=1});
