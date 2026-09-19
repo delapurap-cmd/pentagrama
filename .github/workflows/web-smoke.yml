@@ -1,0 +1,46 @@
+name: Pentagrama Studio browser tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'studio.html'
+      - 'sync.html'
+      - 'index.html'
+      - 'js/**'
+      - 'style.css'
+      - 'pruebas/studio-browser.cjs'
+      - '.github/workflows/web-smoke.yml'
+  pull_request:
+    paths:
+      - 'studio.html'
+      - 'sync.html'
+      - 'index.html'
+      - 'js/**'
+      - 'style.css'
+      - 'pruebas/studio-browser.cjs'
+  workflow_dispatch:
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install lightweight browser driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Verify page and JavaScript
+        run: |
+          node --check pruebas/studio-browser.cjs
+          node --check js/sync-studio.js
+          test -s studio.html
+          test -s vendor/vexflow.js
+      - name: Test real application in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/studio-browser.cjs
+      - name: Check standalone HTML preview availability
+        continue-on-error: true
+        run: |
+          curl --fail --location --max-time 25 --output /tmp/preview.html https://raw.githack.com/delapurap-cmd/pentagrama/main/studio.html
+          grep -q 'Pentagrama Studio' /tmp/preview.html
