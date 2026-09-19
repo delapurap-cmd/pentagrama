@@ -1,7 +1,6 @@
 /* Prueba del sitio REAL con Chromium, sin simuladores del editor ni del renderizador. */
 const { chromium } = require('playwright-core');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const server = spawn('python3', ['-m', 'http.server', '18881', '--bind', '127.0.0.1'], { stdio: 'ignore' });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -27,8 +26,7 @@ function wav() {
    const editor=page.frameLocator('#editorFrame');
    await editor.locator('.sheet').first().waitFor({timeout:30000});
    assert.match(await page.locator('#pageTitle').innerText(),/Editor/);
-   const nav=page.locator('[data-view="sync"]');
-   await nav.last().click();
+   await page.locator('[data-view="sync"]:visible').click();
    const sync=page.frameLocator('#syncFrame');
    await sync.locator('#syncStage .sheet').first().waitFor({timeout:30000});
    assert.match(await page.locator('#pageTitle').innerText(),/Audio Sync/);
@@ -38,9 +36,9 @@ function wav() {
      await new Promise((resolve,reject)=>{a.addEventListener('loadedmetadata',resolve,{once:true});a.addEventListener('error',reject,{once:true})});
    });
    assert.ok(await sync.locator('#syncAudio').evaluate(a=>a.duration>0));
-   await page.locator('[data-view="guide"]').last().click();
+   await page.locator('[data-view="guide"]:visible').click();
    assert.ok(await page.locator('#view-guide').isVisible());
-   await page.locator('[data-view="editor"]').last().click();
+   await page.locator('[data-view="editor"]:visible').click();
    assert.ok(await page.locator('#view-editor').isVisible());
    assert.deepEqual(errors,[]);
    await page.screenshot({path:`/tmp/pentagrama-studio-${viewport.width}.png`});
