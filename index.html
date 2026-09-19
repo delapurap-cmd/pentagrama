@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="js/toolbar-compact.css">
 <link rel="stylesheet" href="js/sync-inline.css">
+<link rel="stylesheet" href="js/workspace-sides.css">
 </head>
 <body>
 
@@ -19,6 +20,7 @@
   <a class="btn ghost icon back standalone-only" href="https://morethanmodes.com" title="More Than Modes" aria-label="More Than Modes">←</a>
   <button class="btn ghost icon embed-only" id="btnEmbedClose" title="Volver al cuaderno">←</button>
   <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
+  <button class="btn standalone-only" id="btnSideTools" type="button" aria-controls="editorRail" aria-expanded="false" title="Mostrar u ocultar herramientas de partitura">☰ Herramientas</button>
   <button class="btn audio-sync-link" id="btnAudioSync" type="button" aria-expanded="false" aria-controls="syncDock" title="Desplegar Audio Sync sobre esta partitura">◉ Audio Sync</button>
   <div class="bar-tools" id="barTools">
     <button class="btn" id="btnNew">＋</button>
@@ -26,7 +28,6 @@
     <button class="btn" id="btnKey" title="Armadura"><span class="lab">Armadura</span> <span class="chip" id="chipKey">Do M</span></button>
     <button class="btn" id="btnTime" title="Compás"><span class="lab">Compás</span> <span class="chip" id="chipTime">4/4</span></button>
     <button class="btn" id="btnTap"><span class="lab">Tiempos</span> <span class="chip" id="chipTempo">♩ = 90</span></button>
-    <!-- Los controles ocasionales se redistribuyen sin ocultar comandos. -->
     <span class="br"></span>
     <div class="zoom">
       <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
@@ -43,6 +44,8 @@
   <button class="btn icon" id="btnPlay" title="Escuchar (espacio)">▶</button>
 </header>
 
+<!-- El lateral contiene los botones reales; no es una réplica del editor. -->
+<aside class="editor-rail standalone-only" id="editorRail" aria-label="Herramientas de partitura"></aside>
 <main class="stage" id="scroller">
   <div class="sheets" id="stage"></div>
 </main>
@@ -136,5 +139,6 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/app.js"></script>
 <script src="js/sync-core.js"></script>
 <script src="js/sync-inline.js"></script>
+<script src="js/workspace-sides.js"></script>
 </body>
 </html>
