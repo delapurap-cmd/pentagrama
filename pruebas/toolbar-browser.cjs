@@ -1,4 +1,4 @@
-/* Chrome: editor real, barra vertical y comandos sin duplicación ni solapamiento. */
+/* Chrome: barra general arriba, comandos de edición a izquierda y sin solapamiento. */
 const {chromium}=require('playwright-core');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
@@ -11,12 +11,15 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:18882/index.html');await page.locator('.sheet-svg').first().waitFor();
   const desktop=viewport.width>780;
-  assert.equal(await page.locator('#barTools').evaluate(el=>el.parentElement.id),'editorRail','toolbar real en lateral');
-  if(!desktop)await page.locator('#btnSideTools').click();
+  assert.equal(await page.locator('#barTools').evaluate(el=>el.parentElement.tagName),'HEADER','la barra general debe seguir en el encabezado');
+  assert.equal(await page.locator('#btnPdfImport').count(),1,'importar PDF permanece en la barra general');
+  const top=await page.evaluate(()=>{const h=document.querySelector('header.bar').getBoundingClientRect(),b=document.querySelector('#barTools').getBoundingClientRect(),s=document.querySelector('.stage').getBoundingClientRect();return {headerBottom:h.bottom,barTop:b.top,barBottom:b.bottom,scoreTop:s.top,barHeight:b.height};});
+  assert.ok(top.barTop<top.scoreTop && top.barBottom<=top.headerBottom+2,'barra general arriba del lienzo');
+  assert.ok(top.barHeight<=40,'barra superior debe ser compacta');
   const where=await page.evaluate(()=>{const r=document.querySelector('.sheet-svg').getBoundingClientRect();for(let y=Math.max(r.top+10,90);y<Math.min(r.bottom,innerHeight-100);y+=8)for(let x=Math.max(r.left+55,22);x<Math.min(r.right-30,innerWidth-10);x+=35)if(Engrave.hitTest(x,y))return{x,y};return null;});
-  assert.ok(where,'pentagrama escribible');if(!desktop)await page.locator('#btnSideTools').click();
+  assert.ok(where,'pentagrama escribible');
   await page.mouse.click(where.x,where.y);await page.locator('.pt-wrap.open').waitFor();
-  assert.equal(await page.locator('.pt-wrap').evaluate(el=>el.parentElement.id),'editorRail','comandos originales en lateral');
+  assert.equal(await page.locator('.pt-wrap').evaluate(el=>el.parentElement.id),'editorRail','comandos contextuales originales en lateral');
   const geometry=await page.evaluate(()=>{const r=s=>document.querySelector(s).getBoundingClientRect(),a=r('#editorRail'),s=r('.stage');return {width:a.width,right:a.right,stageLeft:s.left,height:a.height};});
   assert.ok(geometry.width<=260,'lateral compacto');if(desktop){assert.ok(geometry.right<=geometry.stageLeft+3,'lateral izquierdo');assert.ok(geometry.height>400,'columna vertical');}
   assert.equal(await page.locator('.pt-actions [data-command^="note-"]').count(),7);
@@ -25,7 +28,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await page.locator('[data-command="note-8"]').click();await active('[data-command="note-8"]');
   await page.getByRole('tab',{name:'Notas'}).click();
   const atCenter=await page.locator('[data-command="dot"]').evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('[data-command]')?.dataset.command;});
-  assert.equal(atCenter,'dot','los glifos de la fila inferior no deben interceptar el puntillo');
+  assert.equal(atCenter,'dot','los glifos no deben interceptar otros botones');
   await page.locator('[data-command="dot"]').click();await active('[data-command="dot"]');
   await page.keyboard.press('Control+k');assert.ok(await page.locator('.pt-search').evaluate(el=>document.activeElement===el),'buscador enfocado');
   await page.locator('.pt-search').fill('bemol');assert.ok(await page.locator('.pt-results .pt-result').count()>0);
@@ -34,7 +37,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
    await page.getByRole('tab',{name:tab}).click();assert.ok(await page.locator(`[data-command="${selector}"]`).isVisible());
   }
   await page.locator('.pt-finish').click();assert.equal(await page.locator('.pt-wrap.open').count(),0);
-  assert.deepEqual(errors,[]);console.log(`PASS: lateral de edición, botones sin solaparse y todos los comandos a ${viewport.width}px`);
+  assert.deepEqual(errors,[]);console.log(`PASS: general top toolbar, contextual left rail and musical commands at ${viewport.width}px`);
   await context.close();
  }
 }finally{if(browser)await browser.close();server.kill();}})().catch(err=>{console.error(err);process.exitCode=1});
