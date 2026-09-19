@@ -2,105 +2,21 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#101012">
-  <meta name="description" content="Pentagrama Studio: editor de partituras y sincronización con grabaciones en una misma aplicación web.">
-  <title>Pentagrama Studio — edición y Audio Sync</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0c">
+  <title>Pentagrama</title>
   <link rel="icon" href="icon-192.png">
-  <style>
-    :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eeeae2;background:#101012;font-synthesis:none}
-    *{box-sizing:border-box}html,body{margin:0;min-width:320px;height:100%;overflow:hidden}
-    button,a{font:inherit}button{cursor:pointer}a{color:inherit;text-decoration:none}
-    button:focus-visible,a:focus-visible{outline:2px solid #e6b954;outline-offset:3px}
-    .app{display:grid;grid-template-columns:228px minmax(0,1fr) 252px;grid-template-rows:64px minmax(0,1fr);height:100dvh;min-height:340px}
-    .brand{grid-column:1;grid-row:1;background:#171719;border-right:1px solid #303034;border-bottom:1px solid #303034;display:flex;align-items:center;gap:11px;padding:0 18px}
-    .brand img{width:34px;height:34px;object-fit:contain}.brand strong{display:block;font-size:16px;letter-spacing:.2px}.brand small{display:block;font-size:10px;letter-spacing:1.3px;color:#caaa65;margin-top:2px}
-    .top{grid-column:2/4;grid-row:1;border-bottom:1px solid #303034;display:flex;align-items:center;gap:12px;padding:0 18px;background:#171719}
-    .top-title{min-width:0;flex:1}.top-title h1{margin:0;font-size:15px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-title p{font-size:11px;color:#92918f;margin:4px 0 0}
-    .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#58ac7d;margin-right:6px}
-    .pill,.top-link{font-size:12px;border:1px solid #3b3b3e;border-radius:9px;padding:9px 12px;background:#242427;white-space:nowrap}
-    .top-link:hover{border-color:#cda45e}.top-link.emphasis{background:#c39a50;color:#16120e;border-color:#c39a50;font-weight:700}
-    .left{grid-column:1;grid-row:2;background:#171719;border-right:1px solid #303034;padding:22px 11px;display:flex;flex-direction:column;gap:20px;overflow:auto}
-    .section-name{font-size:10px;letter-spacing:1.7px;color:#777578;text-transform:uppercase;padding:0 12px;margin:0 0 10px}
-    .nav{display:grid;gap:5px}.nav button{display:flex;align-items:center;gap:12px;text-align:left;width:100%;border:1px solid transparent;background:transparent;border-radius:10px;padding:12px 13px;color:#afadb0;font-size:13px}
-    .nav button:hover{background:#242427;color:#f2ede5}.nav button.active{background:#2b271e;color:#f0c97b;border-color:#665135;font-weight:700}
-    .ico{width:20px;text-align:center;font-size:17px;flex:0 0 auto}.nav small{display:block;font-size:10px;line-height:1.3;margin-top:3px;color:#8e8980;font-weight:400}.nav button.active small{color:#d7bd8a}
-    .left-foot{margin-top:auto;border-top:1px solid #343235;padding:18px 11px 4px;color:#929092;font-size:11px;line-height:1.55}.left-foot strong{color:#d4be91}
-    .workspace{grid-column:2;grid-row:2;position:relative;min-width:0;min-height:0;background:#0d0e10}
-    .view{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}.view.active{display:flex}
-    .view-bar{height:39px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 17px;background:#202023;border-bottom:1px solid #38373a;color:#b6b0a5;font-size:11px}
-    .view-bar span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .iframe{border:0;width:100%;flex:1;min-height:0;background:#0b0b0c}
-    .guide{overflow:auto;padding:clamp(20px,5vw,54px);background:radial-gradient(circle at 90% 0,rgba(199,155,80,.08),transparent 40%),#131315}
-    .guide article{max-width:900px;margin:auto}.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e2b966;font-weight:700}.guide h2{font-size:clamp(26px,4vw,42px);letter-spacing:-1.4px;margin:10px 0 12px}.lead{color:#aaa5a0;line-height:1.65;max-width:650px}
-    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:30px 0}.card{background:#202024;border:1px solid #414044;border-radius:15px;padding:20px}.card b{display:block;color:#e5c38a;margin-bottom:9px}.card p{color:#b7b0a6;font-size:13px;line-height:1.6;margin:0}.card button{margin-top:14px;border:1px solid #745b38;color:#e8cb94;background:#2a261e;border-radius:8px;padding:9px 12px;font-size:12px}
-    .right{grid-column:3;grid-row:2;background:#18181b;border-left:1px solid #303034;padding:25px 17px;overflow:auto;display:flex;flex-direction:column;gap:22px}
-    .right h2{font-size:13px;margin:0 0 12px;letter-spacing:.1px}.right p{color:#a7a3a0;font-size:12px;line-height:1.65;margin:0 0 10px}.metric{border:1px solid #373539;background:#222125;border-radius:12px;padding:15px;margin-bottom:9px}.metric small{font-size:11px;color:#99928b;display:block;margin-bottom:8px}.metric strong{font-size:14px;display:block;word-break:break-word}.action{display:flex;align-items:center;justify-content:center;width:100%;border:1px solid #765937;border-radius:9px;padding:11px 8px;background:#30281c;color:#f3ce83;font-size:12px;font-weight:700}.action:hover{background:#40311e}.action.secondary{border-color:#424146;background:#242428;color:#dfdbd5;margin-top:7px;font-weight:500}
-    .step{display:flex;gap:10px;align-items:start;margin-bottom:13px;font-size:12px;color:#b1ada7;line-height:1.55}.step i{font-style:normal;background:#393024;color:#e8bc72;width:21px;height:21px;border-radius:50%;display:inline-grid;place-items:center;flex:0 0 auto;font-size:11px}
-    .right-footer{margin-top:auto;padding-top:15px;border-top:1px solid #38363b;color:#8d8985;font-size:11px;line-height:1.6}
-    .mobile-tabs{display:none}
-    @media(max-width:1180px){.app{grid-template-columns:205px minmax(0,1fr)}.top{grid-column:2}.right{display:none}}
-    @media(max-width:690px){.app{grid-template-columns:minmax(0,1fr);grid-template-rows:57px minmax(0,1fr) 62px}.brand{grid-column:1;grid-row:1;display:none}.top{grid-column:1;grid-row:1;padding:0 11px;gap:6px}.top-title h1{font-size:13px}.top-title p{font-size:10px}.top-link{padding:7px 8px;font-size:11px}.top .pill{display:none}.left{display:none}.workspace{grid-column:1;grid-row:2}.mobile-tabs{grid-column:1;grid-row:3;display:flex;background:#171719;border-top:1px solid #39373b;padding:6px 7px max(6px,env(safe-area-inset-bottom));justify-content:space-around}.mobile-tabs button{border:0;background:transparent;color:#999399;font-size:11px;display:grid;gap:3px;justify-items:center;padding:3px 10px}.mobile-tabs button.active{color:#efc87e}.mobile-tabs span{font-size:18px}.view-bar{font-size:10px;padding:0 10px}.guide{padding:22px 15px}.cards{grid-template-columns:1fr}}
-    @media(max-width:390px){.top-title p{display:none}.top-link:not(.emphasis){display:none}}
-  </style>
+  <script>
+    /* Studio es la entrada web, no un segundo marco de interfaz. La partitura
+       debe ocupar la ventana completa; Audio Sync ya tiene enlace de vuelta. */
+    (() => {
+      const destination = location.hash.toLowerCase() === '#sync' ? 'sync.html' : 'index.html';
+      location.replace(destination + location.search);
+    })();
+  </script>
+  <noscript><meta http-equiv="refresh" content="0;url=index.html"></noscript>
 </head>
 <body>
-<div class="app">
-  <header class="brand"><img src="icon-192.png" alt="Pentagrama"><div><strong>Pentagrama</strong><small>MUSIC STUDIO</small></div></header>
-  <header class="top"><div class="top-title"><h1 id="pageTitle">Editor de partituras</h1><p><span class="status-dot"></span><span id="saveStatus">Preparando espacio de trabajo…</span></p></div><span class="pill" id="projectName">Proyecto local</span><a id="fullLink" class="top-link emphasis" href="index.html" target="_blank" rel="noopener">Abrir a pantalla completa ↗</a></header>
-  <aside class="left" aria-label="Navegación principal"><div><p class="section-name">Espacio de trabajo</p><nav class="nav">
-      <button class="active" data-view="editor"><span class="ico">𝄞</span><span>Partitura<small>Editor completo</small></span></button>
-      <button data-view="sync"><span class="ico">◉</span><span>Audio Sync<small>Partitura + grabación</small></span></button>
-      <button data-view="guide"><span class="ico">◇</span><span>Guía y desarrollo<small>Funciones y próximos pasos</small></span></button>
-    </nav></div><div><p class="section-name">Proyecto</p><div class="nav"><button id="openOriginal"><span class="ico">↗</span><span>Editor independiente<small>Sin el marco de Studio</small></span></button><button id="openSyncOriginal"><span class="ico">↗</span><span>Audio Sync independiente<small>Sin el marco de Studio</small></span></button></div></div><div class="left-foot"><strong>Datos locales</strong><br>Las partituras se guardan en este navegador. El audio que elijas no se sube a un servidor.</div></aside>
-  <main class="workspace" aria-label="Aplicación musical">
-    <section class="view active" id="view-editor" aria-label="Editor"><div class="view-bar"><span>EDICIÓN MUSICAL</span><span>Notas · voces · compases · reproducción · exportación</span></div><iframe class="iframe" id="editorFrame" src="index.html" title="Editor de partituras real" allow="autoplay"></iframe></section>
-    <section class="view" id="view-sync" aria-label="Sincronización"><div class="view-bar"><span>AUDIO SYNC</span><span>Audio local · forma de onda · puntos · bucle entre notas</span></div><iframe class="iframe" id="syncFrame" title="Sincronización de audio real" allow="autoplay"></iframe></section>
-    <section class="view guide" id="view-guide" aria-label="Guía de uso"><article><span class="eyebrow">Pentagrama · Entorno web</span><h2>Escribe la partitura.<br>Estúdiala con una grabación.</h2><p class="lead">Este espacio reúne los dos módulos existentes del repositorio. Ambos usan la misma biblioteca local del navegador: edita primero y después entra a Audio Sync para vincular una grabación.</p><div class="cards"><div class="card"><b>01 · Editor</b><p>Escribe notas, acordes, voces y matices; escucha con sonidos de piano, usa el metrónomo y exporta MusicXML, MIDI o PDF. Los ejemplos están en «Archivo → Ejemplos».</p><button data-go="editor">Abrir editor →</button></div><div class="card"><b>02 · Audio Sync</b><p>Utiliza la partitura del editor o importa MusicXML; selecciona un archivo de audio o video local, marca puntos sobre notas y practica una región A–B.</p><button data-go="sync">Abrir Audio Sync →</button></div><div class="card"><b>03 · Guardado</b><p>El editor guarda automáticamente la partitura actual. «Archivo → Guardar en mis partituras» crea una copia en la biblioteca. Audio Sync guarda sus metadatos por separado.</p><button data-go="editor">Gestionar mi partitura →</button></div><div class="card"><b>04 · Próximas funciones</b><p>Tablatura bidireccional, instrumentos independientes, sincronización automática, técnicas y mejoras en MusicXML/MIDI están planificadas, pero todavía no se presentan como terminadas.</p><button id="roadmapBtn">Ver plan del repositorio ↗</button></div></div><p class="lead">Nota: los archivos de audio locales deben volver a seleccionarse cuando se cierre la página; no se incluyen en el JSON exportado.</p></article></section>
-  </main>
-  <aside class="right" aria-label="Contexto del proyecto"><section><h2>Tu sesión</h2><div class="metric"><small>Partitura actual</small><strong id="scoreName">Cargando…</strong></div><div class="metric"><small>Mis partituras</small><strong id="libraryCount">—</strong></div></section><section id="editorTips"><h2>Editor</h2><p>Haz clic en el pentagrama para insertar notas. Selecciona una nota para abrir el panel inferior.</p><p>Para trabajar con una obra de ejemplo, entra en Archivo → Ejemplos dentro del editor.</p><button class="action" id="saveLibrary">Guardar en mis partituras</button><button class="action secondary" id="goSync">Continuar en Audio Sync →</button></section><section id="syncTips" hidden><h2>Vincular una grabación</h2><div class="step"><i>1</i><span>Pulsa «Usar partitura del editor» en Audio Sync.</span></div><div class="step"><i>2</i><span>Selecciona un MP3, WAV o video de tu dispositivo.</span></div><div class="step"><i>3</i><span>Selecciona una nota, sitúa el audio y marca el punto de sincronización.</span></div><button class="action" id="goEditor">Volver al editor →</button></section><section id="guideTips" hidden><h2>Dos módulos reales</h2><p>La guía no sustituye las herramientas: el editor y Audio Sync son los archivos de la aplicación, no pantallas simuladas.</p></section><div class="right-footer">Vista de trabajo web. No incluye todavía todas las capacidades de Soundslice.</div></aside>
-  <nav class="mobile-tabs" aria-label="Navegación móvil"><button data-view="editor" class="active"><span>𝄞</span>Editor</button><button data-view="sync"><span>◉</span>Audio Sync</button><button data-view="guide"><span>◇</span>Guía</button></nav>
-</div>
-<script>
-(() => {
-'use strict';
-const $=id=>document.getElementById(id), names={editor:'Editor de partituras',sync:'Audio Sync · práctica',guide:'Guía de Pentagrama'}, links={editor:'index.html',sync:'sync.html',guide:'docs/PLAN_SOUNDSLICE.md'};
-let current='editor';
-function refresh(){
- let score=null,lib=[];
- try{score=JSON.parse(localStorage.getItem('mtm-score:v1:current')||'null')}catch(_){}
- try{lib=JSON.parse(localStorage.getItem('mtm-score:v1:library')||'[]')}catch(_){}
- const title=score&&score.title?score.title:'Partitura nueva';
- $('scoreName').textContent=title;$('projectName').textContent=title;$('libraryCount').textContent=`${Array.isArray(lib)?lib.length:0} guardadas`;
- $('saveStatus').textContent=score?'Partitura guardada localmente':'Editor abierto · aún sin partitura guardada';
-}
-function activate(view){
- if(!names[view])return;
- if(current==='sync'&&view!=='sync'){
-  try{const d=$('syncFrame').contentWindow.document;d.querySelectorAll('audio,video').forEach(el=>el.pause())}catch(_){}
- }
- current=view;document.querySelectorAll('[data-view]').forEach(b=>{const yes=b.dataset.view===view;b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false')});
- ['editor','sync','guide'].forEach(id=>{$('view-'+id).classList.toggle('active',id===view)});
- $('pageTitle').textContent=names[view];$('fullLink').href=links[view];$('fullLink').textContent=view==='guide'?'Ver plan en GitHub ↗':'Abrir a pantalla completa ↗';
- if(view==='guide'){$('fullLink').href='https://github.com/delapurap-cmd/pentagrama/blob/main/docs/PLAN_SOUNDSLICE.md';}
- $('editorTips').hidden=view!=='editor';$('syncTips').hidden=view!=='sync';$('guideTips').hidden=view!=='guide';
- if(view==='sync'&&!$('syncFrame').getAttribute('src'))$('syncFrame').src='sync.html';
- refresh();try{history.replaceState(null,'','#'+view)}catch(_){}
-}
-for(const b of document.querySelectorAll('[data-view]'))b.addEventListener('click',()=>activate(b.dataset.view));
-for(const b of document.querySelectorAll('[data-go]'))b.addEventListener('click',()=>activate(b.dataset.go));
-$('goSync').addEventListener('click',()=>activate('sync'));
-$('goEditor').addEventListener('click',()=>activate('editor'));
-$('openOriginal').addEventListener('click',()=>window.open('index.html','_blank','noopener'));
-$('openSyncOriginal').addEventListener('click',()=>window.open('sync.html','_blank','noopener'));
-$('roadmapBtn').addEventListener('click',()=>window.open('https://github.com/delapurap-cmd/pentagrama/blob/main/docs/PLAN_SOUNDSLICE.md','_blank','noopener'));
-$('saveLibrary').addEventListener('click',()=>{
- activate('editor');const frame=$('editorFrame');
- try{const d=frame.contentWindow.document;const menu=d.getElementById('btnFile');if(!menu)throw Error('Editor aún no disponible');menu.click();const save=Array.from(d.querySelectorAll('.menu button')).find(b=>b.textContent.includes('Guardar en mis partituras'));if(!save)throw Error('Menú de guardado no disponible');save.click();refresh()}catch(err){$('saveStatus').textContent='Usa Archivo → Guardar en mis partituras dentro del editor';}
-});
-$('editorFrame').addEventListener('load',refresh);$('syncFrame').addEventListener('load',refresh);window.addEventListener('storage',refresh);
-const fromHash=location.hash.slice(1);activate(names[fromHash]?fromHash:'editor');refresh();
-})();
-</script>
+  <a href="index.html">Abrir Pentagrama</a>
 </body>
 </html>
