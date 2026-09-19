@@ -1,4 +1,4 @@
-/* Distribución del editor sin copiar ni sustituir sus controles originales. */
+/* Barra general arriba; solo la herramienta contextual se coloca a la izquierda. */
 (() => {
   'use strict';
   if (document.body.classList.contains('embed')) return;
@@ -8,9 +8,9 @@
   const audio = document.getElementById('syncDock');
   const header = document.querySelector('header.bar');
   if (!rail || !tools || !toggle || !audio || !header) return;
-  // Pintar de nuevo los comandos no debe desplazar la barra y pulsar otro botón.
+  // Los botones generales permanecen en el encabezado y conservan sus listeners.
+  if (tools.parentElement !== header) header.insertBefore(tools, header.querySelector('.sp'));
   rail.style.overflowAnchor = 'none';
-  rail.appendChild(tools);
   let observedWrap = null;
   let scoreFocus = false;
   const mobile = () => matchMedia('(max-width:780px)').matches;
@@ -37,10 +37,8 @@
     if (mobile() && wrap.classList.contains('open')) setRail(true);
   }
   attachContextual();
-  const appendObserver = new MutationObserver(attachContextual);
-  appendObserver.observe(document.body, { childList:true });
+  new MutationObserver(attachContextual).observe(document.body, { childList:true });
   if (typeof Radial !== 'undefined') Radial.alto = () => 0;
-
   toggle.addEventListener('click', () => setRail(!rail.classList.contains('expanded')));
   const scoreButton = document.createElement('button');
   scoreButton.id = 'syncSeeScore';scoreButton.type = 'button';
