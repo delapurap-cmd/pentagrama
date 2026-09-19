@@ -20,7 +20,7 @@ await page.locator('#syncMediaFile').setInputFiles({name:'tono.wav',mimeType:'au
 await page.waitForFunction(()=>document.getElementById('syncAudio').readyState>=1||document.getElementById('syncAudio').error,{timeout:16000});
 assert.ok(await page.locator('#syncAudio').evaluate(a=>a.duration>0));
 await page.locator('#syncAudio').evaluate(a=>{a.currentTime=.3;});await page.locator('#syncMark').click();
-assert.match(await page.locator('#syncPoints').innerText(),/0\.30 s/);
+await page.locator('#syncDetails summary').click();assert.match(await page.locator('#syncPoints').innerText(),/0\.30 s/);
 await page.locator('#syncA').click();p=await pos(ids[1]);await page.mouse.click(p.x,p.y);
 assert.match(await page.locator('#syncSelection').innerText(),/Compás 1/);await page.locator('#syncB').click();
 assert.equal(await page.locator('#syncLoop').isDisabled(),false);await page.locator('#syncLoop').check();
