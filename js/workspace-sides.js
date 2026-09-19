@@ -8,8 +8,8 @@
   const audio = document.getElementById('syncDock');
   const header = document.querySelector('header.bar');
   if (!rail || !tools || !toggle || !audio || !header) return;
-
-  // Los manejadores de app.js trabajan por ID; mover su DOM conserva todas las acciones.
+  // Pintar de nuevo los comandos no debe desplazar la barra y pulsar otro botón.
+  rail.style.overflowAnchor = 'none';
   rail.appendChild(tools);
   let observedWrap = null;
   let scoreFocus = false;
@@ -24,7 +24,6 @@
     if (open) scoreFocus = false;
     refreshSides();
   }
-  // La barra contextual nace al seleccionar la primera nota: trasladarla también.
   function attachContextual() {
     const wrap = document.querySelector('body > .pt-wrap') || rail.querySelector('.pt-wrap');
     if (!wrap) return;
@@ -40,14 +39,9 @@
   attachContextual();
   const appendObserver = new MutationObserver(attachContextual);
   appendObserver.observe(document.body, { childList:true });
-
-  // aLaVista() descuenta Radial.alto() pensando en una barra inferior.
-  // En la columna izquierda ya no se tapa la parte baja de la partitura.
   if (typeof Radial !== 'undefined') Radial.alto = () => 0;
 
   toggle.addEventListener('click', () => setRail(!rail.classList.contains('expanded')));
-  // Un botón explícito deja el pentagrama entero libre para elegir una nota
-  // en teléfonos. Elegida la nota, Audio Sync vuelve a abrirse solo.
   const scoreButton = document.createElement('button');
   scoreButton.id = 'syncSeeScore';scoreButton.type = 'button';
   scoreButton.textContent = '↔ Elegir nota en el pentagrama';
@@ -56,8 +50,7 @@
   scoreButton.addEventListener('click', () => {
     if (!mobile()) return;
     if (document.getElementById('syncPick').getAttribute('aria-pressed') !== 'true') document.getElementById('syncPick').click();
-    setRail(false);
-    scoreFocus = true;refreshSides();
+    setRail(false);scoreFocus = true;refreshSides();
   });
   const selection = document.getElementById('syncSelection');
   new MutationObserver(() => {
@@ -65,7 +58,6 @@
       scoreFocus = false;refreshSides();
     }
   }).observe(selection, { childList:true, characterData:true, subtree:true });
-  // La pestaña lateral recupera Audio Sync conservando reproducción y marcadores.
   audio.addEventListener('click', (event) => {
     if (!mobile() || !document.body.classList.contains('editor-side-open') || audio.hidden) return;
     event.preventDefault();event.stopPropagation();scoreFocus = false;setRail(false);
