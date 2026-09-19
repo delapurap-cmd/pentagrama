@@ -29,4 +29,10 @@ assert.throws(()=>Sync.validate([{tick:0,seconds:1},{tick:0,seconds:2}]), /orden
 assert.throws(()=>Sync.insert([],NaN,1), /válidos/);
 assert.equal(engine.toSeconds(23,[]),2.3);
 assert.equal(engine.toTick(2.3,[]),23);
-console.log('PASS: 15 comprobaciones de sincronización, inversa, voces, límites y validaciones');
+const rubato = { ...model, segundosEn: (_m,t) => t <= 100 ? t/10 : 10 + (t-100)/5,
+  tickEn: (_m,s) => s <= 10 ? s*10 : 100+(s-10)*5 };
+const rubatoSync=Sync.create(score,rubato);
+const anchor=[{tick:50,seconds:8}];
+assert.equal(rubatoSync.toSeconds(130,anchor),19);
+assert.equal(rubatoSync.toTick(19,anchor),130);
+console.log('PASS: 17 comprobaciones de sincronización, inversa, voces, límites y validaciones');
