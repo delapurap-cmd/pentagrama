@@ -9,6 +9,7 @@ on:
       - 'js/**'
       - 'style.css'
       - 'pruebas/studio-browser.cjs'
+      - 'pruebas/toolbar-browser.cjs'
       - 'pruebas/preview-diagnose.cjs'
       - 'pruebas/preview-validate.cjs'
       - '.github/workflows/web-smoke.yml'
@@ -20,6 +21,7 @@ on:
       - 'js/**'
       - 'style.css'
       - 'pruebas/studio-browser.cjs'
+      - 'pruebas/toolbar-browser.cjs'
   workflow_dispatch:
 jobs:
   browser:
@@ -33,6 +35,8 @@ jobs:
         run: npm install --no-save playwright-core@1.55.0
       - name: Verify page and JavaScript
         run: |
+          node --check js/radial.js
+          node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
           node --check js/sync-studio.js
           node --check pruebas/preview-validate.cjs
@@ -42,6 +46,10 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/studio-browser.cjs
+      - name: Test toolbar and real editor commands in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/toolbar-browser.cjs
       - name: Diagnose optional external preview
         continue-on-error: true
         run: node pruebas/preview-diagnose.cjs
