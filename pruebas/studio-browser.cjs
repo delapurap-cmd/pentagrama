@@ -7,8 +7,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function wav() {
   const rate=8000, samples=rate, b=Buffer.alloc(44+samples*2);
   b.write('RIFF',0);b.writeUInt32LE(36+samples*2,4);b.write('WAVEfmt ',8);
-  b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt32LE(rate,24);
-  b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.write('data',36);
+  b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(rate,24);
+  b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);
   b.writeUInt32LE(samples*2,40);
   for(let i=0;i<samples;i++)b.writeInt16LE(Math.round(Math.sin(i*440*Math.PI*2/rate)*5500),44+i*2);
   return b;
@@ -35,10 +35,16 @@ function wav() {
    await audioSync.click();
    await page.waitForURL(/\/sync\.html(?:[?#]|$)/);
    await page.locator('#syncStage .sheet').first().waitFor({timeout:30000});
-   await page.locator('#syncMediaFile').setInputFiles({name:'prueba.wav',mimeType:'audio/wav',buffer:wav()});
+   const mediaFile=wav();
+   await page.locator('#syncMediaFile').setInputFiles({name:'prueba.wav',mimeType:'audio/wav',buffer:mediaFile});
    await page.locator('#syncAudio').evaluate(async a=>{
      if(a.readyState>=1)return;
-     await new Promise((resolve,reject)=>{a.addEventListener('loadedmetadata',resolve,{once:true});a.addEventListener('error',reject,{once:true})});
+     await new Promise((resolve,reject)=>{
+       const diagnostic=()=>`media=${a.error?.code||'none'} ${a.error?.message||''}; network=${a.networkState}; ready=${a.readyState}; src=${a.currentSrc.slice(0,64)}; input=${document.getElementById('syncMediaFile').files[0]?.size||0}; status=${document.getElementById('syncStatus').textContent}`;
+       const t=setTimeout(()=>reject(Error('Metadata timeout: '+diagnostic())),12000);
+       a.addEventListener('loadedmetadata',()=>{clearTimeout(t);resolve();},{once:true});
+       a.addEventListener('error',()=>{clearTimeout(t);reject(Error('Media load failed: '+diagnostic()));},{once:true});
+     });
    });
    assert.ok(await page.locator('#syncAudio').evaluate(a=>a.duration>0),'local audio loads');
    await page.locator('a[href="index.html"]').click();
