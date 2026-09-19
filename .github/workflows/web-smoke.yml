@@ -40,6 +40,7 @@ jobs:
           node --check js/radial.js
           node --check js/sync-core.js
           node --check js/sync-inline.js
+          node --check js/workspace-sides.js
           node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
           node --check pruebas/sync-inline-browser.cjs
@@ -47,6 +48,7 @@ jobs:
           node --check pruebas/preview-validate.cjs
           test -s studio.html
           test -s js/sync-inline.css
+          test -s js/workspace-sides.css
           test -s js/toolbar-compact.css
           test -s vendor/vexflow.js
       - name: Test real application locally in Chrome
