@@ -21,6 +21,15 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    });
    assert.ok(where,'must find a writable visible staff');await page.mouse.click(where.x,where.y);
    await page.locator('.pt-wrap.open').waitFor();
+   const layout=await page.evaluate(()=>{
+     const r=sel=>document.querySelector(sel).getBoundingClientRect();
+     const top=r('header.bar'),bar=r('.pt-wrap'),stage=r('.stage');
+     return {topBottom:top.bottom,barTop:bar.top,barBottom:bar.bottom,barHeight:bar.height,stageTop:stage.top,barWidth:bar.width,screenWidth:innerWidth};
+   });
+   assert.ok(Math.abs(layout.barTop-layout.topBottom)<3,'command bar must sit directly under header');
+   assert.ok(Math.abs(layout.barBottom-layout.stageTop)<3,'score must start directly under command bar');
+   assert.ok(layout.barHeight<=(viewport.width<600?106:73),`toolbar should be compact: ${JSON.stringify(layout)}`);
+   assert.ok(layout.barWidth>=layout.screenWidth-2,'toolbar should occupy editor width');
    assert.equal(await page.locator('.pt-actions [data-command^="note-"]').count(),7);
    assert.equal(await page.locator('.pt-actions [data-command^="rest-"]').count(),7);
    const active=selector=>page.waitForFunction(sel=>document.querySelector(sel)?.classList.contains('active'),selector,{timeout:4000});
@@ -35,7 +44,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    await page.getByRole('tab',{name:'Signos'}).click();assert.ok(await page.locator('[data-command="art-staccato"]').isVisible());
    await page.getByRole('tab',{name:'Grupos'}).click();assert.ok(await page.locator('[data-command="group-3"]').isVisible());
    await page.locator('.pt-finish').click();assert.equal(await page.locator('.pt-wrap.open').count(),0);
-   assert.deepEqual(errors,[]);console.log(`PASS toolbar: real note, duration, dot, Ctrl+K, accidental, categories and close at ${viewport.width}px`);
+   assert.deepEqual(errors,[]);console.log(`PASS: top compact toolbar, all commands and keyboard search at ${viewport.width}px`);
    await context.close();
   }
  }finally{if(browser)await browser.close();server.kill();}
