@@ -40,7 +40,12 @@ jobs:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/studio-browser.cjs
       - name: Check standalone HTML preview availability
-        continue-on-error: true
         run: |
           curl --fail --location --max-time 25 --output /tmp/preview.html https://raw.githack.com/delapurap-cmd/pentagrama/main/studio.html
           grep -q 'Pentagrama Studio' /tmp/preview.html
+      - name: Test public preview in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          sed -i 's@http://127.0.0.1:18881/studio.html@https://raw.githack.com/delapurap-cmd/pentagrama/main/studio.html@' pruebas/studio-browser.cjs
+          node pruebas/studio-browser.cjs
