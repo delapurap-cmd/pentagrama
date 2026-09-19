@@ -36,11 +36,14 @@ jobs:
       - name: Verify page and JavaScript
         run: |
           node --check js/radial.js
+          node --check js/sync-core.js
+          node --check js/sync-inline.js
           node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
           node --check js/sync-studio.js
           node --check pruebas/preview-validate.cjs
           test -s studio.html
+          test -s js/sync-inline.css
           test -s js/toolbar-compact.css
           test -s vendor/vexflow.js
       - name: Test real application locally in Chrome
@@ -51,8 +54,6 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/toolbar-browser.cjs
-      # Este alojamiento es externo, puede exigir confirmación o servir caché.
-      # Un fallo suyo no debe ocultar el resultado de las pruebas reales locales.
       - name: Diagnose optional external preview
         continue-on-error: true
         run: node pruebas/preview-diagnose.cjs
