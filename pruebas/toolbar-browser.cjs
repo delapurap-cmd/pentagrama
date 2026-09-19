@@ -24,7 +24,9 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const active=s=>page.waitForFunction(sel=>document.querySelector(sel)?.classList.contains('active'),s,{timeout:5000});
   await page.locator('[data-command="note-8"]').click();await active('[data-command="note-8"]');await sleep(280);
   await page.getByRole('tab',{name:'Notas'}).click();await sleep(280);
-  await page.locator('[data-command="dot"]').click();
+  await page.evaluate(()=>{window.__audit=[];['pointerdown','pointerup','mousedown','mouseup','click'].forEach(type=>document.addEventListener(type,e=>window.__audit.push({type,cmd:e.target.closest('[data-command]')?.dataset.command,tag:e.target.tagName,x:e.clientX,y:e.clientY,scroll:document.getElementById('editorRail').scrollTop}),true));});
+  console.log('BEFORE DOT',await page.evaluate(()=>{const id=x=>document.querySelector(`[data-command="${x}"]`),r=x=>{const b=id(x)?.getBoundingClientRect();return b?{x:b.x,y:b.y,width:b.width,height:b.height,centerHit:document.elementFromPoint(b.x+b.width/2,b.y+b.height/2)?.closest('[data-command]')?.dataset.command}:null};return {dot:r('dot'),sharp:r('acc-#'),railScroll:document.getElementById('editorRail').scrollTop,railHeight:document.getElementById('editorRail').clientHeight}}));
+  await page.locator('[data-command="dot"]').click();console.log('AFTER DOT',await page.evaluate(()=>({audit:window.__audit,score:localStorage.getItem('mtm-score:v1:current')?.slice(0,480)})));
   try{await active('[data-command="dot"]');}catch(err){console.log('COMMAND DIAGNOSTIC',await page.evaluate(()=>({selected:document.querySelector('.pt-selected')?.textContent,active:[...document.querySelectorAll('.pt-actions .active')].map(e=>e.dataset.command),score:localStorage.getItem('mtm-score:v1:current')?.slice(0,850)})));throw err;}
   await sleep(180);await page.keyboard.press('Control+k');assert.ok(await page.locator('.pt-search').evaluate(el=>document.activeElement===el));
   await page.locator('.pt-search').fill('bemol');assert.ok(await page.locator('.pt-results .pt-result').count()>0);
