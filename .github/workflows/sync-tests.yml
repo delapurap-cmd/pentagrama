@@ -1,0 +1,31 @@
+name: Audio Sync tests
+on:
+  push:
+    paths:
+      - 'js/sync-core.js'
+      - 'js/sync-studio.js'
+      - 'sync.html'
+      - 'pruebas/sync-core.js'
+      - '.github/workflows/sync-tests.yml'
+  pull_request:
+    paths:
+      - 'js/sync-core.js'
+      - 'js/sync-studio.js'
+      - 'sync.html'
+      - 'pruebas/sync-core.js'
+      - '.github/workflows/sync-tests.yml'
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax
+        run: |
+          node --check js/sync-core.js
+          node --check js/sync-studio.js
+          node --check pruebas/sync-core.js
+      - name: Synchronization unit tests
+        run: node pruebas/sync-core.js
