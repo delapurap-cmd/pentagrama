@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="js/toolbar-compact.css">
+<link rel="stylesheet" href="js/sync-inline.css">
 </head>
 <body>
 
@@ -18,8 +19,7 @@
   <a class="btn ghost icon back standalone-only" href="https://morethanmodes.com" title="More Than Modes" aria-label="More Than Modes">←</a>
   <button class="btn ghost icon embed-only" id="btnEmbedClose" title="Volver al cuaderno">←</button>
   <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
-  <a class="btn audio-sync-link standalone-only" href="sync.html" title="Abrir Audio Sync: vincular partitura y grabación">◉ Audio Sync</a>
-  <a class="btn audio-sync-link embed-only" href="sync.html" target="_blank" rel="noopener" title="Abrir Audio Sync en otra pestaña sin cerrar el cuaderno">◉ Audio Sync</a>
+  <button class="btn audio-sync-link" id="btnAudioSync" type="button" aria-expanded="false" aria-controls="syncDock" title="Desplegar Audio Sync sobre esta partitura">◉ Audio Sync</button>
   <div class="bar-tools" id="barTools">
     <button class="btn" id="btnNew">＋</button>
     <button class="btn" id="btnClef" title="Clave"><span class="lab">Clave</span> <span class="chip" id="chipClef">Sol</span></button>
@@ -134,5 +134,7 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/audio.js"></script>
 <script src="js/instrumentos.js"></script>
 <script src="js/app.js"></script>
+<script src="js/sync-core.js"></script>
+<script src="js/sync-inline.js"></script>
 </body>
 </html>
