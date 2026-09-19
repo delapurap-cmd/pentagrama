@@ -36,6 +36,7 @@
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
     <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
     <button class="btn" id="btnFile">Archivo</button>
+    <a class="btn standalone-only" href="sync.html" title="Sincronizar partitura con grabación local">Audio Sync</a>
   </div>
   <span class="sp"></span>
   <button class="btn icon" id="btnPlay" title="Escuchar (espacio)">▶</button>
@@ -79,15 +80,15 @@
     <button class="btn" id="ppBucle" title="Repetir el tramo elegido">🔁 Bucle</button>
     <span class="lbl">c.</span>
     <div class="bpm-step" title="Primer compás del bucle">
-      <button class="btn ghost icon" id="ppAmenos">−</button>
+      <button class="btn ghost icon" id="ppAmenos" title="Compás inicial anterior">−</button>
       <output class="num" id="ppA">1</output>
-      <button class="btn ghost icon" id="ppAmas">＋</button>
+      <button class="btn ghost icon" id="ppAmas" title="Compás inicial siguiente">＋</button>
     </div>
     <span class="lbl">a</span>
     <div class="bpm-step" title="Último compás del bucle">
-      <button class="btn ghost icon" id="ppBmenos">−</button>
+      <button class="btn ghost icon" id="ppBmenos" title="Compás final anterior">−</button>
       <output class="num" id="ppB">1</output>
-      <button class="btn ghost icon" id="ppBmas">＋</button>
+      <button class="btn ghost icon" id="ppBmas" title="Compás final siguiente">＋</button>
     </div>
   </div>
 </section>
