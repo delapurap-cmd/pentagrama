@@ -9,6 +9,7 @@ on:
       - 'js/**'
       - 'style.css'
       - 'pruebas/studio-browser.cjs'
+      - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
       - 'pruebas/preview-diagnose.cjs'
       - 'pruebas/preview-validate.cjs'
@@ -21,6 +22,7 @@ on:
       - 'js/**'
       - 'style.css'
       - 'pruebas/studio-browser.cjs'
+      - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
   workflow_dispatch:
 jobs:
@@ -40,6 +42,7 @@ jobs:
           node --check js/sync-inline.js
           node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
+          node --check pruebas/sync-inline-browser.cjs
           node --check js/sync-studio.js
           node --check pruebas/preview-validate.cjs
           test -s studio.html
@@ -50,6 +53,10 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/studio-browser.cjs
+      - name: Test actual note selection, sync markers and A-B loops
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/sync-inline-browser.cjs
       - name: Test toolbar and real editor commands in Chrome
         env:
           CHROME_BIN: /usr/bin/google-chrome
