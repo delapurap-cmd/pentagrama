@@ -1,0 +1,18 @@
+#pdfImportDialog{position:fixed;inset:0;margin:auto;max-width:min(460px,calc(100vw - 26px));width:100%;max-height:calc(100dvh - 32px);padding:0;background:#19191d;color:#eee8db;border:1px solid #695631;border-radius:12px;box-shadow:0 22px 70px #000c;font:13px system-ui,sans-serif;overflow:auto}
+#pdfImportDialog::backdrop{background:#000a}
+#pdfImportDialog .pdf-import-box{display:grid;gap:12px;padding:16px}
+#pdfImportDialog .pdf-import-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#pdfImportDialog .pdf-import-head strong{color:#edc77c;font-size:16px}
+#pdfImportDialog p{margin:0;line-height:1.5;color:#ccc6ba}
+#pdfImportDialog .pdf-import-file{display:grid;gap:9px;padding:12px;background:#242427;border:1px solid #4f4739;border-radius:8px;color:#e4cf9f}
+#pdfImportDialog input[type=file]{width:100%;font:inherit;min-width:0;color:#eae6de}
+#pdfImportDialog input[type=file]::file-selector-button{border:1px solid #74633d;border-radius:5px;padding:7px;background:#363024;color:#f4deb0;cursor:pointer}
+#pdfImportDialog .pdf-import-status{font-size:12px;min-height:36px;color:#c7d4bc}
+#pdfImportDialog .pdf-import-status.error{color:#ffb3a4}
+#pdfImportDialog .pdf-import-actions{display:flex;gap:8px;justify-content:flex-end}
+#pdfImportDialog .btn{justify-content:center;white-space:normal;text-align:center;min-height:34px;height:auto;padding:8px 12px}
+#pdfImportDialog .btn.primary{background:#c9a84c;border-color:#c9a84c;color:#19150d;font-weight:700}
+#pdfImportDialog .btn:disabled{opacity:.45;cursor:not-allowed}
+#pdfImportDialog :focus-visible{outline:2px solid #c9a84c;outline-offset:2px}
+@media(max-width:480px){#pdfImportDialog .pdf-import-box{padding:12px;gap:10px}#pdfImportDialog .pdf-import-actions>.btn{flex:1}}
+@media print{#pdfImportDialog{display:none!important}}
