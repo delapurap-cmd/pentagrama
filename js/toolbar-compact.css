@@ -1,0 +1,76 @@
+/* Barra contextual: forma parte del editor, justo debajo del encabezado.
+   Mantener intactas las acciones, el buscador y los manejadores de radial.js. */
+body .bar{order:0}
+body .pt-wrap{
+  position:relative;left:auto;bottom:auto;transform:none;
+  order:1;flex:0 0 auto;width:100%;z-index:45;
+  pointer-events:auto;color:var(--txt,#ece9e2);
+}
+body .stage{order:2}
+body .pt-wrap .pt-toolbar{
+  display:grid;
+  grid-template-columns:minmax(0,355px) minmax(0,1fr);
+  grid-template-areas:"top top" "tabs actions";
+  align-items:center;gap:3px 8px;
+  padding:3px 9px;
+  background:#151517;border:0;border-bottom:1px solid rgba(201,168,76,.27);
+  border-radius:0;box-shadow:none;backdrop-filter:none;
+}
+body .pt-wrap .pt-top{grid-area:top;gap:3px;min-height:28px;min-width:0}
+body .pt-wrap .pt-title{display:none}
+body .pt-wrap .pt-selected{font-size:11px;max-width:85px;color:var(--gold,#c9a84c)}
+body .pt-wrap .pt-search{
+  height:27px;min-width:60px;max-width:230px;padding:0 8px;
+  font-size:12px;border-radius:5px;
+}
+body .pt-wrap .pt-btn{
+  min-width:28px;min-height:28px;height:28px;
+  padding:2px 5px;gap:2px;font-size:12px;border-radius:5px;
+}
+body .pt-wrap .pt-glyph{font-size:19px}
+body .pt-wrap .pt-tabs{
+  grid-area:tabs;min-width:0;gap:1px;overflow-x:auto;
+  padding:0;border:0;scrollbar-width:thin;
+}
+body .pt-wrap .pt-tab{
+  padding:5px 8px;min-height:28px;border-radius:5px;
+  font-size:11px;white-space:nowrap;
+}
+body .pt-wrap .pt-actions{
+  grid-area:actions;min-width:0;min-height:28px;gap:3px;
+  padding:0;overflow-x:auto;scrollbar-width:thin;
+}
+body .pt-wrap .pt-actions .pt-btn{min-height:28px}
+body .pt-wrap .pt-actions [aria-hidden="true"]{height:22px!important;margin:0 2px!important}
+body .pt-wrap .pt-results{
+  top:calc(100% + 3px);bottom:auto;left:8px;right:8px;
+  max-height:min(300px,50vh);z-index:90;
+}
+body .audio-sync-link{
+  flex:0 0 auto;background:rgba(201,168,76,.13);
+  border-color:rgba(201,168,76,.48);color:#edcb85;
+  font-weight:600;text-decoration:none;
+}
+body .audio-sync-link:hover{border-color:#c9a84c;background:rgba(201,168,76,.22)}
+@media(min-width:1160px){
+  body .pt-wrap .pt-toolbar{
+    grid-template-columns:minmax(0,355px) minmax(0,1fr) minmax(0,295px);
+    grid-template-areas:"tabs actions top";
+    gap:7px;
+  }
+  body .pt-wrap .pt-selected{max-width:65px}
+  body .pt-wrap .pt-search{max-width:none}
+}
+@media(max-width:670px){
+  body .pt-wrap .pt-toolbar{
+    grid-template-columns:minmax(0,1fr);
+    grid-template-areas:"top" "tabs" "actions";
+    gap:1px;padding:3px 5px;
+  }
+  body .pt-wrap .pt-selected{display:none}
+  body .pt-wrap .pt-search{flex:1;max-width:none}
+  body .pt-wrap .pt-tab{padding:4px 7px;min-height:26px}
+  body .pt-wrap .pt-tabs{min-height:26px}
+  body .pt-wrap .pt-actions .pt-btn{min-height:28px}
+  body .bar .audio-sync-link{height:34px;padding:0 8px;font-size:12px}
+}
