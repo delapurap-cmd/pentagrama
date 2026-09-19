@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="js/toolbar-compact.css">
 </head>
 <body>
 
@@ -17,14 +18,15 @@
   <a class="btn ghost icon back standalone-only" href="https://morethanmodes.com" title="More Than Modes" aria-label="More Than Modes">←</a>
   <button class="btn ghost icon embed-only" id="btnEmbedClose" title="Volver al cuaderno">←</button>
   <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
+  <a class="btn audio-sync-link standalone-only" href="sync.html" title="Abrir Audio Sync: vincular partitura y grabación">◉ Audio Sync</a>
+  <a class="btn audio-sync-link embed-only" href="sync.html" target="_blank" rel="noopener" title="Abrir Audio Sync en otra pestaña sin cerrar el cuaderno">◉ Audio Sync</a>
   <div class="bar-tools" id="barTools">
     <button class="btn" id="btnNew">＋</button>
     <button class="btn" id="btnClef" title="Clave"><span class="lab">Clave</span> <span class="chip" id="chipClef">Sol</span></button>
     <button class="btn" id="btnKey" title="Armadura"><span class="lab">Armadura</span> <span class="chip" id="chipKey">Do M</span></button>
     <button class="btn" id="btnTime" title="Compás"><span class="lab">Compás</span> <span class="chip" id="chipTime">4/4</span></button>
     <button class="btn" id="btnTap"><span class="lab">Tiempos</span> <span class="chip" id="chipTempo">♩ = 90</span></button>
-    <!-- Segunda fila: lo de arriba es lo que se toca al escribir; lo de abajo,
-         lo que se toca de vez en cuando. Así nada queda fuera de la pantalla. -->
+    <!-- Los controles ocasionales se redistribuyen sin ocultar comandos. -->
     <span class="br"></span>
     <div class="zoom">
       <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
@@ -36,7 +38,6 @@
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
     <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
     <button class="btn" id="btnFile">Archivo</button>
-    <a class="btn standalone-only" href="sync.html" title="Sincronizar partitura con grabación local">Audio Sync</a>
   </div>
   <span class="sp"></span>
   <button class="btn icon" id="btnPlay" title="Escuchar (espacio)">▶</button>
@@ -46,9 +47,7 @@
   <div class="sheets" id="stage"></div>
 </main>
 
-<!-- La ayuda visual: ver en un instrumento lo que suena en la partitura.
-     Va entre la hoja y el panel de reproducción, que es donde se mira sin
-     perder de vista ninguno de los dos. -->
+<!-- Ayuda visual de instrumento para reproducción. -->
 <section class="ayuda-dock" id="panelAyuda" aria-label="Instrumento" hidden>
   <div class="ins-caja" id="insCaja"></div>
   <p class="ins-aviso" id="insAviso"></p>
