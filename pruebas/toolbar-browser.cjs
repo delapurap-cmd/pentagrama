@@ -39,7 +39,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    assert.equal(await page.locator('.pt-actions [data-command^="rest-"]').count(),7);
    const active=selector=>page.waitForFunction(sel=>document.querySelector(sel)?.classList.contains('active'),selector,{timeout:4000});
    await page.locator('[data-command="note-8"]').click();await active('[data-command="note-8"]');
-   await page.getByRole('tab',{name:'Notas'}).click();await page.locator('[data-command="dot"]').click();await active('[data-command="dot"]');
+   await page.getByRole('tab',{name:'Notas'}).click();await page.locator('[data-command="dot"]').click();
+   try{await active('[data-command="dot"]');}catch(err){console.log('DOT DIAGNOSTIC',await page.evaluate(()=>({width:innerWidth,errors:document.querySelector('#toast')?.textContent,selected:document.querySelector('.pt-selected')?.textContent,dot:document.querySelector('[data-command="dot"]')?.outerHTML,active:[...document.querySelectorAll('.pt-actions .active')].map(n=>n.dataset.command),score:localStorage.getItem('mtm-score:v1:current')?.slice(0,1100)})));throw err;}
    await page.keyboard.press('Control+k');assert.ok(await page.locator('.pt-search').evaluate(el=>document.activeElement===el),'command search focuses');
    await page.locator('.pt-search').fill('bemol');assert.ok(await page.locator('.pt-results .pt-result').count()>0,'search has results');
    await page.locator('.pt-search').press('Enter');await active('[data-command="acc-b"]');
