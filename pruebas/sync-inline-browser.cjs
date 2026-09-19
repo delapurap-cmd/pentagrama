@@ -12,20 +12,20 @@ const ids=await page.evaluate(()=>{const score=Model.newScore({systems:1}),a=Mod
 await page.reload();await page.locator('#stage .sheet').first().waitFor();
 const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('mtm-score:v1:current')).measures[0].events.map(e=>e.id));assert.deepEqual(before,ids);
 await page.locator('#btnAudioSync').click();assert.ok(await page.locator('#syncDock').isVisible());
+if(viewport.width>780){const layout=await page.evaluate(()=>{const a=document.getElementById('syncDock').getBoundingClientRect(),s=document.getElementById('scroller').getBoundingClientRect(),l=document.getElementById('editorRail').getBoundingClientRect();return {a,s,l};});assert.ok(layout.a.left>=layout.s.right-3,'Audio Sync dock is to right of sheet');assert.ok(layout.l.right<=layout.s.left+3,'toolbar is to left of sheet');assert.ok(layout.a.height>400,'audio dock is vertical');}
 const pos=async id=>page.evaluate(id=>Engrave.screenPosOf(id),id);
-let p=await pos(ids[0]);assert.ok(p,'original first note has real on-screen coordinates');await page.mouse.click(p.x,p.y);
-assert.match(await page.locator('#syncSelection').innerText(),/Compás 1/);
+const selectNote=async id=>{if(viewport.width<=780){await page.locator('#syncSeeScore').click();assert.ok(await page.locator('#syncDock').isVisible(),'audio remains docked as right tab');}const p=await pos(id);assert.ok(p,'note has real on-screen coordinates');await page.mouse.click(p.x,p.y);await page.waitForFunction(()=>/^Compás 1/.test(document.getElementById('syncSelection').textContent));if(viewport.width<=780)assert.ok(await page.locator('#syncMark').isVisible(),'audio expands after picking a note');};
+await selectNote(ids[0]);
 assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('mtm-score:v1:current')).measures[0].events.map(e=>e.id)),ids,'selecting for sync does not insert notes');
 await page.locator('#syncMediaFile').setInputFiles({name:'tono.wav',mimeType:'audio/wav',buffer:wav()});
 await page.waitForFunction(()=>document.getElementById('syncAudio').readyState>=1||document.getElementById('syncAudio').error,{timeout:16000});
 assert.ok(await page.locator('#syncAudio').evaluate(a=>a.duration>0));
 await page.locator('#syncAudio').evaluate(a=>{a.currentTime=.3;});await page.locator('#syncMark').click();
 await page.locator('#syncDetails summary').click();assert.match(await page.locator('#syncPoints').innerText(),/0\.30 s/);
-await page.locator('#syncA').click();p=await pos(ids[1]);await page.mouse.click(p.x,p.y);
-assert.match(await page.locator('#syncSelection').innerText(),/Compás 1/);await page.locator('#syncB').click();
+await page.locator('#syncA').click();await selectNote(ids[1]);await page.locator('#syncB').click();
 assert.equal(await page.locator('#syncLoop').isDisabled(),false);await page.locator('#syncLoop').check();
 assert.equal(await page.locator('#syncDock .sheet').count(),0);assert.equal(await page.locator('#stage .sheet').count()>0,true);
 await page.locator('#syncSave').click();const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mtm-score:sync:inline:v1')));assert.equal(saved.points.length,1);assert.equal(saved.score,undefined,'no duplicate score in sync storage');
 await page.locator('#syncPick').click();assert.equal(await page.locator('#syncPick').getAttribute('aria-pressed'),'false');
-assert.deepEqual(errors,[]);console.log(`PASS: actual note selection, point, A–B loop, local save and editing at ${viewport.width}px`);await context.close();}
+assert.deepEqual(errors,[]);console.log(`PASS: right side Audio Sync, real note selection, A–B loop and save at ${viewport.width}px`);await context.close();}
 }finally{if(browser)await browser.close();server.kill();}})().catch(err=>{console.error(err);process.exitCode=1});
