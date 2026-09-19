@@ -1,0 +1,28 @@
+/* Audio Sync shares the editor's existing #stage; only the controls are added. */
+#syncDock[hidden]{display:none!important}
+#syncDock{order:1;flex:0 0 auto;display:grid;gap:6px;max-height:47dvh;overflow:auto;padding:8px 12px;background:#18181b;border-bottom:1px solid #655435;color:#eae5db;font:12px system-ui,sans-serif}
+body .pt-wrap{order:2}body .stage{order:3}
+#syncDock .sync-line{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+#syncDock .sync-line.controls{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+#syncDock strong{color:#edc77c;font-size:13px;margin-right:auto}
+#syncDock button,#syncDock .sync-action{font:inherit;cursor:pointer;border:1px solid #514b43;background:#28282b;color:#eae5db;border-radius:6px;padding:5px 8px;white-space:nowrap;min-height:29px}
+#syncDock button:hover,#syncDock .sync-action:hover{border-color:#c9a84c}
+#syncDock .primary,#syncDock #syncPick[aria-pressed=true]{background:#635027;border-color:#b1904e;color:#fff4da}
+#syncDock button:focus-visible,#syncDock input:focus-visible,#syncDock summary:focus-visible{outline:2px solid #d5a351;outline-offset:2px}
+#syncDock .sync-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+#syncDock .sync-media{width:min(560px,100%);height:34px;display:block}
+#syncDock .sync-media[hidden]{display:none}
+#syncDock video.sync-media{width:min(390px,100%);height:auto;max-height:150px}
+#syncDock #syncWave{width:100%;height:43px;background:#101113;border:1px solid #514b43;border-radius:5px;cursor:crosshair;touch-action:pan-y}
+#syncDock input[type=range]{width:85px;accent-color:#c9a84c}
+#syncDock output{font-variant-numeric:tabular-nums;color:#d9d3c9}
+#syncDock #syncStatus{min-height:13px;color:#aaa69e;font-size:11px;overflow-wrap:anywhere}
+#syncDock #syncStatus.error{color:#ffb0a2}
+#syncDock details{border-top:1px solid #39363a;padding-top:4px}
+#syncDock summary{cursor:pointer;color:#dfc18c}
+#syncDock #syncPoints{list-style:none;margin:5px 0;padding:0;max-height:110px;overflow:auto}
+#syncDock #syncPoints li{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #34343a;padding:3px}
+#syncDock #syncPoints button{min-height:22px;padding:2px 6px;color:#ffb6a7}
+body.sync-select .stage{cursor:crosshair}
+@media(max-width:650px){#syncDock{max-height:45dvh;padding:6px 7px;gap:4px}#syncDock strong{font-size:12px}#syncDock .sync-media{height:29px}#syncDock #syncWave{height:37px}#syncDock #syncStatus{font-size:10px}}
+@media print{#syncDock{display:none!important}}
