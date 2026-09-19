@@ -1,0 +1,53 @@
+name: Publish Pentagrama web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'studio.html'
+      - 'sync.html'
+      - 'style.css'
+      - 'js/**'
+      - 'vendor/**'
+      - 'sonidos/**'
+      - 'ejemplos/**'
+      - 'manifest.json'
+      - 'icon-*.png'
+      - '.github/workflows/web-pages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Prepare static website
+        run: |
+          mkdir -p public
+          cp index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png public/
+          cp -R js vendor sonidos ejemplos public/
+          touch public/.nojekyll
+          test -s public/studio.html
+          test -s public/js/sync-studio.js
+          test -s public/vendor/vexflow.js
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Publish website
+        id: deployment
+        uses: actions/deploy-pages@v4
