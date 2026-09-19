@@ -1,0 +1,25 @@
+/* La barra GENERAL permanece arriba. El lateral izquierdo contiene solamente
+   las herramientas CONTEXTUALES que aparecen al seleccionar una nota. */
+body:not(.embed)>.bar{display:flex;flex-wrap:nowrap;align-items:center;overflow:visible;min-width:0}
+body:not(.embed)>.bar #barTools{
+  display:flex;flex:1 1 auto;flex-direction:row;align-items:center;justify-content:flex-start;
+  flex-wrap:nowrap;gap:4px;min-width:0;width:auto;max-width:none;
+  padding:0;border:0;background:transparent;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:thin;overscroll-behavior-x:contain;
+}
+body:not(.embed)>.bar #barTools>.btn{flex:0 0 auto;width:auto;height:33px;min-height:33px;padding:0 8px;justify-content:center;font-size:12px}
+body:not(.embed)>.bar #barTools .chip{font-size:11px}
+body:not(.embed)>.bar #barTools .br{display:none!important}
+body:not(.embed)>.bar #barTools .zoom{flex:0 0 auto;width:auto;gap:1px;justify-content:center}
+body:not(.embed)>.bar #barTools .zoom>.btn{height:31px;min-width:29px;padding:0 4px}
+body:not(.embed)>.bar #barTools .zoom .chip{min-width:39px}
+body:not(.embed)>.bar .sp{flex:0 0 0;min-width:0}
+body:not(.embed)>.bar>#btnPlay{flex:0 0 auto}
+@media(max-width:780px){
+  body:not(.embed)>.bar{flex-wrap:wrap;padding:4px 6px;gap:4px}
+  body:not(.embed)>.bar #barTools{order:10;flex:1 0 100%;width:100%;max-width:100%;padding-bottom:2px}
+  body:not(.embed)>.bar #barTools>.btn{height:31px;min-height:31px;padding:0 7px}
+  body:not(.embed)>.bar .sp{flex:1 1 auto}
+  body:not(.embed)>.bar>#btnPlay{order:1}
+}
+@media print{body:not(.embed)>.bar #barTools{overflow:visible}}
