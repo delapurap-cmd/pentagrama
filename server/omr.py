@@ -19,7 +19,9 @@ from pypdf import PdfReader
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_PAGES = 16
 MAX_XML_BYTES = 24 * 1024 * 1024
-TIMEOUT_SECONDS = 180
+# Older Intel Macs can take several minutes on a three-page, two-staff piano scan.
+# A worker runs in the background; the WebKit UI never holds a long HTTP request.
+TIMEOUT_SECONDS = 600
 LOG = logging.getLogger("pentagrama.omr")
 
 
@@ -54,12 +56,10 @@ def check_pdf(data: bytes) -> int:
 
 
 def remove_spurious_voice_parts(root: ElementTree.Element) -> bool:
-    """Keep the actual piano part when Audiveris invents tiny preliminary Voice parts.
+    """Keep piano when Audiveris invents sparse generic Voice parts.
 
-    A real three-page piano scan yielded Voice(9 pitches), Voice(12 pitches),
-    Piano(1160 pitches). The score editor used to open the first part and
-    silently lose the real piano music. Do not filter actual ensembles: require
-    an overwhelmingly dominant Piano and ONLY negligible generic Voice parts.
+    Do not discard actual ensemble parts: require a dominant Piano and only
+    negligible generic Voice parts. This was reproduced on a three-page scan.
     """
     parts = root.findall('part')
     part_list = root.find('part-list')
@@ -93,9 +93,7 @@ def remove_spurious_voice_parts(root: ElementTree.Element) -> bool:
 def unpack_musicxml(blob: bytes, extension: str) -> bytes:
     """Always send plain MusicXML: older WKWebView lacks deflate-raw support.
 
-    The file-size limit is applied to the *uncompressed* XML too. Only read
-    the declared MusicXML root from META-INF/container.xml, not arbitrary ZIP
-    contents or paths outside the archive.
+    Apply size limits to uncompressed XML and read only the declared score.
     """
     if len(blob) > MAX_XML_BYTES:
         raise OMRFailure("El resultado de Audiveris supera 24 MB.")
@@ -155,7 +153,7 @@ def convert_pdf(data: bytes, *, runner=subprocess.run, program: str | None = Non
             finished = runner(args, capture_output=True, text=True, errors="replace", timeout=TIMEOUT_SECONDS, cwd=directory)
         except subprocess.TimeoutExpired as exc:
             LOG.warning("Audiveris exceeded %s-second time limit", TIMEOUT_SECONDS)
-            raise OMRFailure("La conversión superó los tres minutos. Prueba con menos páginas.") from exc
+            raise OMRFailure("La conversión superó los diez minutos. Prueba con menos páginas.") from exc
         except OSError as exc:
             LOG.exception("Failed to launch Audiveris")
             raise OMRFailure("No fue posible iniciar Audiveris. Consulta el registro de Pentagrama.") from exc
