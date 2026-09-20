@@ -1,0 +1,43 @@
+name: Verify provisional external preview without deployment
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-link-check.yml
+permissions:
+  contents: read
+jobs:
+  check-link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Check exact commit on raw.githack (independent of GitHub Pages)
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PREVIEW_URL: https://raw.githack.com/delapurap-cmd/pentagrama/99885554b3fec3afdbc577e852c2847f2cc0df50/studio.html
+        run: |
+          node <<'JS'
+          const {chromium}=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{
+              const context=await browser.newContext({viewport:{width:1440,height:900}});
+              await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await context.newPage();
+              const response=await page.goto(process.env.PREVIEW_URL,{waitUntil:'domcontentloaded',timeout:30000});
+              if(!response||response.status()!==200)throw Error('Preview HTTP '+response?.status());
+              await page.locator('#stage .sheet').first().waitFor({timeout:25000});
+              if(await page.locator('#btnPdfImport').count())throw Error('PDF recognition should be absent');
+              if(!await page.locator('#btnAudioSync').isVisible())throw Error('Audio Sync is missing');
+              await page.locator('#btnAudioSync').click();
+              if(!await page.locator('#syncDock').isVisible())throw Error('Audio Sync panel cannot open');
+              if(await page.locator('iframe').count())throw Error('Unexpected frame');
+              console.log('PASS: exact revision opens as functional temporary external editor without GitHub Pages:',page.url());
+            }finally{await browser.close();}
+          })().catch(e=>{console.error('EXTERNAL PREVIEW FAILED:',e);process.exitCode=1});
+          JS
