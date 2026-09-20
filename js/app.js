@@ -544,17 +544,13 @@
       });
     }
     $('#btnNew').addEventListener('click', (e) => menu([
-      { label: 'Nota rápida', hint: 'un solo sistema', fn: () => newScore(1) },
-      { sep: true },
       { head: 'Añadir' },
       { label: 'Añadir sistema', hint: state.score.measuresPerSystem + ' compases', fn: () => { snapshot(); Model.addSystem(state.score, 1); render(); } },
       { label: 'Añadir página', hint: state.score.systemsPerPage + ' sistemas', fn: () => { snapshot(); Model.addPage(state.score); render(); } },
       { sep: true },
       { head: 'Plantilla' },
       { label: 'Compases por sistema', hint: String(state.score.measuresPerSystem), fn: () => askNumber('Compases por sistema (1-8)', state.score.measuresPerSystem, 1, 8, (v) => { snapshot(); state.score.measuresPerSystem = v; Model.reflow(state.score); render(); }) },
-      { label: 'Sistemas por página', hint: String(state.score.systemsPerPage), fn: () => askNumber('Sistemas por página (1-9)', state.score.systemsPerPage, 1, 9, (v) => { snapshot(); state.score.systemsPerPage = v; render(); }) },
-      { sep: true },
-      { label: 'Partitura nueva', hint: '4 sistemas', fn: () => newScore(4) }
+      { label: 'Sistemas por página', hint: String(state.score.systemsPerPage), fn: () => askNumber('Sistemas por página (1-9)', state.score.systemsPerPage, 1, 9, (v) => { snapshot(); state.score.systemsPerPage = v; render(); }) }
     ], e.currentTarget));
 
     $('#btnClef').addEventListener('click', (e) => {
@@ -621,9 +617,18 @@
     $('#btnFile').addEventListener('click', (e) => {
       const lib = readLib();
       const items = [
-        { head: 'Partitura' },
+        { head: 'Nuevo' },
+        { label: 'Nueva partitura', hint: '4 sistemas', fn: () => newScore(4) },
+        { label: 'Nota rápida', hint: '1 sistema', fn: () => newScore(1) },
+        { sep: true },
+        { head: 'Guardar' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
-        { label: 'Abrir MusicXML o MIDI', hint: 'MuseScore, Sibelius…', fn: importScore },
+        { sep: true },
+        { head: 'Importar' },
+        { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
+        { label: 'Importar MIDI', hint: '.mid, .midi', fn: () => importScore('midi') },
+        { sep: true },
+        { head: 'Exportar' },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
         { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
@@ -1209,10 +1214,14 @@
     }
   }
 
-  function importScore() {
-    pickFile('.musicxml,.xml,.mxl,.mid,.midi', async (file) => {
+  function importScore(format) {
+    const isMidi = format === 'midi';
+    const accept = isMidi ? '.mid,.midi' : '.musicxml,.xml,.mxl';
+    pickFile(accept, async (file) => {
       try {
-        const isMidi = /\.midi?$/i.test(file.name);
+        const valid = isMidi ? /\.(mid|midi)$/i.test(file.name)
+          : /\.(musicxml|xml|mxl)$/i.test(file.name);
+        if (!valid) throw new Error('Elige un archivo ' + (isMidi ? 'MIDI (.mid o .midi).' : 'MusicXML (.musicxml, .xml o .mxl).'));
         const result = isMidi
           ? Midi.read(await file.arrayBuffer())
           : MusicXML.parse(await MusicXML.readAny(file));
