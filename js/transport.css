@@ -1,54 +1,41 @@
-/* A dedicated always-visible transport; score remains its own scrollable area. */
-body:not(.embed){grid-template-rows:auto minmax(0,1fr) auto}
-body:not(.embed)>.bar #btnPlay{display:none}
+/* Reproductor compacto en la esquina superior derecha; sin barra inferior fija. */
+body:not(.embed){grid-template-rows:auto minmax(0,1fr)}
+body:not(.embed)>.bar #btnPlay{display:inline-flex;align-items:center;justify-content:center}
 body:not(.embed)>#panelPlay{
-  grid-column:1/-1;grid-row:3;position:relative;left:auto;bottom:auto;
-  transform:none!important;width:100%;min-width:0;max-width:none;
-  padding:8px max(12px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px));
-  border-radius:0;border-left:0;border-right:0;border-bottom:0;
-  border-top:1px solid rgba(201,168,76,.45);box-shadow:0 -6px 24px rgba(0,0,0,.30);
-  z-index:42;transition:none;
+  position:fixed;grid-row:auto;grid-column:auto;
+  left:auto;right:max(8px,env(safe-area-inset-right,0px));
+  top:var(--player-top,55px);bottom:auto;transform:none!important;
+  width:min(366px,calc(100vw - 16px));min-width:0;max-width:none;
+  max-height:calc(100dvh - var(--player-top,55px) - 10px);overflow-y:auto;
+  border:1px solid rgba(201,168,76,.45);border-radius:12px;
+  padding:10px;box-shadow:0 12px 36px rgba(0,0,0,.65);
+  z-index:110;transition:none;
 }
-#panelPlay .transport-main{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;padding:0}
-#panelPlay .transport-main .btn{height:38px;min-height:38px;padding:0 10px}
-#panelPlay .transport-main .btn.icon{width:41px;justify-content:center;font-size:18px;padding:0}
-#panelPlay #ppPlay{width:48px;background:#c9a84c;color:#19140a;border-color:#e7d389;font-size:21px}
-#panelPlay #ppMetro,#panelPlay #ppBucle{font-size:12px;font-weight:600}
-#panelPlay #ppPos{flex:0 0 auto;min-width:120px;text-align:center;color:#e9c878;font-size:13px;font-weight:650;font-variant-numeric:tabular-nums}
-#panelPlay #ppMore{font-size:12px}
-#panelPlay .transport-timeline{display:flex;flex-direction:column;gap:0;max-width:900px;margin:0 auto}
-#panelPlay .barra{margin:2px 0 0;height:24px;touch-action:pan-x}
-#panelPlay .transport-loop{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:5px;color:#b5afa3;font-size:12px}
+body:not(.embed)>#panelPlay:not(.open){display:none!important}
+body:not(.embed)>#panelPlay.open{display:block!important}
+#panelPlay .transport-main{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:3px}
+#panelPlay .transport-main .btn{height:30px;min-height:30px;padding:0 6px;font-size:11px}
+#panelPlay .transport-main .btn.icon{width:29px;padding:0;font-size:15px;justify-content:center}
+#panelPlay #ppPlay{width:37px;background:#c9a84c;color:#19140a;border-color:#e7d389;font-size:19px}
+#panelPlay #ppPos{order:0;min-width:105px;text-align:center;color:#e9c878;font-size:11px;font-variant-numeric:tabular-nums}
+#panelPlay #ppMetro,#panelPlay #ppBucle{font-size:11px}
+#panelPlay #ppClose{display:inline-flex!important;margin-left:0}
+#panelPlay #ppMore{font-size:11px}
+#panelPlay .transport-timeline{display:flex;flex-direction:column;gap:3px}
+#panelPlay .barra{height:22px;margin:3px 0;touch-action:pan-x}
+#panelPlay .transport-loop{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;font-size:11px}
 #panelPlay .transport-loop label{white-space:nowrap}
-#panelPlay .transport-loop input{
-  width:54px;height:32px;border:1px solid #645435;border-radius:7px;
-  background:#242126;color:#f0e8d7;text-align:center;font-size:14px;font-weight:600;font-family:inherit;font-variant-numeric:tabular-nums;
-}
-#panelPlay .transport-loop .btn{height:31px;min-height:31px;padding:0 8px;font-size:11px;border:1px solid #48423a}
-#panelPlay #ppRegion{font-size:11px;color:#e5c67d;min-width:66px;text-align:center}
-#panelPlay .transport-arrow{color:#bca56c;font-weight:700}
-#panelPlay #ppAdvanced{display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 0 2px;border-top:1px solid var(--line);margin-top:7px;flex-wrap:wrap}
+#panelPlay .transport-loop input{width:43px;height:28px;border:1px solid #645435;border-radius:6px;background:#242126;color:#f0e8d7;text-align:center;font-size:13px;font-family:inherit}
+#panelPlay .transport-loop .btn{height:28px;min-height:28px;padding:0 5px;font-size:10px}
+#panelPlay #ppRegion{font-size:10px;color:#e5c67d}
+#panelPlay #ppAdvanced{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 0 0;border-top:1px solid var(--line);margin-top:4px;flex-wrap:wrap}
 #panelPlay #ppAdvanced[hidden]{display:none!important}
-#panelPlay .transport-main .btn:focus-visible,#panelPlay input:focus-visible,#panelPlay select:focus-visible{
- outline:2px solid var(--gold);outline-offset:2px
-}
-/* The separate instrument and Tap panel never cover the transport itself. */
-body:not(.embed)>.ayuda-dock{bottom:calc(var(--transport-height,150px) + 8px);max-height:36dvh;overflow-y:auto}
-body:not(.embed)>#panel{bottom:calc(var(--transport-height,150px) + 8px)}
+#panelPlay button:focus-visible,#panelPlay input:focus-visible,#panelPlay select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+/* El piano MIDI sigue siendo un dispositivo independiente debajo de la partitura. */
+body:not(.embed)>.ayuda-dock{bottom:calc(7px + env(safe-area-inset-bottom,0px));max-height:230px;overflow-y:auto}
+body:not(.embed)>#panel{bottom:calc(18px + env(safe-area-inset-bottom,0px))}
 body:not(.embed).con-ayuda #panel.open{transform:translateX(-50%) translateY(calc(-1 * var(--ins-alto-dock,0px)))}
 body:not(.embed).con-ayuda #panelPlay{transform:none!important}
-@media (max-width:620px){
- #panelPlay .transport-main{gap:3px}
- #panelPlay .transport-main .btn{height:34px;min-height:34px;padding:0 7px}
- #panelPlay .transport-main .btn.icon{width:39px}
- #panelPlay #ppPos{min-width:101px;font-size:12px}
- #panelPlay #ppMetro,#panelPlay #ppBucle{font-size:11px}
- #panelPlay #ppMore{font-size:11px}
- #panelPlay .transport-loop{gap:4px}
- #panelPlay .transport-loop input{width:45px;height:31px}
- #panelPlay .transport-loop .btn{padding:0 5px;font-size:10px}
- #panelPlay #ppRegion{min-width:58px;font-size:10px}
- body:not(.embed)>.ayuda-dock{max-height:26dvh}
-}
-@media (max-width:365px){#panelPlay #ppRegion{flex-basis:100%;text-align:center}}
-@media print{#panelPlay{display:none!important}}
+@media(max-width:620px){body:not(.embed)>#panelPlay{max-height:calc(100dvh - var(--player-top,95px) - 7px)} #panelPlay .transport-main{gap:2px} body:not(.embed)>.ayuda-dock{max-height:220px}}
+@media print{#panelPlay,.ayuda-dock{display:none!important}}
+#panelAyuda[hidden]{display:none!important}
