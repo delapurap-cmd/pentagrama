@@ -46,20 +46,21 @@ def check_pdf(data: bytes) -> int:
 
 
 def convert_pdf(data: bytes, *, runner=subprocess.run, program: str | None = None) -> tuple[bytes, str]:
-    """Returns (binary output, extension). No inputs or outputs persist on disk."""
+    """Returns (binary output, extension). Temporary input and output are cleaned."""
     check_pdf(data)
     binary = program or executable()
     if not binary:
         raise OMRFailure("El motor Audiveris no está instalado en este servidor.")
 
-    # Audiveris takes PDF as direct input and exports compressed MusicXML (.mxl).
     with tempfile.TemporaryDirectory(prefix="pentagrama-omr-") as directory:
         base = Path(directory)
         source = base / "partitura.pdf"
         target = base / "export"
         target.mkdir()
         source.write_bytes(data)
-        args = [binary, "-batch", "-export", "-output", str(target), str(source)]
+        # -transcribe is essential for a new PDF: -export alone is not a
+        # guarantee that the complete optical recognition pipeline ran.
+        args = [binary, "-batch", "-transcribe", "-export", "-output", str(target), str(source)]
         try:
             finished = runner(args, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, cwd=directory)
         except subprocess.TimeoutExpired as exc:
