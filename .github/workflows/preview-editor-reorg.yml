@@ -1,0 +1,70 @@
+name: Verify editor reorganization then commit PREVIEW only
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-editor-reorg.yml
+permissions:
+  contents: write
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact patch bytes and stage the reorganization
+        run: |
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          b=''.join(pathlib.Path(f'pruebas/reorg-part-{i}.txt').read_text().strip() for i in range(4))
+          assert len(b)==22248, ('Incomplete transmitted patch',len(b))
+          packed=base64.b64decode(b,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='ab093f331a2140a175407a0facf773266c301e9d34ffc05ef3282b5095966753','Bad compressed patch SHA'
+          data=lzma.decompress(packed)
+          assert hashlib.sha256(data).hexdigest()=='cb6c9f1fd4c42bb9df351956052c49dc61d5cb9c2e6acee62ad3f8d47c2adbd9','Bad original patch SHA'
+          pathlib.Path('/tmp/pentagrama-reorg.patch').write_bytes(data)
+          print('Verified intended patch:',len(data),'bytes')
+          PY
+          git apply --check /tmp/pentagrama-reorg.patch
+          git apply /tmp/pentagrama-reorg.patch
+          git diff --check
+          node --check js/app.js
+          node --check js/audio.js
+          node --check js/midi.js
+          node --check js/musicxml.js
+          node --check js/score-instruments.js
+          node --check js/range-edit.js
+          node --check pruebas/reorg-browser.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Test concert pitch transposition, MIDI export and previous recording logic
+        run: |
+          node pruebas/reorg-unit.cjs
+          node pruebas/stage2-practice.cjs
+      - name: Install browser driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Test reorganized editor in Chrome desktop and mobile
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/reorg-browser.cjs
+      - name: Prevent MusicXML, Audio Sync and notation regressions
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit verified source changes ONLY to preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/audio.js js/midi.js js/musicxml.js js/range-edit.js js/score-instruments.js js/editor-reorg.css pruebas/reorg-unit.cjs pruebas/reorg-browser.cjs
+          git diff --cached --quiet && exit 1
+          git commit -m 'Reorganize File Edit Instruments and inline transport; unify metronome; preserve concert pitch on transposition'
+          git push origin HEAD:preview/estabilidad-editor-20260920
