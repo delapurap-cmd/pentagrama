@@ -510,9 +510,9 @@ const MusicXML = (() => {
     Model.ponerPentagramas(score, nPent,
       Array.from({ length: nPent }, (_, p) => clavesVistas[p] || (p === 0 ? 'treble' : 'bass')));
 
-    // deja los sistemas completos y reparte lo que no quepa
-    const per = score.measuresPerSystem;
-    while (score.measures.length % per !== 0) score.measures.push(Model.emptyMeasure());
+    // La maquetación no pertenece al archivo musical: no agregar compases
+    // ficticios para completar el último sistema. reflow añade solamente
+    // el compás vacío de escritura, que se excluye al exportar MusicXML.
     Model.reflow(score);
 
     return { score, report };

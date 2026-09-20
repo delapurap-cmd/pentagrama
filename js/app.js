@@ -1225,7 +1225,11 @@
         Radial.close();
         render();
         const info = isMidi
-          ? `${result.report.notes} notas leídas del MIDI`
+          ? `${result.report.notes} notas leídas del MIDI · ${result.report.chords || 0} acordes` +
+            (result.report.divergentChordDurations ?
+              ` · ${result.report.divergentChordDurations} notas de acorde con duración aproximada` : '') +
+            (result.report.overlappingNotes ?
+              ` · ${result.report.overlappingNotes} solapamientos recortados` : '')
           : MusicXML.reportText(result.report);
         toast(info);
         state.lastReport = info;
@@ -1284,7 +1288,18 @@
       '  <part id="P1">\n';
 
     const nPent = Model.nPent(s);
-    s.measures.forEach((m, i) => {
+    // El editor añade un compás vacío al final para seguir escribiendo.
+    // Tampoco se deben exportar rellenos vacíos de versiones antiguas.
+    // Conservar, sin embargo, un compás vacío que lleve cambios musicales.
+    const medidasExportables = s.measures.slice();
+    const vacioSinMarcas = m => Model.compasVacio(m) &&
+      !['parcial', 'repite', 'barra', 'volta', 'time', 'clef', 'claves', 'tempo']
+        .some(k => m[k] != null);
+    while (medidasExportables.length > 1 &&
+           vacioSinMarcas(medidasExportables[medidasExportables.length - 1])) {
+      medidasExportables.pop();
+    }
+    medidasExportables.forEach((m, i) => {
       const cap = Model.capacityAt(s, i);
       xml += `    <measure number="${i + 1}"${m.parcial ? ' implicit="yes"' : ''}>\n`;
       if (m.repite === 'inicio') xml += '      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>\n';

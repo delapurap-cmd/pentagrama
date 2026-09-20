@@ -163,13 +163,22 @@ const Midi = (() => {
     const grid = Model.Q / 4;
     const snap = (x) => Math.round((x * scale) / grid) * grid;
 
-    notes.sort((a, b2) => a.start - b2.start || b2.midi - a.midi);
+    notes.sort((a, b2) => a.start - b2.start || a.midi - b2.midi);
     const voice = [];
+    let divergentChordDurations = 0, overlappingNotes = 0;
     notes.forEach((n) => {
       const start = snap(n.start);
+      const end = Math.max(start + grid, snap(n.end));
       const last = voice[voice.length - 1];
-      if (last && start < last.start + grid) return;        // acorde: se queda la más aguda
-      voice.push({ midi: n.midi, start, end: Math.max(start + grid, snap(n.end)) });
+      if (last && start === last.start) {
+        // Acordes reales: cada altura distinta se conserva en el mismo evento.
+        // El modelo todavía no codifica duraciones diferentes por cabeza.
+        if (last.end !== end) divergentChordDurations++;
+        last.end = Math.max(last.end, end);
+        if (!last.midis.includes(n.midi)) last.midis.push(n.midi);
+      } else {
+        voice.push({ midis: [n.midi], start, end });
+      }
     });
 
     const score = Model.newScore({ systems: 1 });
@@ -187,8 +196,9 @@ const Midi = (() => {
     voice.forEach((n, i) => {
       if (n.start > cursor) fill(events, n.start - cursor, true);        // silencio
       const next = voice[i + 1];
+      if (next && n.end > next.start) overlappingNotes++;
       const dur = Math.max(grid, Math.min(n.end, next ? next.start : Infinity) - n.start);
-      fill(events, dur, false, n.midi, score.key);
+      fill(events, dur, false, n.midis, score.key);
       cursor = n.start + dur;
     });
 
@@ -201,11 +211,15 @@ const Midi = (() => {
       m.events.push(ev); used += t;
     });
     score.measures.push(m);
-    const per = score.measuresPerSystem;
-    while (score.measures.length % per !== 0) score.measures.push(Model.emptyMeasure());
+    // No insertar compases artificiales por la distribución de sistemas.
     Model.reflow(score);
 
-    return { score, report: { notes: voice.length } };
+    return { score, report: {
+      notes: notes.length,
+      chords: voice.filter(v => v.midis.length > 1).length,
+      divergentChordDurations,
+      overlappingNotes
+    } };
   }
 
   /** Trocea una duración cualquiera en figuras escribibles. */
@@ -224,9 +238,11 @@ const Midi = (() => {
       if (!piece) break;
       if (isRest) out.push(Model.rest(piece.dur, piece.dots));
       else {
-        const ev = Model.note(midiToDi(midi, key), piece.dur, piece.dots);
-        const acc = midiAcc(midi, key);
+        const pitches = Array.isArray(midi) ? midi : [midi];
+        const ev = Model.note(midiToDi(pitches[0], key), piece.dur, piece.dots);
+        const acc = midiAcc(pitches[0], key);
         if (acc) ev.acc = acc;
+        pitches.slice(1).forEach(p => Model.anadirAltura(ev, midiToDi(p, key), midiAcc(p, key)));
         if (left - piece.t > 0) ev.tie = true;
         out.push(ev);
       }
