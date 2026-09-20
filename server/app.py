@@ -1,13 +1,14 @@
-"""Serve Pentagrama and its optional local Audiveris recognition endpoint.
+"""Serve Pentagrama and an optional same-origin Audiveris PDF recognition API.
 
 Run at the repository root: uvicorn server.app:app --host 127.0.0.1 --port 8000
 """
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -17,6 +18,30 @@ from server.omr import MAX_PDF_BYTES, OMRFailure, convert_pdf, executable
 ROOT = Path(__file__).resolve().parents[1]
 app = FastAPI(title="Pentagrama OMR", docs_url=None, redoc_url=None, openapi_url=None)
 _lock = asyncio.Semaphore(1)  # OMR is CPU/memory-intensive.
+PUBLIC_ROOT = {"index.html", "studio.html", "sync.html", "style.css", "manifest.json",
+               "icon-192.png", "icon-512.png", "icon-maskable.png", "sw.js", "service-worker.js"}
+PUBLIC_FOLDERS = {"js", "vendor", "ejemplos", "sonidos", "assets", "fonts"}
+PUBLIC_EXT = {".html", ".css", ".js", ".json", ".mxl", ".xml", ".mid", ".midi",
+              ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".ogg"}
+
+
+@app.middleware("http")
+async def protect_private_files(request: Request, call_next):
+    path = unquote(request.url.path)
+    if path.startswith('/api/'):
+        return await call_next(request)
+    segments = PurePosixPath(path).parts
+    if path == '/':
+        return await call_next(request)
+    if (not segments or any(part.startswith('.') or part in ('..',) for part in segments)
+            or '\\' in path):
+        return Response(status_code=404)
+    first = segments[1] if segments[0] == '/' else segments[0]
+    allowed = ((len(segments) == 2 and first in PUBLIC_ROOT)
+               or (first in PUBLIC_FOLDERS and Path(path).suffix.lower() in PUBLIC_EXT))
+    if not allowed:
+        return Response(status_code=404)
+    return await call_next(request)
 
 
 @app.get("/api/omr/health")
@@ -48,5 +73,4 @@ async def recognize(pdf: UploadFile = File(...)):
     })
 
 
-# The API is registered before the static mount; / and /index.html are identical.
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="pentagrama")
