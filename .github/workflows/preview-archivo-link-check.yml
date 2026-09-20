@@ -1,0 +1,42 @@
+name: Verify Archivo preview URL without production deployment
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-archivo-link-check.yml
+permissions:
+  contents: read
+jobs:
+  external-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Test exact preview revision in real Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PREVIEW_URL: https://raw.githack.com/delapurap-cmd/pentagrama/3f5105b7e5ea514d80f3fd0a55e396942bf5f776/studio.html
+        run: |
+          node <<'JS'
+          const {chromium}=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{
+              const context=await browser.newContext({viewport:{width:390,height:844}});
+              await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await context.newPage();
+              const response=await page.goto(process.env.PREVIEW_URL,{waitUntil:'domcontentloaded',timeout:30000});
+              if(!response||response.status()!==200)throw Error('Preview HTTP '+response?.status());
+              await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+              if(await page.locator('#btnPdfImport').count())throw Error('PDF recognition was reenabled');
+              await page.locator('#btnFile').click();
+              const menu=await page.locator('.menu.open').innerText();
+              if(!menu.includes('Nueva partitura')||!menu.includes('Importar MIDI')||!menu.includes('Importar MusicXML'))throw Error('New/MIDI/XML missing in menu');
+              console.log('PASS: exact public-repo preview available with Archivo > Nueva partitura / Importar MIDI:',page.url());
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
