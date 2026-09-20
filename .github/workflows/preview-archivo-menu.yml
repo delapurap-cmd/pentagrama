@@ -1,0 +1,69 @@
+name: Preview Archivo menu - new score and MIDI import
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-archivo-menu.yml
+      - pruebas/preview-archivo-menu.py
+      - pruebas/archivo-menu-browser.cjs
+permissions:
+  contents: write
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Patch only preview UI with exact matching anchors
+        run: python3 pruebas/preview-archivo-menu.py
+      - name: Check source syntax and scope
+        run: |
+          set -euo pipefail
+          node --check js/app.js
+          node --check js/midi.js
+          node --check pruebas/archivo-menu-browser.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          grep -q 'Importar MIDI' js/app.js
+          grep -q 'Nueva partitura' js/app.js
+          git diff --check
+          git diff --stat
+      - name: Test Archivo functionality on mobile and desktop
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/archivo-menu-browser.cjs
+      - name: Check previous editor and import/export regressions
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/studio-browser.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit proven change to preview only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/app.js index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Move new score to Archivo and add dedicated MIDI import'
+          git push origin HEAD:preview/estabilidad-editor-20260920
+      - name: Build complete preview archive, no site deployment
+        run: |
+          mkdir -p preview
+          cp index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png preview/
+          cp -R js vendor sonidos ejemplos preview/
+          echo 'Editor web de prueba. No se publico en GitHub Pages ni en More Than Modes.' > preview/LEEME.txt
+          cd preview && zip -qr ../Pentagrama-Web-Archivo.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pentagrama-Web-Archivo-Probado
+          path: Pentagrama-Web-Archivo.zip
+          retention-days: 14
