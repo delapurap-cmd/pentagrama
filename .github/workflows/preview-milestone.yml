@@ -1,0 +1,66 @@
+name: Preview milestone - safe MusicXML and MIDI edits
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-milestone.yml
+      - pruebas/preview-milestone.py
+      - pruebas/preview-roundtrip.cjs
+permissions:
+  contents: write
+jobs:
+  apply-test-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Apply source patches with checked anchors
+        run: python3 pruebas/preview-milestone.py
+      - name: Validate JavaScript and only intended edits
+        run: |
+          node --check js/musicxml.js
+          node --check js/midi.js
+          node --check js/app.js
+          node --check pruebas/preview-roundtrip.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --check
+          git diff --stat
+      - name: Verify real MusicXML round-trips and MIDI triads in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/preview-roundtrip.cjs
+      - name: Verify core editor on desktop and mobile
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/studio-browser.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit tested sources exclusively to preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/musicxml.js js/midi.js js/app.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Preserve MusicXML measure counts and MIDI chord pitches on preview branch'
+          git push origin HEAD:preview/estabilidad-editor-20260920
+      - name: Prepare offline static preview without deploying any website
+        run: |
+          mkdir -p preview
+          cp index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png preview/
+          cp -R js vendor sonidos ejemplos preview/
+          echo 'Vista previa de revisión; sin despliegue a producción. Abrir studio.html mediante servidor HTTP local.' > preview/LEEME.txt
+          cd preview && zip -qr ../Pentagrama-Web-Revision.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pentagrama-Web-Revision-Probada
+          path: Pentagrama-Web-Revision.zip
+          retention-days: 14
