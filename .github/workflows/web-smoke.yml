@@ -11,7 +11,6 @@ on:
       - 'pruebas/studio-browser.cjs'
       - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
-      - 'pruebas/pdf-import-browser.cjs'
       - 'pruebas/preview-diagnose.cjs'
       - 'pruebas/preview-validate.cjs'
       - '.github/workflows/web-smoke.yml'
@@ -25,7 +24,6 @@ on:
       - 'pruebas/studio-browser.cjs'
       - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
-      - 'pruebas/pdf-import-browser.cjs'
   workflow_dispatch:
 jobs:
   browser:
@@ -37,26 +35,29 @@ jobs:
           node-version: '22'
       - name: Install lightweight browser driver
         run: npm install --no-save playwright-core@1.55.0
-      - name: Verify page and JavaScript
+      - name: Verify editor remains intact and PDF recognition is not loaded
         run: |
           node --check js/radial.js
           node --check js/sync-core.js
           node --check js/sync-inline.js
           node --check js/workspace-sides.js
-          node --check js/pdf-import.js
           node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
           node --check pruebas/sync-inline-browser.cjs
-          node --check pruebas/pdf-import-browser.cjs
           node --check js/sync-studio.js
           node --check pruebas/preview-validate.cjs
           test -s studio.html
           test -s js/sync-inline.css
           test -s js/workspace-sides.css
           test -s js/workspace-header.css
-          test -s js/pdf-import.css
           test -s js/toolbar-compact.css
           test -s vendor/vexflow.js
+          grep -q 'src="js/musicxml.js"' index.html
+          grep -q 'src="js/midi.js"' index.html
+          grep -q 'src="js/app.js"' index.html
+          grep -q 'src="js/audio.js"' index.html
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          ! grep -q 'href="js/pdf-import.css"' index.html
       - name: Test real application locally in Chrome
         env:
           CHROME_BIN: /usr/bin/google-chrome
@@ -69,10 +70,6 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/toolbar-browser.cjs
-      - name: Test PDF importer with unavailable backend and mocked OMR output
-        env:
-          CHROME_BIN: /usr/bin/google-chrome
-        run: node pruebas/pdf-import-browser.cjs
       - name: Diagnose optional external preview
         continue-on-error: true
         run: node pruebas/preview-diagnose.cjs
