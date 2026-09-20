@@ -11,6 +11,7 @@ on:
       - 'pruebas/studio-browser.cjs'
       - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
+      - 'pruebas/pdf-import-browser.cjs'
       - 'pruebas/preview-diagnose.cjs'
       - 'pruebas/preview-validate.cjs'
       - '.github/workflows/web-smoke.yml'
@@ -24,6 +25,7 @@ on:
       - 'pruebas/studio-browser.cjs'
       - 'pruebas/sync-inline-browser.cjs'
       - 'pruebas/toolbar-browser.cjs'
+      - 'pruebas/pdf-import-browser.cjs'
   workflow_dispatch:
 jobs:
   browser:
@@ -41,14 +43,18 @@ jobs:
           node --check js/sync-core.js
           node --check js/sync-inline.js
           node --check js/workspace-sides.js
+          node --check js/pdf-import.js
           node --check pruebas/toolbar-browser.cjs
           node --check pruebas/studio-browser.cjs
           node --check pruebas/sync-inline-browser.cjs
+          node --check pruebas/pdf-import-browser.cjs
           node --check js/sync-studio.js
           node --check pruebas/preview-validate.cjs
           test -s studio.html
           test -s js/sync-inline.css
           test -s js/workspace-sides.css
+          test -s js/workspace-header.css
+          test -s js/pdf-import.css
           test -s js/toolbar-compact.css
           test -s vendor/vexflow.js
       - name: Test real application locally in Chrome
@@ -59,10 +65,14 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/sync-inline-browser.cjs
-      - name: Test toolbar and real editor commands in Chrome
+      - name: Test general top bar and editing commands in Chrome
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: node pruebas/toolbar-browser.cjs
+      - name: Test PDF importer with unavailable backend and mocked OMR output
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/pdf-import-browser.cjs
       - name: Diagnose optional external preview
         continue-on-error: true
         run: node pruebas/preview-diagnose.cjs
