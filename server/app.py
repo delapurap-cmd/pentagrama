@@ -53,8 +53,8 @@ def health():
 
 @app.post("/api/omr")
 async def recognize(pdf: UploadFile = File(...)):
-    if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=415, detail="Selecciona un archivo .pdf.")
+    # Some genuine sheet-music PDFs arrive without a .pdf filename suffix.
+    # The worker validates the actual PDF signature, structure and limits.
     try:
         data = await pdf.read(MAX_PDF_BYTES + 1)
     finally:
