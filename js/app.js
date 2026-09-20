@@ -41,6 +41,14 @@
     bindBar();
     bindStage();
     bindPanel();
+    Instrumentos.configurarPiano({
+      onDown:(midi,velocity,write)=>{
+        const chord=keysDown.size>0;keysDown.add(midi);Sound.liveOn(midi,velocity);
+        if(write)insertMidi(midi,chord);
+      },
+      onUp:midi=>{keysDown.delete(midi);Sound.liveOff(midi);},
+      onPedal:on=>Sound.livePedal(on)
+    });
     bindPlayPanel();
     bindKeys();
     render();
@@ -509,6 +517,56 @@
     requestAnimationFrame(() => openRadialFor(ev.id));
   }
 
+  /* Piano MIDI -> notation, respecting score key, selected voice and figure. */
+  const keysDown=new Set();let lastMidiEvent=null;
+  function midiPitch(midi,mi,pent){
+    const clef=Model.clefAt(state.score,mi,pent),note=midi-(clef.octava||0);
+    const oct=Math.floor(note/12)-1,flats=Model.keyBySpec(state.score.key).fifths<0;
+    let best=null;
+    for(let o=oct-1;o<=oct+1;o++)for(let k=0;k<7;k++){
+      const di=o*7+k,letter=Model.LETTERS[k],alt=note-((o+1)*12+Model.SEMIS[letter]);
+      if(alt<-2||alt>2)continue;
+      const inKey=Model.keyAlter(state.score.key,letter);
+      const cost=(alt===inKey?0:1.5)+Math.abs(alt)*.08+
+        (flats&&alt>0?.2:0)+(!flats&&alt<0?.2:0);
+      if(!best||cost<best.cost)best={di,acc:alt===inKey?null:({'-2':'bb','-1':'b',0:'n',1:'#',2:'##'}[alt]),cost};
+    }
+    return best;
+  }
+  function insertMidi(midi,chord=false){
+    if(rep.playing)pararTodo();
+    const now=performance.now();
+    if(chord&&lastMidiEvent&&lastMidiEvent.score===state.score&&now-lastMidiEvent.at<130){
+      const found=Model.findEvent(state.score,lastMidiEvent.id);
+      if(found&&found.ev.kind==='note'){
+        const p=midiPitch(midi,found.mi,found.pent),clef=Model.clefAt(state.score,found.mi,found.pent);
+        if(p&&!Model.midisOf(found.ev,state.score.key,clef).includes(midi)&&Model.anadirAltura(found.ev,p.di,p.acc)){
+          lastMidiEvent.at=now;render();return;
+        }
+      }
+    }
+    const found=state.selectedId&&Model.findEvent(state.score,state.selectedId);
+    let mi,pent,vi,index;
+    if(found){({mi,pent,vi}=found);index=found.index+1;}
+    else{
+      pent=Model.nPent(state.score)>1&&midi<60?1:0;
+      const from=Math.max(0,compasDelTick(rep.cursorTick)-1);
+      mi=state.score.measures.findIndex((m,i)=>{
+        if(i<from)return false;
+        const v=Model.vozDePentagrama(m,pent);
+        return Model.measureTicks(m,v.vi)<Model.capacityAt(state.score,i);
+      });
+      if(mi<0){mi=state.score.measures.length;state.score.measures.push(Model.emptyMeasure());}
+      const v=Model.vozDePentagrama(state.score.measures[mi],pent);
+      vi=v.vi;index=v.events.length;
+    }
+    const p=midiPitch(midi,mi,pent);if(!p)return;
+    snapshot();const ev=Model.note(p.di,state.pending.dur,state.pending.dots,p.acc);
+    Model.insertEvent(state.score,mi,vi,index,ev);
+    state.selectedId=ev.id;lastMidiEvent={score:state.score,id:ev.id,at:now};
+    Radial.close();render();
+  }
+
   /* ---------------- Barra de herramientas ---------------- */
   function menu(items, anchor) {
     closeMenus();
@@ -662,17 +720,13 @@
     $('#btnUndo').addEventListener('click', undo);
     $('#btnRedo').addEventListener('click', redo);
     $('#btnTap').addEventListener('click', () => togglePanel());
-    /* Un toque arranca o para; mantenerlo pulsado abre el panel con la
-       posición, la velocidad y el bucle. */
-    let largo = 0;
-    const play = $('#btnPlay');
-    play.addEventListener('pointerdown', () => {
-      largo = setTimeout(() => { largo = 0; togglePlayPanel(true); }, 480);
+    $('#btnPlay').addEventListener('click',()=>togglePlayPanel());
+    $('#btnPiano').addEventListener('click',()=>{
+      ayuda=ayuda==='piano'?'ninguno':'piano';montaAyuda();
     });
-    const suelta = () => { if (largo) { clearTimeout(largo); largo = 0; togglePlay(); } };
-    play.addEventListener('pointerup', suelta);
-    play.addEventListener('pointercancel', () => { clearTimeout(largo); largo = 0; });
-    play.addEventListener('contextmenu', (e) => e.preventDefault());
+    $('#btnPianoClose').addEventListener('click',()=>{
+      ayuda='ninguno';Sound.liveAllOff();montaAyuda();
+    });
     if (Native.isApp()) $('#btnPrint').hidden = true;
     else $('#btnPrint').addEventListener('click', () => window.print());
   }
@@ -736,8 +790,8 @@
     $('#ppNext').disabled = actual >= nCompases();
     $('#ppPlay').textContent = rep.playing ? '⏸' : '▶';
     $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
-    $('#btnPlay').textContent = rep.playing ? '⏸' : '▶';
-    $('#btnPlay').classList.toggle('on', rep.playing);
+    $('#btnPlay').textContent = rep.playing ? '♫ Reproduciendo' : '♫ Reproductor';
+    $('#btnPlay').classList.toggle('on', $('#panelPlay').classList.contains('open'));
     $('#ppPlay').classList.toggle('on', rep.playing);
     $('#ppAInput').max = String(nCompases());
     $('#ppBInput').max = String(nCompases());
@@ -809,6 +863,9 @@
     const panel = $('#panelAyuda');
     const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
     panel.hidden = !puesto;
+    $('#pianoDeviceTitle').textContent=ayuda==='piano'?'Piano MIDI · More Than Modes':'Instrumento · '+ayuda;
+    $('#btnPiano').classList.toggle('on',ayuda==='piano');
+    $('#btnPiano').setAttribute('aria-expanded',String(ayuda==='piano'));
     document.body.classList.toggle('con-ayuda', !!puesto);
     /* El panel de reproducción se sube justo lo que ocupe la ayuda. Se mide
        después de montarla porque un teclado y un mástil no miden igual. */
@@ -945,24 +1002,18 @@
     barra.addEventListener('pointerup', soltar);
     barra.addEventListener('change', soltar);
     refresca();
-    if (!EMBED && typeof ResizeObserver !== 'undefined') {
-      const medir = () => document.documentElement.style.setProperty('--transport-height', $('#panelPlay').getBoundingClientRect().height + 'px');
-      new ResizeObserver(medir).observe($('#panelPlay'));
-      medir();
-    }
   }
 
-  function togglePlayPanel(force) {
-    // The complete transport stays visible in standalone mode; only the
-    // optional speed/instrument settings expand. Embedded editor can close.
-    if (!EMBED) {
-      if (force === true) $('#ppMore').click();
-      return;
-    }
-    const p = $('#panelPlay');
-    const open = force != null ? force : !p.classList.contains('open');
-    p.classList.toggle('open', open);
-    if (open) { togglePanel(false); Radial.close(); }
+  function togglePlayPanel(force){
+    const panel=$('#panelPlay');
+    const open=force!=null?force:!panel.classList.contains('open');
+    if(!EMBED)document.documentElement.style.setProperty('--player-top',
+      Math.ceil($('header.bar').getBoundingClientRect().bottom+6)+'px');
+    panel.classList.toggle('open',open);
+    panel.setAttribute('aria-hidden',String(!open));
+    $('#btnPlay').setAttribute('aria-expanded',String(open));
+    $('#btnPlay').classList.toggle('on',open);
+    if(open){togglePanel(false);Radial.close();}
   }
 
   /* ---------------- Panel de tiempos (tap) ---------------- */

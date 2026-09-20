@@ -89,6 +89,44 @@ const Sound = (() => {
     return true;
   }
 
+  /* Live MIDI uses THE SAME loaded Opus piano buffers as score playback. */
+  const live=new Map();let pedal=false;
+  function soltar(v){
+    if(!v||!v.active)return;v.active=false;
+    if(v.source&&v.gain)try{
+      const t=ac().currentTime;v.source.loop=false;
+      v.gain.gain.cancelScheduledValues(t);
+      v.gain.gain.setValueAtTime(Math.max(.0001,v.gain.gain.value),t);
+      v.gain.gain.exponentialRampToValueAtTime(.0001,t+.22);
+      v.source.stop(t+.26);
+    }catch(_){}
+  }
+  async function liveOn(midi,velocity=.85){
+    if(!Number.isInteger(midi)||midi<0||midi>127)return;
+    if(live.has(midi))soltar(live.get(midi));
+    const v={active:true,down:true,source:null,gain:null};live.set(midi,v);
+    try{
+      const c=ac(),{midi:sample,rate}=nearestSample(midi);
+      const buf=await loadSample(sample);
+      if(!v.active||live.get(midi)!==v)return; // released while loading
+      if(!buf){console.warn('Piano MIDI: muestra no disponible',sampleUrl(sample));
+        tone(c.currentTime,midi,.4,velocity);return;}
+      const s=c.createBufferSource(),g=c.createGain();v.source=s;v.gain=g;
+      s.buffer=buf;s.playbackRate.value=rate;
+      g.gain.setValueAtTime(Math.max(.12,Math.min(1,velocity)),c.currentTime);
+      if(buf.duration>.4){s.loop=true;s.loopStart=Math.min(.3,buf.duration*.16);
+        s.loopEnd=Math.max(s.loopStart+.08,buf.duration-.06);}
+      s.connect(g).connect(c.destination);s.start(c.currentTime);
+      s.onended=()=>{if(live.get(midi)===v)live.delete(midi)};
+      setTimeout(()=>{if(live.get(midi)===v){soltar(v);live.delete(midi);}},18000);
+    }catch(e){console.warn('Piano MIDI audio',e);if(live.get(midi)===v)live.delete(midi);}
+  }
+  function liveOff(midi){const v=live.get(midi);if(!v)return;v.down=false;
+    if(pedal)return;soltar(v);live.delete(midi);}
+  function livePedal(on){pedal=!!on;if(!pedal)for(const [m,v] of live){
+    if(!v.down){soltar(v);live.delete(m);}}}
+  function liveAllOff(){pedal=false;for(const v of live.values())soltar(v);live.clear()}
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur, vol = 0.9) {
     if (playSample(at, midi, dur, vol)) return;
@@ -545,6 +583,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, preload, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

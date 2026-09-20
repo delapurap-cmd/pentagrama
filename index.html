@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="js/workspace-sides.css">
 <link rel="stylesheet" href="js/workspace-header.css">
 <link rel="stylesheet" href="js/transport.css">
+<link rel="stylesheet" href="js/piano-midi.css">
 </head>
 <body>
 
@@ -43,7 +44,8 @@
     <button class="btn" id="btnFile">Archivo</button>
   </div>
   <span class="sp"></span>
-  <button class="btn icon" id="btnPlay" title="Escuchar (espacio)">▶</button>
+  <button class="btn" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Piano MIDI de More Than Modes">🎹 Piano MIDI</button>
+  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="false" title="Abrir reproductor">♫ Reproductor</button>
 </header>
 
 <!-- El lateral contiene los botones reales; no es una réplica del editor. -->
@@ -54,12 +56,15 @@
 
 <!-- Ayuda visual de instrumento para reproducción. -->
 <section class="ayuda-dock" id="panelAyuda" aria-label="Instrumento" hidden>
+  <div class="piano-device-head"><strong id="pianoDeviceTitle">Piano MIDI · More Than Modes</strong>
+    <button class="btn ghost" id="btnPianoClose" type="button" aria-label="Cerrar instrumento">✕</button>
+  </div>
   <div class="ins-caja" id="insCaja"></div>
   <p class="ins-aviso" id="insAviso"></p>
 </section>
 
 <!-- Reproductor -->
-<section class="panel play" id="panelPlay" aria-label="Reproductor de partitura">
+<section class="panel play" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="true">
   <div class="transport-main row" role="group" aria-label="Transporte musical">
     <button class="btn ghost icon" id="ppStop" type="button" aria-label="Ir al inicio" title="Ir al inicio">⏮</button>
     <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior">◀┃</button>
@@ -69,7 +74,7 @@
     <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción">♩ Metrónomo</button>
     <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B">↻ Bucle A–B</button>
     <button class="btn ghost" id="ppMore" type="button" aria-controls="ppAdvanced" aria-expanded="false">Opciones ▾</button>
-    <button class="btn ghost icon embed-only" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor">✕</button>
+    <button class="btn ghost icon" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor">✕</button>
   </div>
   <div class="transport-timeline">
     <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Desplazar reproducción por la partitura">
@@ -136,6 +141,7 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/engrave.js"></script>
 <script src="js/radial.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/piano-midi.js"></script>
 <script src="js/instrumentos.js"></script>
 <script src="js/app.js"></script>
 <script src="js/sync-core.js"></script>
