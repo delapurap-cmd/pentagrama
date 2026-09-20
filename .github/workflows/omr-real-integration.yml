@@ -1,0 +1,80 @@
+name: Real Audiveris PDF conversion integration
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/omr-real-integration.yml'
+      - 'server/omr.py'
+      - 'server/tests/test_omr.py'
+jobs:
+  convert-real-pdf:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: python -m pip install -r server/requirements.txt
+      - name: Download actual music score from Audiveris official examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/official-example.pdf"
+          file "$RUNNER_TEMP/official-example.pdf"
+          python - <<'PY'
+          import os
+          from server.omr import check_pdf
+          data=open(os.environ['RUNNER_TEMP']+'/official-example.pdf','rb').read()
+          print('Example PDF pages:',check_pdf(data),'bytes:',len(data))
+          PY
+      - name: Install original Mac Intel Audiveris and print available CLI commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-macosx-x86_64.dmg -o "$RUNNER_TEMP/Audiveris.dmg"
+          mkdir -p "$RUNNER_TEMP/audiveris-volume" "$RUNNER_TEMP/omrout"
+          printf 'y\n' | PAGER=cat hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/audiveris-volume" "$RUNNER_TEMP/Audiveris.dmg" >/dev/null
+          BIN=$(find "$RUNNER_TEMP/audiveris-volume" -type f -path '*/Audiveris.app/Contents/MacOS/Audiveris' -print -quit)
+          test -x "$BIN"
+          echo "AUDIVERIS_BIN=$BIN" >> "$GITHUB_ENV"
+          "$BIN" -help 2>&1 | tail -75
+      - name: REAL CONVERSION direct Audiveris batch PDF to MusicXML
+        shell: bash
+        run: |
+          set -uo pipefail
+          "$AUDIVERIS_BIN" -batch -transcribe -export -output "$RUNNER_TEMP/omrout" "$RUNNER_TEMP/official-example.pdf" > "$RUNNER_TEMP/audiveris-real.log" 2>&1
+          code=$?
+          echo "AUDIVERIS_EXIT=$code"
+          echo '---- Real recognition log (last 90 lines) ----'
+          tail -90 "$RUNNER_TEMP/audiveris-real.log"
+          echo '---- Real export files ----'
+          find "$RUNNER_TEMP/omrout" -type f -maxdepth 5 -print
+          if [[ "$code" -ne 0 ]]; then exit "$code"; fi
+          FILE=$(find "$RUNNER_TEMP/omrout" -type f \( -iname '*.mxl' -o -iname '*.musicxml' -o -iname '*.xml' \) | head -1)
+          test -s "$FILE" || { echo 'FAIL: Audiveris exited successfully but no MusicXML was exported'; exit 1; }
+          echo 'PASS: Audiveris produced actual MusicXML from a PDF'
+      - name: REAL CONVERSION via same Pentagrama Python worker
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,time,zipfile,io,traceback
+          from server.omr import convert_pdf
+          sample=open(os.environ['RUNNER_TEMP']+'/official-example.pdf','rb').read()
+          now=time.monotonic()
+          try:
+              contents,suffix=convert_pdf(sample)
+              print('WORKER RESULT', suffix,len(contents),'bytes in',round(time.monotonic()-now,1),'seconds')
+              if suffix == '.mxl':
+                  with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                      names=z.namelist()
+                      print('MusicXML zip member names:',names)
+                      assert any(n.endswith(('.xml','.musicxml')) and not n.startswith('META-INF') for n in names)
+              else: assert b'<score-partwise' in contents
+              print('PASS: actual PDF -> packaged CLI -> MusicXML bytes in Python worker')
+          except Exception:
+              traceback.print_exc()
+              raise
+          PY
