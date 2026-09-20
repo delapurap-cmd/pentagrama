@@ -1,0 +1,50 @@
+name: Pentagrama private-review bundle (no deployment)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify web prerequisites and disabled PDF-to-score
+        run: |
+          set -euo pipefail
+          node --check js/musicxml.js
+          node --check js/model.js
+          node --check js/midi.js
+          node --check js/app.js
+          node --check js/radial.js
+          node --check js/sync-inline.js
+          test -s index.html
+          test -s vendor/vexflow.js
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          grep -q 'src="js/musicxml.js"' index.html
+          grep -q 'src="js/midi.js"' index.html
+      - name: Build complete static web preview, never publish
+        run: |
+          mkdir -p preview
+          cp index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png preview/
+          cp -R js vendor sonidos ejemplos preview/
+          cat > preview/LEEME-VISTA-PREVIA.txt <<'TXT'
+          VISTA PREVIA: No se ha publicado en GitHub Pages ni en More Than Modes.
+          Para ver de forma local, desde esta carpeta ejecutar python3 -m http.server 8000 y abrir http://localhost:8000/studio.html.
+          Enlace externo de desarrollo de esta rama (repositorio PUBLICO; servicio tercero):
+          https://raw.githack.com/delapurap-cmd/pentagrama/preview/estabilidad-editor-20260920/studio.html
+          Puede pedir una confirmacion inicial. No enviar archivos confidenciales a sitios de terceros.
+          TXT
+          cd preview && zip -qr ../Pentagrama-Web-Preview.zip .
+          test -s ../Pentagrama-Web-Preview.zip
+      - name: Provide downloadable preview ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pentagrama-Web-Preview-Sin-Publicar
+          path: Pentagrama-Web-Preview.zip
+          retention-days: 14
