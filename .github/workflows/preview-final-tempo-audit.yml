@@ -1,0 +1,76 @@
+name: Audit unified score tempo and count-in (preview only)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-final-tempo-audit.yml
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static source and phase-locked clock checks
+        run: |
+          set -euo pipefail
+          node --check js/app.js
+          node --check js/audio.js
+          node --check js/engrave.js
+          node pruebas/metronome-loop.cjs
+          ! grep -q 'id="ppVel"' index.html
+          ! grep -q 'id="ppLento"' index.html
+          ! grep -q 'id="ppRapido"' index.html
+          ! grep -q 'src="js/pdf-import.js"' index.html
+      - name: Install browser test driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Verify actual UI at mobile and desktop widths
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          python3 -m http.server 19217 --bind 127.0.0.1 >/tmp/preview-audit.log 2>&1 &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          node <<'JS'
+          const {chromium}=require('playwright-core');
+          const assert=require('node:assert/strict');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{
+              for(const width of [1440,390,320]){
+                const page=await browser.newPage({viewport:{width,height:900}});
+                const errors=[];page.on('pageerror',e=>errors.push(e.message));
+                await page.goto('http://127.0.0.1:19217/studio.html');
+                await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+                for(const selector of ['#btnMetroAlways svg','#btnTempoMenu svg','#btnCountAlways svg','#ppPlay svg','#ppPrev svg','#ppNext svg','#ppBucle svg'])assert.equal(await page.locator(selector).count(),1,selector);
+                assert.ok(await page.locator('.measure-number').count()>=1,'Number each measure');
+                assert.ok(await page.locator('.system-number').count()>=1,'Number each system');
+                const initial=await page.locator('#metroTempo').innerText();
+                await page.locator('#btnTempoMenu').click();
+                assert.equal(await page.locator('#bpm').innerText(),initial,'One tempo display');
+                await page.locator('#btnTempoMenu').click();
+                await page.locator('#btnCountAlways').click();
+                assert.equal(await page.locator('#btnCountAlways').getAttribute('aria-pressed'),'true');
+                assert.equal(await page.locator('#ppPlay').getAttribute('aria-label'),'Reproducir');
+                await page.keyboard.press('Space');
+                await page.waitForFunction(()=>document.getElementById('ppPlay').getAttribute('aria-label')==='Pausar');
+                await page.keyboard.press('Space');
+                await page.waitForFunction(()=>document.getElementById('ppPlay').getAttribute('aria-label')==='Reproducir');
+                assert.deepEqual(errors,[],`No page errors ${width}`);
+                console.log('PASS tempo/UI/Space/numbering width='+width+' BPM='+initial);
+                await page.close();
+              }
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
+      - name: Preserve music exports and editor synchronization
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
