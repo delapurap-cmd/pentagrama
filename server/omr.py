@@ -53,6 +53,43 @@ def check_pdf(data: bytes) -> int:
     return pages
 
 
+def remove_spurious_voice_parts(root: ElementTree.Element) -> bool:
+    """Keep the actual piano part when Audiveris invents tiny preliminary Voice parts.
+
+    A real three-page piano scan yielded Voice(9 pitches), Voice(12 pitches),
+    Piano(1160 pitches). The score editor used to open the first part and
+    silently lose the real piano music. Do not filter actual ensembles: require
+    an overwhelmingly dominant Piano and ONLY negligible generic Voice parts.
+    """
+    parts = root.findall('part')
+    part_list = root.find('part-list')
+    if len(parts) < 2 or part_list is None:
+        return False
+    if any(child.tag != 'score-part' for child in part_list):
+        return False
+    names = {sp.get('id'): (sp.findtext('part-name') or '').strip().lower()
+             for sp in part_list.findall('score-part')}
+    pitched = {part.get('id'): sum(note.find('pitch') is not None for note in part.iter('note'))
+               for part in parts}
+    primary = max(parts, key=lambda part: pitched[part.get('id')])
+    primary_id = primary.get('id')
+    remaining = [part for part in parts if part is not primary]
+    other_pitches = sum(pitched[part.get('id')] for part in remaining)
+    if not (names.get(primary_id) in ('piano', 'grand piano', 'pianoforte')
+            and pitched[primary_id] >= 40
+            and pitched[primary_id] >= 8 * max(1, other_pitches)
+            and all(names.get(part.get('id'), '') in ('voice', 'unknown', '') for part in remaining)):
+        return False
+    for part in remaining:
+        root.remove(part)
+    for score_part in list(part_list):
+        if score_part.get('id') != primary_id:
+            part_list.remove(score_part)
+    LOG.warning('Audiveris added %s sparse Voice part(s) (%s pitched notes); keeping Piano (%s pitched notes)',
+                len(remaining), other_pitches, pitched[primary_id])
+    return True
+
+
 def unpack_musicxml(blob: bytes, extension: str) -> bytes:
     """Always send plain MusicXML: older WKWebView lacks deflate-raw support.
 
@@ -93,6 +130,10 @@ def unpack_musicxml(blob: bytes, extension: str) -> bytes:
         raise OMRFailure("Audiveris no produjo una partitura MusicXML compatible.")
     if not any(item.tag.rsplit("}", 1)[-1] == "note" for item in root.iter()):
         raise OMRFailure("Audiveris no reconoció notas editables en este PDF.")
+    if remove_spurious_voice_parts(root):
+        data = ElementTree.tostring(root, encoding='utf-8', xml_declaration=True)
+        if len(data) > MAX_XML_BYTES:
+            raise OMRFailure("El MusicXML reconocido supera 24 MB.")
     return data
 
 
