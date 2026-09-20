@@ -43,27 +43,24 @@ jobs:
           test -x "$APP/Contents/MacOS/Pentagrama"
           test -x "$APP/Contents/Resources/PentagramaServer/PentagramaServer"
           test -x "$APP/Contents/Resources/Audiveris.app/Contents/MacOS/Audiveris"
-          test -s "$APP/Contents/Resources/web/js/pdf-parts.js" || find "$APP/Contents/Resources" -name pdf-parts.js -print -quit | grep -q pdf-parts.js
+          find "$APP/Contents/Resources" -name pdf-parts.js -print -quit | grep -q pdf-parts.js
           codesign --verify --deep --verbose=2 "$APP"
           echo 'PASS: actual DMG verified and mounted; native app, private offline server, Audiveris and piano part selection bundled'
-      - name: Make a public three-page sheet-music PDF fixture (never upload personal scores)
+      - name: Obtain authentic continuous three-page Chopin score from public Mutopia edition
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install 'pypdf>=5,<7'
-          curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/sample.pdf"
+          # Chopin Op. 9 no. 2, Mutopia 1590, edition CC BY-SA 3.0.
+          curl -fLsS --retry 3 'https://www.mutopiaproject.org/ftp/ChopinFF/O9/chopin_nocturne_op9_n2/chopin_nocturne_op9_n2-a4.pdf' -o "$RUNNER_TEMP/real3.pdf"
           python - <<'PY'
           import os
           from pathlib import Path
-          from pypdf import PdfReader, PdfWriter
-          base=Path(os.environ['RUNNER_TEMP'])
-          sample=PdfReader(base/'sample.pdf', strict=True)
-          assert len(sample.pages)==1
-          out=PdfWriter()
-          for _ in range(3): out.add_page(sample.pages[0])
-          with (base/'real3.pdf').open('wb') as file: out.write(file)
-          assert len(PdfReader(base/'real3.pdf', strict=True).pages)==3
-          print('PASS: test input is a genuine, public three-page PDF with three scanned music pages')
+          from pypdf import PdfReader
+          target=Path(os.environ['RUNNER_TEMP'])/'real3.pdf'
+          pages=PdfReader(target, strict=True).pages
+          assert len(pages)==3,f'Expected continuous three-page Chopin Nocturne PDF, got {len(pages)}'
+          print('PASS: genuine continuous three-page Chopin Nocturne PDF,',target.stat().st_size,'bytes')
           PY
       - name: Launch actual installed GUI app without Terminal and check bundled service
         shell: bash
@@ -80,7 +77,7 @@ jobs:
           assert health['available'] is True and health['background_jobs'] is True,health
           print('PASS: native DMG app launches its own bundled offline recognition engine')
           PY
-      - name: REAL 3-PAGE PDF through the ACTUAL packaged local engine
+      - name: REAL 3-PAGE CHOPIN through the ACTUAL packaged local engine
         shell: bash
         run: |
           set -euo pipefail
@@ -104,9 +101,9 @@ jobs:
           assert noteheads>100,noteheads
           measures=sum(len(part.findall('measure')) for part in root.findall('part'))
           assert measures>12,measures
-          print('PASS: ACTUAL DMG converted a REAL THREE-PAGE PDF:',noteheads,'pitched noteheads,',measures,'source measures')
+          print('PASS: ACTUAL DMG converted a REAL THREE-PAGE CHOPIN:',noteheads,'pitched noteheads,',measures,'source measures')
           PY
-      - name: REAL editor UI imports a SECOND THREE-PAGE PDF and renders editable notation
+      - name: REAL editor UI imports second authentic three-page Chopin PDF and renders editable notes
         shell: bash
         run: |
           set -euo pipefail
