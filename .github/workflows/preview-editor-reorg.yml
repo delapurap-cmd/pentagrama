@@ -32,6 +32,14 @@ jobs:
           PY
           git apply --check /tmp/pentagrama-reorg.patch
           git apply /tmp/pentagrama-reorg.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('js/app.js');s=p.read_text()
+          old="    el.style.top = (r.bottom + 8) + 'px';"
+          new="    const top = EMBED ? r.bottom + 8 : $('header.bar').getBoundingClientRect().bottom + 5;\n    el.style.top = top + 'px';\n    el.style.maxHeight = Math.max(110, innerHeight - top - 8) + 'px';"
+          assert s.count(old)==1, 'Mobile menu positioning anchor changed'
+          p.write_text(s.replace(old,new))
+          PY
           git diff --check
           node --check js/app.js
           node --check js/audio.js
