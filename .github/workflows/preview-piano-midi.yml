@@ -1,0 +1,87 @@
+name: Preview MIDI piano and compact upper-right player
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-piano-midi.yml
+      - pruebas/enable-piano-preview.xz.b64
+      - pruebas/piano-midi-browser.cjs
+permissions:
+  contents: write
+jobs:
+  implement-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chrome test driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Decode and verify the exact integration patch
+        run: |
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          raw=pathlib.Path('pruebas/enable-piano-preview.xz.b64').read_text().strip()
+          packed=base64.b64decode(raw,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='1b235b38469c1e9c624b06aa228b0791da12a26bfc8843f0e10e398a9ac169d9'
+          data=lzma.decompress(packed)
+          assert hashlib.sha256(data).hexdigest()=='acb852b6a4176649c549dea6bbbed60ae9003f85ee5a296a6fe3a561826b1a7c'
+          pathlib.Path('pruebas/enable-piano-preview.py').write_bytes(data)
+          print('Verified exact MIDI integration script:',len(data),'bytes')
+          PY
+      - name: Apply only guarded changes to preview files
+        run: |
+          python3 pruebas/enable-piano-preview.py
+          node --check js/app.js
+          node --check js/audio.js
+          node --check js/instrumentos.js
+          node --check js/piano-midi.js
+          node --check pruebas/piano-midi-browser.cjs
+          test -s js/piano-midi.css
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --check
+          git diff --stat
+      - name: Verify exact More Than Modes sample bytes already available
+        run: |
+          test "$(git hash-object sonidos/piano/As1.opus)" = 11057c8fe33fbd71bb60b315b5627813de9b3fd0
+          echo 'PASS: the shared piano note A-sharp 1 is byte-identical to the original More Than Modes sample bank'
+      - name: Test MIDI note writing, playback modes and top-right panel in real browsers
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/piano-midi-browser.cjs
+      - name: Ensure existing editor, import, audio sync and notation still work
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/archivo-menu-browser.cjs
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/studio-browser.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit tested changes only to PREVIEW BRANCH
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/audio.js js/instrumentos.js
+          git diff --cached --quiet && exit 1
+          git commit -m 'Restore compact top-right player and integrate authentic MTM MIDI piano'
+          git push origin HEAD:preview/estabilidad-editor-20260920
+      - name: Create complete static preview WITHOUT deployment
+        run: |
+          set -euo pipefail
+          mkdir -p preview
+          cp index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png preview/
+          cp -R js vendor sonidos ejemplos preview/
+          printf '%s\n' 'PENTAGRAMA WEB - REVIEW ONLY: Not published to More Than Modes or GitHub Pages.' 'Compact transport: click Reproductor in the upper-right header.' 'MTM piano: click Piano MIDI. Select Escribir notas to enter a selected figure; keyboard or Web MIDI supported.' 'This instrument uses the same locally bundled Opus piano sample bank as the score player.' 'Local preview: start an HTTP static server in this folder and open studio.html.' > preview/LEEME.txt
+          cd preview && zip -qr ../Pentagrama-Web-Piano-MIDI.zip .
+          test -s ../Pentagrama-Web-Piano-MIDI.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pentagrama-Web-Piano-MIDI-Probado
+          path: Pentagrama-Web-Piano-MIDI.zip
+          retention-days: 14
