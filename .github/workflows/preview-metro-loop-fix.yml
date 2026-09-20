@@ -1,0 +1,68 @@
+name: Verify armed metronome and gapless A-B loop before preview commit
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-metro-loop-fix.yml
+permissions:
+  contents: write
+jobs:
+  test-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore exact verified fix without touching main
+        run: |
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          b=''.join(pathlib.Path(f'pruebas/metrofix-part-{i}.txt').read_text().strip() for i in range(4))
+          assert len(b)==12896, ('Incomplete patch',len(b))
+          packed=base64.b64decode(b,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='5057a122795fb49f0a945fcd2b41bb2f3b074818f0f88e8f63dc2ad7188b7a8a'
+          patch=lzma.decompress(packed)
+          assert hashlib.sha256(patch).hexdigest()=='24d1f4276e4d17a67beed0cdc4109ae311b749e5c5fc38d88c4b67539c1d818f'
+          pathlib.Path('/tmp/metrofix.patch').write_bytes(patch)
+          print('Verified',len(patch),'patch bytes')
+          PY
+          git apply --check /tmp/metrofix.patch
+          git apply /tmp/metrofix.patch
+          git diff --check
+          node --check js/app.js
+          node --check js/audio.js
+          node --check pruebas/reorg-browser.cjs
+          node --check pruebas/metronome-loop.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Prove loop phase, repeat A, tempo changes, compound meter and stop cancellation
+        run: |
+          node pruebas/metronome-loop.cjs
+          node pruebas/reorg-unit.cjs
+          node pruebas/stage2-practice.cjs
+      - name: Install browser regression driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Verify silent armed icon, Play behavior and mobile UI in real Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/reorg-browser.cjs
+      - name: Verify existing notation, MusicXML and Audio Sync still work
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit only tested source and regressions to preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/audio.js js/editor-reorg.css pruebas/reorg-browser.cjs pruebas/metronome-loop.cjs
+          git diff --cached --quiet && exit 1
+          git commit -m 'Fix armed metronome icon and sample-accurate score loop clock'
+          git push origin HEAD:preview/estabilidad-editor-20260920
