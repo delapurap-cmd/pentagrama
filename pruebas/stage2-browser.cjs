@@ -52,8 +52,13 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  await page.locator('#btnPianoClose').click();
  await page.locator('#btnFile').click();
  await page.getByText('Duplicar compases',{exact:true}).click();
- assert.ok((await heads())>=recorded+3,'Whole-measure duplicate added MIDI chord');
- await page.locator('#btnUndo').click();assert.equal(await heads(),recorded,'Undo reverts duplication once');
+ await page.waitForFunction(n=>JSON.parse(localStorage.getItem('mtm-score:v1:current')).measures
+   .reduce((sum,m)=>sum+Model.voces(m).flatMap(v=>v.events).filter(e=>e.kind==='note')
+    .reduce((a,e)=>a+Model.alturas(e).length,0),0)>=n+3,recorded,{timeout:10000});
+ await page.locator('#btnUndo').click();
+ await page.waitForFunction(n=>JSON.parse(localStorage.getItem('mtm-score:v1:current')).measures
+   .reduce((sum,m)=>sum+Model.voces(m).flatMap(v=>v.events).filter(e=>e.kind==='note')
+    .reduce((a,e)=>a+Model.alturas(e).length,0),0)===n,recorded,{timeout:10000});
  assert.deepEqual(errors,[],'No uncaught page errors');
  console.log('PASS STAGE2: recorded MIDI chord, named loops and count-in persist, duplicate and atomic undo, compact player');
 }finally{if(browser)await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1});
