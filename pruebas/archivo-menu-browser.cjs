@@ -30,7 +30,7 @@ const menu = async page => {await page.locator('#btnFile').click();await page.lo
     page.waitForEvent('filechooser'),
     page.getByRole('button',{name:/^Importar MIDI/}).click()
    ]);
-   assert.equal(await midiChooser.element().then(e=>e.getAttribute('accept')),'.mid,.midi');
+   assert.equal(await midiChooser.element().getAttribute('accept'),'.mid,.midi');
    const midi=await page.evaluate(()=>{
      const s=Model.newScore({systems:1});s.measures=[];
      const m=Model.emptyMeasure(),ev=Model.note(28,'q');
@@ -39,7 +39,7 @@ const menu = async page => {await page.locator('#btnFile').click();await page.lo
      return Array.from(Midi.write(s));
    });
    await midiChooser.setFiles({name:'triada.mid',mimeType:'audio/midi',buffer:Buffer.from(midi)});
-   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('mtm-score:v1:current')||'{}').title==='triada',{timeout:10000});
+   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('mtm-score:v1:current')||'{}').title==='triada');
    const imported=await page.evaluate(()=>{
      const s=JSON.parse(localStorage.getItem('mtm-score:v1:current'));
      return {title:s.title,notes:s.measures.flatMap(m=>Model.voces(m)).flatMap(v=>v.events).filter(ev=>ev.kind==='note').reduce((sum,ev)=>sum+Model.alturas(ev).length,0)};
@@ -67,7 +67,7 @@ const menu = async page => {await page.locator('#btnFile').click();await page.lo
     page.waitForEvent('filechooser'),
     page.getByRole('button',{name:/^Importar MusicXML/}).click()
    ]);
-   assert.equal(await xmlChooser.element().then(e=>e.getAttribute('accept')),'.musicxml,.xml,.mxl');
+   assert.equal(await xmlChooser.element().getAttribute('accept'),'.musicxml,.xml,.mxl');
    await xmlChooser.setFiles([]);
    // '+' only adds layout content and cannot silently replace a document.
    await page.locator('#btnNew').click();
