@@ -47,8 +47,8 @@ jobs:
                 await page.goto('http://127.0.0.1:19217/studio.html');
                 await page.locator('#stage .sheet').first().waitFor({timeout:30000});
                 for(const selector of ['#btnMetroAlways svg','#btnTempoMenu svg','#btnCountAlways svg','#ppPlay svg','#ppPrev svg','#ppNext svg','#ppBucle svg'])assert.equal(await page.locator(selector).count(),1,selector);
-                assert.ok(await page.locator('.measure-number').count()>=1,'Number each measure');
-                assert.ok(await page.locator('.system-number').count()>=1,'Number each system');
+                assert.ok(await page.locator('svg text[data-measure-number]').count()>=1,'Number each measure');
+                assert.ok(await page.locator('svg text[data-system-number]').count()>=1,'Number each system');
                 const initial=await page.locator('#metroTempo').innerText();
                 await page.locator('#btnTempoMenu').click();
                 assert.equal(await page.locator('#bpm').innerText(),initial,'One tempo display');
