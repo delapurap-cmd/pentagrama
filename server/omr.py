@@ -1,22 +1,30 @@
-"""PDF -> MusicXML worker. Requires an installed Audiveris CLI, never executes PDF content."""
+"""PDF -> editable, uncompressed MusicXML via the installed Audiveris CLI.
+
+The native Mac editor embeds this worker. Never execute a document as code.
+"""
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree
 
 from pypdf import PdfReader
 
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_PAGES = 16
+MAX_XML_BYTES = 24 * 1024 * 1024
 TIMEOUT_SECONDS = 180
+LOG = logging.getLogger("pentagrama.omr")
 
 
 class OMRFailure(Exception):
-    """User-readable conversion failure, not an HTTP detail leak."""
+    """User-readable conversion failure."""
 
 
 def executable() -> str | None:
@@ -45,38 +53,84 @@ def check_pdf(data: bytes) -> int:
     return pages
 
 
+def unpack_musicxml(blob: bytes, extension: str) -> bytes:
+    """Always send plain MusicXML: older WKWebView lacks deflate-raw support.
+
+    The file-size limit is applied to the *uncompressed* XML too. Only read
+    the declared MusicXML root from META-INF/container.xml, not arbitrary ZIP
+    contents or paths outside the archive.
+    """
+    if len(blob) > MAX_XML_BYTES:
+        raise OMRFailure("El resultado de Audiveris supera 24 MB.")
+    if extension == ".mxl":
+        try:
+            with zipfile.ZipFile(BytesIO(blob)) as archive:
+                members = {item.filename: item for item in archive.infolist()}
+                container = members.get("META-INF/container.xml")
+                chosen = None
+                if container and container.file_size <= 64 * 1024:
+                    root = ElementTree.fromstring(archive.read(container))
+                    file_node = root.find(".//{*}rootfile")
+                    if file_node is not None:
+                        chosen = file_node.get("full-path")
+                if chosen not in members or chosen.startswith("META-INF/"):
+                    chosen = next((name for name in members if name.lower().endswith((".musicxml", ".xml")) and not name.startswith("META-INF/")), None)
+                if not chosen or members[chosen].file_size > MAX_XML_BYTES:
+                    raise OMRFailure("El MusicXML reconocido no existe o supera 24 MB.")
+                with archive.open(members[chosen]) as stream:
+                    data = stream.read(MAX_XML_BYTES + 1)
+        except (zipfile.BadZipFile, OSError, ValueError, ElementTree.ParseError, RuntimeError, KeyError) as exc:
+            raise OMRFailure("Audiveris devolvió un MusicXML comprimido ilegible.") from exc
+    else:
+        data = blob
+    if len(data) > MAX_XML_BYTES:
+        raise OMRFailure("El MusicXML reconocido supera 24 MB.")
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError as exc:
+        raise OMRFailure("Audiveris produjo un MusicXML inválido.") from exc
+    if root.tag.rsplit("}", 1)[-1] != "score-partwise":
+        raise OMRFailure("Audiveris no produjo una partitura MusicXML compatible.")
+    if not any(item.tag.rsplit("}", 1)[-1] == "note" for item in root.iter()):
+        raise OMRFailure("Audiveris no reconoció notas editables en este PDF.")
+    return data
+
+
 def convert_pdf(data: bytes, *, runner=subprocess.run, program: str | None = None) -> tuple[bytes, str]:
-    """Returns (binary output, extension). Temporary input and output are cleaned."""
-    check_pdf(data)
+    """Return validated PLAIN MusicXML and extension .musicxml; clean temp files."""
+    pages = check_pdf(data)
     binary = program or executable()
     if not binary:
-        raise OMRFailure("El motor Audiveris no está instalado en este servidor.")
-
+        raise OMRFailure("No se encontró Audiveris. Vuelve a instalar la aplicación completa.")
+    LOG.info("Starting Audiveris OMR for %s pages (%s bytes)", pages, len(data))
     with tempfile.TemporaryDirectory(prefix="pentagrama-omr-") as directory:
         base = Path(directory)
         source = base / "partitura.pdf"
         target = base / "export"
         target.mkdir()
         source.write_bytes(data)
-        # -transcribe is essential for a new PDF: -export alone is not a
-        # guarantee that the complete optical recognition pipeline ran.
         args = [binary, "-batch", "-transcribe", "-export", "-output", str(target), str(source)]
         try:
-            finished = runner(args, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, cwd=directory)
+            finished = runner(args, capture_output=True, text=True, errors="replace", timeout=TIMEOUT_SECONDS, cwd=directory)
         except subprocess.TimeoutExpired as exc:
-            raise OMRFailure("El reconocimiento excedió los tres minutos. Prueba con un PDF más corto.") from exc
+            LOG.warning("Audiveris exceeded %s-second time limit", TIMEOUT_SECONDS)
+            raise OMRFailure("La conversión superó los tres minutos. Prueba con menos páginas.") from exc
         except OSError as exc:
-            raise OMRFailure("No se pudo ejecutar Audiveris en el servidor.") from exc
+            LOG.exception("Failed to launch Audiveris")
+            raise OMRFailure("No fue posible iniciar Audiveris. Consulta el registro de Pentagrama.") from exc
+        output = "\n".join(str(s) for s in (getattr(finished, "stdout", ""), getattr(finished, "stderr", "")) if s)
         if finished.returncode:
-            raise OMRFailure("Audiveris no pudo reconocer esta partitura. Usa un PDF musical impreso y legible.")
+            LOG.error("Audiveris exit status %s; log tail: %s", finished.returncode, output[-5000:])
+            raise OMRFailure("Audiveris falló durante el reconocimiento. Consulta el registro de Pentagrama.")
         scores = sorted(target.rglob("*.mxl"))
         if not scores:
             scores = sorted(p for p in target.rglob("*") if p.suffix.lower() in (".xml", ".musicxml") and p.is_file())
         if not scores:
-            raise OMRFailure("No se reconocieron notas ni se produjo una partitura MusicXML.")
+            LOG.error("Audiveris finished without MusicXML. Log tail: %s", output[-5000:])
+            raise OMRFailure("Audiveris no generó MusicXML para este PDF. Consulta el registro de Pentagrama.")
         if len(scores) != 1:
-            raise OMRFailure("El PDF contiene varias obras independientes. Convierte cada obra por separado.")
+            raise OMRFailure("Se reconocieron varias obras independientes. Convierte cada obra por separado.")
         path = scores[0]
-        if path.stat().st_size > 24 * 1024 * 1024:
-            raise OMRFailure("El MusicXML resultante supera el límite de 24 MB.")
-        return path.read_bytes(), path.suffix.lower()
+        xml = unpack_musicxml(path.read_bytes(), path.suffix.lower())
+        LOG.info("Audiveris returned %s bytes of editable MusicXML", len(xml))
+        return xml, ".musicxml"
