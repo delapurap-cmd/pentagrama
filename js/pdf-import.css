@@ -9,6 +9,12 @@
 #pdfImportDialog input[type=file]::file-selector-button{border:1px solid #74633d;border-radius:5px;padding:7px;background:#363024;color:#f4deb0;cursor:pointer}
 #pdfImportDialog .pdf-import-status{font-size:12px;min-height:36px;color:#c7d4bc}
 #pdfImportDialog .pdf-import-status.error{color:#ffb3a4}
+#pdfImportDialog .pdf-import-working{display:grid;gap:8px;border:1px solid #675632;border-radius:9px;padding:12px;background:#25231e;color:#e6d4b4}
+#pdfImportDialog .pdf-import-working[hidden]{display:none!important}
+#pdfImportDialog .pdf-import-working progress{display:block;width:100%;height:12px;border:0;border-radius:10px;overflow:hidden;accent-color:#c9a84c;background:#49412e}
+#pdfImportDialog .pdf-import-working progress::-webkit-progress-bar{background:#49412e;border-radius:10px}
+#pdfImportDialog .pdf-import-working progress:indeterminate::-webkit-progress-value{background:#c9a84c;border-radius:10px}
+#pdfImportDialog .pdf-import-working small{font-size:11px;line-height:1.4;color:#d8cbaa}
 #pdfImportDialog .pdf-import-actions{display:flex;gap:8px;justify-content:flex-end}
 #pdfImportDialog .btn{justify-content:center;white-space:normal;text-align:center;min-height:34px;height:auto;padding:8px 12px}
 #pdfImportDialog .btn.primary{background:#c9a84c;border-color:#c9a84c;color:#19150d;font-weight:700}
