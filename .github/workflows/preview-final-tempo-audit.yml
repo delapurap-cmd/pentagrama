@@ -51,7 +51,7 @@ jobs:
                 assert.ok(await page.locator('svg text[data-system-number]').count()>=1,'Number each system');
                 const initial=await page.locator('#metroTempo').innerText();
                 await page.locator('#btnTempoMenu').click();
-                assert.equal(await page.locator('#bpm').innerText(),initial,'One tempo display');
+                assert.equal(await page.locator('#bpm').evaluate(el=>String(el.value)),initial,'Same score tempo in compact Tap panel');
                 await page.locator('#btnTempoMenu').click();
                 await page.locator('#btnCountAlways').click();
                 assert.equal(await page.locator('#btnCountAlways').getAttribute('aria-pressed'),'true');
