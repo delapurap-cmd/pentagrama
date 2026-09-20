@@ -272,7 +272,16 @@ const Engrave = (() => {
         });
       });
     });
-    return { arriba, abajo };
+    return { arriba: arriba + 28, abajo };
+  }
+
+  /** Numbers belong to the SVG, so they appear in the editor AND PDF print. */
+  function numberText(svg,x,y,value,type,anchor='start') {
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    [['x',x],['y',y],['fill',COLORS.ink],['font-family','Georgia,serif'],
+     ['font-size',type==='system-number'?14:16],['font-weight',650],['text-anchor',anchor],
+     ['pointer-events','none'],[`data-${type}`,String(value)]].forEach(([k,v])=>t.setAttribute(k,v));
+    t.textContent=String(value);svg.appendChild(t);return t;
   }
 
   /** Dibuja la partitura completa dentro de `root`. */
@@ -379,6 +388,8 @@ const Engrave = (() => {
         drawSystem(score, sys, {
           ctx, svg, pageIndex, iPagina,
           systemKey: pageIndex + ':' + sysIndex,
+          systemNumber: Math.floor(sys.from / visualPer) + 1,
+          numberY: y - holguras[sysIndex].arriba + 17,
           y,
           x: marginLeft,
           width: pageWidth - marginLeft - marginRight,
@@ -413,7 +424,9 @@ const Engrave = (() => {
     const compact = !!opts.compact || document.body.classList.contains('embed');
 
     pages.forEach((systems, pageIndex) => {
-      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight) : PAGE.h;
+      const holguras=systems.map(sys=>holguraDe(score,sys,Model.nPent(score)));
+      const extra=holguras.reduce((sum,h)=>sum+h.arriba+h.abajo,0);
+      const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight + extra) : PAGE.h;
       const pageEl = document.createElement('div');
       pageEl.className = 'sheet';
       pageEl.style.aspectRatio = pageWidth + ' / ' + pageHeight;
@@ -423,9 +436,13 @@ const Engrave = (() => {
       paginas.push({ el: pageEl, w: pageWidth, h: pageHeight });
       const top = compact ? 13 : (pageIndex === 0 ? M.topFirst : M.top);
 
+      let y=top;
       systems.forEach((sys, sysIndex) => {
-        const y = top + sysIndex * systemHeight;
+        const h=holguras[sysIndex];
+        y+=h.arriba;
         const x0 = marginLeft, x1 = pageWidth - marginRight;
+        const numberY=y-h.arriba+17;
+        numberText(svg,x0-8,numberY,'S'+(Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1),'system-number','end');
         for (let line = 0; line < 5; line++) svg.appendChild(make('line', {
           x1: x0, y1: y + line * 10, x2: x1, y2: y + line * 10,
           stroke: COLORS.ink, 'stroke-width': 1
@@ -439,6 +456,7 @@ const Engrave = (() => {
         const lead = 68, usable = x1 - x0 - lead, measureW = usable / Math.max(1, sys.measures.length);
         sys.measures.forEach((measure, mi) => {
           const mx0 = x0 + lead + mi * measureW, mx1 = mx0 + measureW;
+          numberText(svg,mx0+6,numberY,sys.from+mi+1,'measure-number');
           svg.appendChild(make('line', { x1: mx1, y1: y, x2: mx1, y2: y + 40, stroke: COLORS.ink, 'stroke-width': 1 }));
           const all = measure.events.concat(Model.autoRests(measure, score.time, 0, Model.capacityAt(score, sys.from + mi)));
           const noteMap = [];
@@ -464,6 +482,7 @@ const Engrave = (() => {
           hits.push({ mi: sys.from + mi, pent: 0, vi: 0, iPagina, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
             yTop: y, yBottom: y + 40, spacing: 10, notes: noteMap });
         });
+        y+=systemHeight+h.abajo;
       });
     });
 
@@ -550,6 +569,8 @@ const Engrave = (() => {
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
       const mi = sys.from + i;
+      if (i === 0) numberText(o.svg,o.x-8,o.numberY,'S'+o.systemNumber,'system-number','end');
+      numberText(o.svg,x+8,o.numberY,mi+1,'measure-number');
       const primero = i === 0;
       const ultimo = i === measures.length - 1;
       const pentagramas = [];

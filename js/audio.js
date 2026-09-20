@@ -261,7 +261,7 @@ const Sound = (() => {
     /* El tiempo no es lineal: el mapa de tempo dice a qué segundo cae cada
        tick, contando todos los cambios de velocidad escritos. */
     const mapa = Model.mapaTempo(score);
-    const seg = (tick) => Model.segundosEn(mapa, tick) / (opts.factor || 1);
+    const seg = (tick) => Model.segundosEn(mapa, tick);
     const inicios = Model.inicios(score);
     /* Se recorre voz a voz de principio a fin, no compás a compás: así una
        ligadura que cruza la barra sigue siendo una sola nota, y las dos manos
@@ -398,22 +398,45 @@ const Sound = (() => {
     /* WebAudio is the clock. Schedule across B→A *ahead of time* instead of
        waiting for a 120ms JS timer to notice the previous loop has finished.
        Each pass has the same absolute duration, no cumulative timing drift. */
+    /* Count-in shares the score's AudioContext timeline: the first downbeat
+       is exactly one beat after the final intro click. No JS timeout can
+       introduce a gap, regardless of sample preload or background delays. */
+    const countBars = Math.max(0, Math.min(2, Math.trunc(Number(opts.countBars) || 0)));
+    let measureAtStart = 0;
+    for (let i = 0; i < inicios.length; i++) {
+      if (inicios[i] <= desdeTick) measureAtStart = i;
+      else break;
+    }
+    const timeAtStart = Model.timeAt(score, measureAtStart);
+    const beatTicks = Model.beatTicks(timeAtStart);
+    const beatsInBar = Math.max(1, Math.round(Model.capacity(timeAtStart) / beatTicks));
+    const introBeatSeconds = 60 / Math.max(1, Model.tempoEn(mapa, desdeTick)) * beatTicks / Model.Q;
+    const introBeats = beatsInBar * countBars;
     const t0 = c.currentTime + 0.15;
+    const scoreT0 = t0 + introBeats * introBeatSeconds;
+    let countIndex = 0, shownCount = 0, scoreStarted = false;
     let scheduledCycle = 0, iNota = 0, iPulso = 0;
     let shownCycle = -1, iAviso = 0, lastSignature = null, lastBeat = -1;
     const beatPositions = pulsos.map(p => p.at - segIni);
     const indexable = region.map(x => ({ ...x, offset: x.it.at - segIni }));
-    const base = n => t0 + n * largo;
+    const base = n => scoreT0 + n * largo;
     const playingNow = () => player && player.generation === generation;
 
     const adelantar = () => {
       if (!playingNow()) return;
       const now = c.currentTime;
       const horizon = now + VENTANA;
+      // Intro clicks are always audible, even if the metronome is not armed.
+      // They use the SAME clock and meter as the upcoming score playback.
+      while (countIndex < introBeats && t0 + countIndex * introBeatSeconds <= horizon) {
+        const when = t0 + countIndex * introBeatSeconds;
+        if (when >= now - 0.04) click(when, countIndex % beatsInBar === 0);
+        countIndex++;
+      }
       // A backgrounded tab may skip minutes of timer callbacks. Do not flood
       // WebAudio with hundreds of already-expired loop iterations on resume.
       if (opts.bucle && base(scheduledCycle + 1) < now - 0.04) {
-        scheduledCycle = Math.max(scheduledCycle, Math.floor((now - t0) / largo));
+        scheduledCycle = Math.max(scheduledCycle, Math.floor((now - scoreT0) / largo));
         iNota = 0; iPulso = 0;
       }
       // This may schedule multiple iterations for a short (one-beat) loop.
@@ -433,15 +456,18 @@ const Sound = (() => {
         scheduledCycle++; iNota = 0; iPulso = 0;
       }
 
-      if (now < t0) {
+      if (now < scoreT0) {
         opts.onPos?.(0, segIni, desdeTick);
+        const completed = Math.min(introBeats, Math.max(0, Math.floor((now - t0) / introBeatSeconds) + 1));
+        if (completed > shownCount) { shownCount = completed; opts.onCount?.(completed, introBeats); }
         return;
       }
-      const elapsed = now - t0;
+      if (!scoreStarted) { scoreStarted = true; opts.onStart?.(); }
+      const elapsed = now - scoreT0;
       const cycle = opts.bucle ? Math.floor(elapsed / largo) : 0;
       const phase = opts.bucle ? elapsed - cycle * largo : Math.min(largo, elapsed);
       const scoreSeconds = segIni + phase;
-      const scoreTick = Math.min(finTick, Model.tickEn(mapa, scoreSeconds * (opts.factor || 1)));
+      const scoreTick = Math.min(finTick, Model.tickEn(mapa, scoreSeconds));
       if (cycle !== shownCycle) {
         shownCycle = cycle; iAviso = 0; lastSignature = null; lastBeat = -1;
         opts.onLoop?.(cycle, desdeTick);
@@ -476,7 +502,7 @@ const Sound = (() => {
         if (onEnd) onEnd();
       }
     };
-    player = {reloj: null, generation};
+    player = {reloj: null, generation, scoreStart: scoreT0};
     adelantar();
     if (playingNow()) player.reloj = setInterval(adelantar, PASO);
   }
@@ -489,6 +515,7 @@ const Sound = (() => {
     vivos = [];
   }
   const playing = () => !!player;
+  const playOrigin = () => player ? player.scoreStart : null;
 
   /* ---------- Cuantización de los golpes (tap) ---------- */
   // Proporciones admitidas respecto al pulso, con su figura.
@@ -632,6 +659,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, metroSpacing, play, stop, playing,
+   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, metroSpacing, play, stop, playing, playOrigin,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

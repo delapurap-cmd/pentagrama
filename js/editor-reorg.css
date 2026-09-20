@@ -74,3 +74,45 @@ body:not(.embed)>.bar .metro-always{font-size:12px}
 #btnMetroAlways.beat-flash .metro-icon{animation:metro-onbeat .18s ease-out}
 @keyframes metro-onbeat{0%{filter:drop-shadow(0 0 5px #e7b94c);transform:rotate(-7deg)}100%{filter:none;transform:rotate(0)}}
 @media(prefers-reduced-motion:reduce){#btnMetroAlways.beat-flash .metro-icon{animation:none}}
+
+/* Single tempo authority: metronome, Tap editor and armed count-in are a
+   compact header cluster; changing BPM edits the score, never a speed factor. */
+body:not(.embed)>.bar>.tempo-cluster{order:0;flex:0 0 auto;display:flex;align-items:center;gap:3px;min-width:0}
+.tempo-cluster{display:inline-flex;align-items:center;gap:3px}
+.tempo-cluster .btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:33px;height:33px;padding:0 7px;font-size:11px}
+.tempo-cluster #btnTempoMenu{width:27px;padding:0}
+.tempo-cluster #btnCountAlways[aria-pressed="true"]{border-color:#d5b356;background:#514329;color:#f4dc91}
+.tempo-cluster .metro-always output{font-variant-numeric:tabular-nums;min-width:22px;text-align:center}
+.transport-icon{display:inline-block;width:20px;height:20px;flex:0 0 auto;vertical-align:middle}
+.tiny-chevron{display:inline-block;width:13px;height:13px;flex:0 0 auto;transition:transform .14s}
+.expanded .tiny-chevron{transform:rotate(180deg)}
+#panelPlay #ppRangeButton{display:inline-flex;align-items:center;gap:3px}
+#panelPlay #ppPlay .transport-icon{width:23px;height:23px}
+body:not(.embed)>#panel{
+  position:fixed;left:auto;right:8px;bottom:auto;
+  top:var(--tempo-panel-top,80px);width:min(320px,calc(100vw - 16px));
+  max-height:calc(100dvh - var(--tempo-panel-top,80px) - 8px);
+  overflow-y:auto;transform:translateY(-12px);opacity:0;visibility:hidden;
+  z-index:95;padding:9px;border-radius:10px;
+  transition:opacity .12s ease,transform .12s ease,visibility .12s;
+}
+body:not(.embed)>#panel.open,body:not(.embed).con-ayuda #panel.open{
+  transform:translateY(0);opacity:1;visibility:visible;
+}
+body:not(.embed)>#panel .row{gap:5px;padding-right:28px}
+body:not(.embed)>#panel .bpm-step{height:31px;border-radius:6px}
+body:not(.embed)>#panel .bpm-step .btn{height:29px;width:30px}
+body:not(.embed)>#panel .bpm-step .num{height:29px;width:40px;font-size:13px}
+body:not(.embed)>#panel .sel{height:30px;max-width:115px;font-size:11px}
+body:not(.embed)>#panel .tap{height:35px;margin-top:6px;border-radius:7px;font-size:11px;letter-spacing:0;text-transform:none}
+body:not(.embed)>#panel .preview{height:32px;margin-top:5px;border-radius:6px;font-size:21px}
+body:not(.embed)>#panel .actions{gap:4px;margin-top:5px}
+body:not(.embed)>#panel .actions .btn{height:29px;padding:0 7px;font-size:11px}
+body:not(.embed)>#panel .tap-info{font-size:10px}
+@media(max-width:780px){
+ body:not(.embed)>.bar>.tempo-cluster{gap:2px}
+ .tempo-cluster .btn{height:30px;min-height:30px;padding:0 5px}
+ .tempo-cluster #btnTempoMenu{width:24px;padding:0}
+ .tempo-cluster #btnCountAlways span{font-size:10px}
+}
+@media print{#panel{display:none!important}}

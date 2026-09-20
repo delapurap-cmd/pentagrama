@@ -84,7 +84,6 @@
         (nPent > 1 ? ' · ' + (pentSel + 1) + '/' + nPent : '');
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
-      $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
       $('#metroTempo').textContent=String(state.score.tempo);
       $('#deviceWritten').value=state.score.instrumentId||'concert';
       $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
@@ -841,7 +840,7 @@
     }, 140); });
     $('#btnUndo').addEventListener('click', undo);
     $('#btnRedo').addEventListener('click', redo);
-    $('#btnTap').addEventListener('click', () => togglePanel());
+    $('#btnTempoMenu').addEventListener('click', () => togglePanel());
     $('#btnPlay').addEventListener('click',()=>togglePlayPanel());
     $('#btnPiano').addEventListener('click',()=>{
       if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();}
@@ -912,9 +911,9 @@
   /* ---------------- Transporte musical ----------------
      El cursor es un tick ABSOLUTO de la partitura: pausar, navegar y el bucle
      deben compartir una sola posición, incluso al cambiar de compás. */
-  const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1,
+  const rep = { metronomo: false, bucle: false, a: 1, b: 1,
     rangoEditado: false, cursorTick: 0, playing: false, sesion: 0, scoreRef: null,
-    cuenta:0, esperando:false, timers:[], regiones:[] };
+    cuenta:0, esperando:false, regiones:[] };
   const PRACTICE_PREFIX='mtm-score:practice:v1:';
   const practiceKey=()=>PRACTICE_PREFIX+state.score.practiceId;
   function cargarPractica(){
@@ -934,7 +933,7 @@
     $('#ppDeleteLoop').disabled=true;
   }
   function limpiarCuenta(){
-    rep.timers.forEach(clearTimeout);rep.timers=[];rep.esperando=false;
+    rep.esperando=false;
   }
   let dispositivosAbiertos=false;
   let ayuda = 'ninguno';
@@ -971,13 +970,19 @@
     }
     rep.cursorTick = limitarTick(rep.cursorTick);
     const actual = compasDelTick(rep.cursorTick);
-    $('#ppPos').textContent = rep.esperando ? 'Cuenta de entrada…' : `Compás ${actual} / ${nCompases()}`;
+    $('#ppPos').textContent = rep.esperando ? `Precuenta ${rep.countBeat||0}/${rep.countTotal||'…'}` : `Compás ${actual} / ${nCompases()}`;
     $('#ppStop').disabled = rep.cursorTick === 0 && !rep.playing;
     $('#ppPrev').disabled = actual <= 1;
     $('#ppNext').disabled = actual >= nCompases();
-    $('#ppPlay').textContent = rep.playing ? '⏸' : '▶';
+    const playShape = rep.playing ? '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" stroke="none"/>' : '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>';
+    const playButton=$('#ppPlay');
+    if(playButton.dataset.icon!==String(rep.playing)){
+      playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
+      playButton.dataset.icon=String(rep.playing);
+    }
     $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
-    $('#btnPlay').textContent = rep.playing ? '♫ Reproduciendo' : '♫ Reproductor';
+    $('#btnPlay').setAttribute('aria-label',rep.playing?'Reproduciendo':'Reproductor');
+    $('#btnPlay').title=rep.playing?'Reproduciendo':'Reproductor';
     $('#btnPlay').classList.toggle('on', $('#panelPlay').classList.contains('open'));
     $('#ppPlay').classList.toggle('on', rep.playing);
     $('#ppAInput').max = String(nCompases());
@@ -993,14 +998,17 @@
     $('#btnMetroAlways').classList.toggle('on',rep.metronomo);
     $('#btnMetroAlways').title = rep.metronomo ? 'Metrónomo armado: comenzará con Play' : 'Activar metrónomo para el próximo Play';
     $('#btnMetroAlways').setAttribute('aria-label',rep.metronomo ? 'Metrónomo armado, en silencio hasta reproducir' : 'Armar metrónomo para reproducir');
-    $('#btnMetro').classList.toggle('on',rep.metronomo);
-    $('#btnMetro').setAttribute('aria-pressed',String(rep.metronomo));
+    $('#btnCountAlways').classList.toggle('on',rep.cuenta>0);
+    $('#btnCountAlways').setAttribute('aria-pressed',String(rep.cuenta>0));
+    $('#btnCountAlways').setAttribute('aria-label',rep.cuenta?`Precuenta armada: ${rep.cuenta} compás${rep.cuenta===1?'':'es'}`:'Armar precuenta de un compás');
+    $('#btnCountAlways').title=rep.cuenta?`Precuenta de ${rep.cuenta} compás${rep.cuenta===1?'':'es'} al próximo Play`:'Activar precuenta de un compás';
+    if(document.activeElement!==$('#ppCount'))$('#ppCount').value=String(rep.cuenta);
+    $('#metroTempo').textContent=String(Math.round(Model.tempoEn(Model.mapaTempo(state.score),rep.cursorTick)));
     if(rep.metronomo&&rep.playing){
       const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),beat=Model.beatTicks(Model.timeAt(state.score,mi));
       const beatIndex=Math.floor((rep.cursorTick-tickDeCompas(mi+1))/beat);
       $('#btnMetroAlways').classList.toggle('pulse',beatIndex%2===0);
     }else $('#btnMetroAlways').classList.remove('pulse');
-    $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
     const barra = $('#ppBarra');
     if (!barra.dataset.arrastrando) barra.value = Math.round(rep.cursorTick / Math.max(1, ultimoTick()) * 1000);
     // Armed means SILENT. Play alone drives the score and its clicks.
@@ -1036,11 +1044,16 @@
     Sound.metroStop(); // evite dos metrónomos simultáneos
     const sonar=()=>{
       if(sesion!==rep.sesion)return;
-      limpiarCuenta();actualizarTransporte();
+      actualizarTransporte();
       if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
       Promise.resolve(Sound.play(state.score, {
       desde: rep.cursorTick, hasta: fin, bucle: rep.bucle,
-      factor: rep.velocidad, metronomo: rep.metronomo,
+      metronomo: rep.metronomo, countBars: rep.esperando?rep.cuenta:0,
+      onStart: () => {if(sesion===rep.sesion){rep.esperando=false;rep.countBeat=0;rep.countTotal=0;actualizarTransporte();}},
+      onCount: (beat,total) => {
+        if(sesion!==rep.sesion)return;
+        rep.countBeat=beat;rep.countTotal=total;actualizarTransporte();
+      },
       onBeat: () => {
         const btn=$('#btnMetroAlways'); btn.classList.remove('beat-flash');
         void btn.offsetWidth;btn.classList.add('beat-flash');
@@ -1065,18 +1078,10 @@
         if (sesion === rep.sesion) { pararTodo(); toast('No se pudo reproducir la partitura'); }
       });
     };
-    const bars=saltarCuenta?0:rep.cuenta;
-    if(!bars){sonar();return;}
-    Sound.ac(); // activate WebAudio synchronously from the real Play gesture
-    const mi=Math.max(0,compasDelTick(rep.cursorTick)-1);
-    const time=Model.timeAt(state.score,mi),beat=Model.beatTicks(time);
-    const beats=Math.max(1,Math.round(Model.capacity(time)/beat));
-    const durBeat=60/Math.max(1,state.score.tempo*rep.velocidad)*beat/Model.Q;
-    rep.esperando=true;actualizarTransporte();
-    for(let i=0;i<bars*beats;i++)rep.timers.push(setTimeout(()=>{
-      if(sesion===rep.sesion)Sound.click(Sound.ac().currentTime+.01,i%beats===0);
-    },i*durBeat*1000));
-    rep.timers.push(setTimeout(sonar,bars*beats*durBeat*1000));
+    Sound.ac(); // WebAudio starts during the direct Play gesture.
+    rep.esperando=!saltarCuenta&&rep.cuenta>0;
+    rep.countBeat=0;rep.countTotal=0;
+    sonar();
   }
 
   /** Pone o quita el instrumento de ayuda y ajusta el aviso de lo que no cabe. */
@@ -1159,7 +1164,7 @@
     $('#ppRangeButton').addEventListener('click',()=>{
       const controls=$('#ppLoopControls');controls.hidden=!controls.hidden;
       $('#ppRangeButton').setAttribute('aria-expanded',String(!controls.hidden));
-      $('#ppRangeButton').textContent=controls.hidden?'A–B ▾':'A–B ▴';
+      $('#ppRangeButton').classList.toggle('expanded',!controls.hidden);
     });
     $('#ppStop').addEventListener('click', () => {
       if (rep.playing) pararTodo();
@@ -1168,20 +1173,13 @@
     $('#ppPrev').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) - 1));
     $('#ppNext').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) + 1));
     $('#ppClose').addEventListener('click', () => togglePlayPanel(false));
-    $('#ppMore').addEventListener('click', () => {
-      const more = $('#ppAdvanced');
-      more.hidden = !more.hidden;
-      $('#ppMore').setAttribute('aria-expanded', String(!more.hidden));
-      $('#ppMore').textContent = more.hidden ? 'Opciones ▾' : 'Opciones ▴';
-    });
-    $('#ppLento').addEventListener('click', () => {
-      rep.velocidad = Math.max(0.25, +(rep.velocidad - 0.1).toFixed(2)); refresca(); reinicia();
-    });
-    $('#ppRapido').addEventListener('click', () => {
-      rep.velocidad = Math.min(2, +(rep.velocidad + 0.1).toFixed(2)); refresca(); reinicia();
-    });
     $('#ppMetro').addEventListener('click',toggleMetro);
     $('#btnMetroAlways').addEventListener('click',toggleMetro);
+    $('#btnCountAlways').addEventListener('click',()=>{
+      rep.cuenta=rep.cuenta?0:1;
+      guardarPractica();actualizarTransporte();
+      // Modifying the next pre-count never interrupts an ongoing score.
+    });
     montaAyuda();
     $('#ppBucle').addEventListener('click', () => {
       rep.bucle = !rep.bucle;
@@ -1209,7 +1207,8 @@
     };
     $('#ppAInput').addEventListener('change', (e) => campo('a', e.target.value));
     $('#ppCount').addEventListener('change',e=>{
-      rep.cuenta=Math.max(0,Math.min(2,parseInt(e.target.value,10)||0));guardarPractica();
+      rep.cuenta=Math.max(0,Math.min(2,parseInt(e.target.value,10)||0));
+      guardarPractica();actualizarTransporte();
     });
     $('#ppSaveLoop').addEventListener('click',()=>{
       const initial=`Compases ${rep.a}–${rep.b}`;
@@ -1268,8 +1267,14 @@
     const p = $('#panel');
     const open = force != null ? force : !p.classList.contains('open');
     p.classList.toggle('open', open);
-    $('#btnTap').classList.toggle('on', open);
-    if (!open) $('#btnTap').classList.remove('on');
+    $('#btnTempoMenu').classList.toggle('on',open);
+    $('#btnTempoMenu').classList.toggle('expanded',open);
+    $('#btnTempoMenu').setAttribute('aria-expanded',String(open));
+    if(open){
+      const header=$('header.bar');
+      const bottom=header?header.getBoundingClientRect().bottom:80;
+      document.documentElement.style.setProperty('--tempo-panel-top',`${Math.ceil(bottom+4)}px`);
+    }
   }
 
   function bindPanel() {
@@ -1304,18 +1309,7 @@
     pasoLargo($('#bpmDown'), -1);
     pasoLargo($('#bpmUp'), 1);
 
-    $('#btnMetro').addEventListener('click',toggleMetro);
     $('#btnTapPad').addEventListener('pointerdown', (e) => { e.preventDefault(); doTap(); });
-    $('#btnTapUse').addEventListener('click', () => {
-      const detected = state.tapBpm;
-      if (!detected) return;
-      state.score.tempo = detected;
-      $('#bpm').value = detected;
-      if(rep.playing){pararTodo();arrancar(true);}
-      recomputeTaps();
-      paintTapPreview();
-      render();
-    });
     $('#btnTapClear').addEventListener('click', clearTaps);
     $('#btnTapOk').addEventListener('click', approveTaps);
     $('#btnPanelClose').addEventListener('click', () => togglePanel(false));
@@ -1329,15 +1323,13 @@
     paintTapPreview();
   }
 
-  /** Convierte los golpes en figuras.
-     Con el metrónomo encendido manda el tempo de la partitura;
-     si no, se usa el tempo que se deduce de los propios golpes. */
+  /** Tap is rhythmic INPUT, not a second BPM estimator. The score tempo map
+      is the sole authority, shared by the click, playback and written figures. */
   function recomputeTaps() {
-    const origin = Sound.metroOn() ? Sound.metroOrigin() : null;
-    state.tapBpm = Sound.metroOn()
-      ? state.score.tempo
-      : (Sound.fitTempo(state.taps, null, state.score.tempo) || state.score.tempo);
-    state.tapFigures = Sound.quantizeSeries(state.taps, state.tapBpm, origin);
+    const mapa=Model.mapaTempo(state.score);
+    state.tapBpm=Model.tempoEn(mapa,rep.cursorTick);
+    const origin=rep.playing&&!rep.esperando?Sound.playOrigin():null;
+    state.tapFigures=Sound.quantizeSeries(state.taps,state.tapBpm,origin);
   }
 
   function clearTaps() {
@@ -1377,13 +1369,9 @@
     // tamaño con cada golpe, que es lo peor que puede hacer algo que estás
     // mirando mientras marcas un ritmo.
     box.scrollLeft = box.scrollWidth;
-    const detected = state.tapBpm && !Sound.metroOn() ? state.tapBpm : null;
     $('#tapInfo').textContent = state.tapFigures.length
-      ? `${state.tapFigures.length + 1} figuras · ♩ = ${detected || '–'}`
-      : 'Toca el ritmo. Cada golpe cierra la figura anterior.';
-    const use = $('#btnTapUse');
-    use.hidden = !detected || detected === state.score.tempo;
-    use.textContent = 'Usar ♩ = ' + detected;
+      ? `${state.tapFigures.length + 1} figuras · tempo de la partitura: ${state.tapBpm} BPM`
+      : 'Marca figuras al tempo de la partitura; Tap no cambia el BPM.';
     $('#btnTapOk').disabled = state.tapFigures.length === 0;
   }
 
@@ -1416,8 +1404,8 @@
       const m = state.score.measures[at ? at.mi : mi];
       const left = Model.capacity(state.score.time) - Model.measureTicks(m, at ? at.vi : vi);
       const fig = left > 0 ? (figureThatFits(left) || tail) : tail;
-      const ev = Model.note(Model.MIDDLE_LINE_DI, fig.dur, fig.dots);
-      Model.insertEvent(state.score, at ? at.mi : mi, at ? at.vi : vi, (at ? at.index : index) + 1, ev);
+      const ev = Model.note(Model.MIDDLE_LINE_DI, tail.dur, tail.dots);
+      Model.insertEvent(state.score, mi, vi, index + state.tapFigures.length, ev);
     }
     clearTaps();
     state.selectedId = null;
@@ -1428,11 +1416,15 @@
   /* ---------------- Teclado ---------------- */
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if (e.target.isContentEditable || ['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)) return;
-      if (e.key === ' ') {
+      if (e.target.isContentEditable || ['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.code==='Space' || e.key===' ') {
         e.preventDefault();
-        if ($('#panel').classList.contains('open')) doTap(); else togglePlay();
+        if(e.repeat)return;
+        if(rep.playing){pararTodo();posicionar(rep.bucle?tickDeCompas(rep.a):0,false);}
+        else arrancar();
+        return;
       }
+      if (e.target.tagName==='BUTTON') return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
       if (!Radial.isOpen() && (e.key === 'Backspace' || e.key === 'Delete') && state.selectedId) {

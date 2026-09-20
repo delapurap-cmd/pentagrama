@@ -31,7 +31,6 @@
     <button class="btn" id="btnClef" title="Clave"><span class="lab">Clave</span> <span class="chip" id="chipClef">Sol</span></button>
     <button class="btn" id="btnKey" title="Armadura"><span class="lab">Armadura</span> <span class="chip" id="chipKey">Do M</span></button>
     <button class="btn" id="btnTime" title="Compás"><span class="lab">Compás</span> <span class="chip" id="chipTime">4/4</span></button>
-    <button class="btn" id="btnTap"><span class="lab">Tiempos</span> <span class="chip" id="chipTempo">♩ = 90</span></button>
     <span class="br"></span>
     <div class="zoom">
       <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
@@ -48,21 +47,24 @@
   <button class="btn section-tab" id="btnFile" type="button" aria-haspopup="menu">Archivo</button>
   <button class="btn section-tab" id="btnEdit" type="button" aria-haspopup="menu">Edición</button>
   <button class="btn section-tab" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Dispositivos, sonido y transposición">♬ Instrumentos</button>
-  <button class="btn metro-always" id="btnMetroAlways" type="button" aria-pressed="false" title="Activar metrónomo para el próximo Play" aria-label="Armar metrónomo para reproducir"><svg class="metro-icon" viewBox="0 0 24 24" width="19" height="19" role="presentation" aria-hidden="true" focusable="false"><path d="M9 5h6l5 15H4L9 5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m12 17 5-14M8 16h8M5 22h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="17" cy="3" r="1.4" fill="currentColor"/></svg> <span id="metroTempo">90</span><span id="metroIndicator" aria-hidden="true">●</span></button>
-  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="true" title="Transporte">♫ Reproductor</button>
+  <div class="tempo-cluster" role="group" aria-label="Tempo y metrónomo">
+    <button class="btn metro-always" id="btnMetroAlways" type="button" aria-pressed="false" title="Armar metrónomo; suena solo con Play" aria-label="Armar metrónomo"><svg class="metro-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg> <output id="metroTempo" aria-label="Tempo de partitura">90</output><span id="metroIndicator" aria-hidden="true"></span></button>
+    <button class="btn tempo-chevron" id="btnTempoMenu" type="button" aria-expanded="false" aria-controls="panel" aria-label="Ajustar tempo y escribir ritmo mediante Tap" title="Tempo y Tap"><svg class="tiny-chevron" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+    <button class="btn count-always" id="btnCountAlways" type="button" aria-pressed="false" title="Activar precuenta de un compás" aria-label="Armar precuenta de un compás"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 6v6l4 2M12 2v2M20 12h2"/></svg><span>Entrada</span></button>
+  </div>
+  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="true" title="Transporte"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M9 5v14M14 5l7 7-7 7V5Z"/></svg> Reproductor</button>
 <!-- Reproductor -->
 <section class="panel play open" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="false">
   <div class="transport-main row" role="group" aria-label="Transporte musical">
-    <button class="btn ghost icon" id="ppStop" type="button" aria-label="Ir al inicio" title="Ir al inicio">⏮</button>
-    <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior">◀┃</button>
-    <button class="btn icon primary" id="ppPlay" type="button" aria-label="Reproducir" title="Reproducir / pausar">▶</button>
-    <button class="btn ghost icon" id="ppNext" type="button" aria-label="Compás siguiente" title="Compás siguiente">┃▶</button>
+    <button class="btn ghost icon" id="ppStop" type="button" aria-label="Ir al inicio" title="Ir al inicio"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M12 12l8-6v12l-8-6ZM5 12l7-6v12l-7-6Z"/></svg></button>
+    <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14M19 5 7 12l12 7V5Z"/></svg></button>
+    <button class="btn icon primary" id="ppPlay" type="button" aria-label="Reproducir" title="Reproducir / pausar"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/></svg></button>
+    <button class="btn ghost icon" id="ppNext" type="button" aria-label="Compás siguiente" title="Compás siguiente"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M5 5l12 7-12 7V5Z"/></svg></button>
     <output class="transport-pos" id="ppPos" aria-live="off">Compás 1 / 1</output>
-    <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción">♩ Metrónomo</button>
-    <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B">↻ Bucle A–B</button>
-    <button class="btn ghost" id="ppRangeButton" type="button" aria-controls="ppLoopControls" aria-expanded="false">A–B ▾</button>
-    <button class="btn ghost" id="ppMore" type="button" aria-controls="ppAdvanced" aria-expanded="false">Opciones ▾</button>
-    <button class="btn ghost icon" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor">✕</button>
+    <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg> Metrónomo</button>
+    <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 7H8a5 5 0 0 0-5 5v1M15 4l3 3-3 3M6 17h10a5 5 0 0 0 5-5v-1M9 14l-3 3 3 3"/></svg> Bucle A–B</button>
+    <button class="btn ghost" id="ppRangeButton" type="button" aria-controls="ppLoopControls" aria-expanded="false">A–B <svg class="tiny-chevron" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+    <button class="btn ghost icon" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
   </div>
   <div class="transport-timeline">
     <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Desplazar reproducción por la partitura">
@@ -79,16 +81,6 @@
       <select id="ppLoops" aria-label="Bucles guardados"><option value="">Bucles guardados…</option></select>
       <button class="btn ghost" id="ppDeleteLoop" type="button" title="Eliminar el bucle seleccionado" disabled>Eliminar</button>
     </div>
-  </div>
-  <div class="transport-advanced row" id="ppAdvanced" hidden>
-    <span class="lbl">Velocidad</span>
-    <div class="bpm-step" title="Velocidad de reproducción">
-      <button class="btn ghost icon" id="ppLento" type="button" title="Más despacio">−</button>
-      <output class="num ancho" id="ppVel">100%</output>
-      <button class="btn ghost icon" id="ppRapido" type="button" title="Más deprisa">＋</button>
-    </div>
-    <label class="lbl" for="ppCount">Cuenta de entrada</label>
-    <select class="sel" id="ppCount" aria-label="Compases de cuenta de entrada"><option value="0">Sin entrada</option><option value="1">1 compás</option><option value="2">2 compases</option></select>
   </div>
 </section>
 
@@ -124,12 +116,11 @@
       <output class="num" id="bpm" title="Tempo">90</output>
       <button class="btn ghost icon" id="bpmUp" title="Subir el tempo" aria-label="Subir el tempo">＋</button>
     </div>
-    <button class="btn" id="btnMetro">Metrónomo</button>
-    <button class="btn ghost" id="btnTapUse" hidden>Usar tempo</button>
+    <label class="lbl" for="ppCount">Precuenta</label><select class="sel" id="ppCount" aria-label="Duración de precuenta"><option value="0">Desactivada</option><option value="1">1 compás</option><option value="2">2 compases</option></select>
     <button class="btn ghost icon" id="btnPanelClose" title="Cerrar">✕</button>
   </div>
 
-  <button class="tap" id="btnTapPad">Tap</button>
+  <button class="tap" id="btnTapPad" type="button" title="Marcar figuras con el ratón al tempo único de la partitura">Tap · marcar ritmo</button>
 
   <div class="preview" id="tapPreview"></div>
 
