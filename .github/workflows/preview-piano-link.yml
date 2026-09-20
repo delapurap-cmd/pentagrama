@@ -1,0 +1,59 @@
+name: Verify real piano preview URL without production deployment
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-piano-link.yml
+permissions:
+  contents: read
+jobs:
+  verify-public-branch-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Open actual online preview and verify device assets and sound bank
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PREVIEW_URL: https://raw.githack.com/delapurap-cmd/pentagrama/48942e82dbd326372c2e258629c1817dcfbb7698/studio.html
+        run: |
+          node <<'JS'
+          const {chromium}=require('playwright-core');
+          const assert=require('node:assert/strict');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{
+              const context=await browser.newContext({viewport:{width:390,height:844}});
+              await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await context.newPage(),errors=[];
+              page.on('pageerror',e=>errors.push(e.message));
+              const response=await page.goto(process.env.PREVIEW_URL,{waitUntil:'domcontentloaded',timeout:30000});
+              assert.equal(response.status(),200);
+              await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+              assert.equal(await page.locator('#panelPlay').isVisible(),false);
+              await page.locator('#btnPlay').click();
+              const panel=await page.locator('#panelPlay').boundingBox();
+              const header=await page.locator('header.bar').boundingBox();
+              assert.ok(panel&&header&&panel.y>=header.y+header.height-2&&panel.y<400&&panel.width<390,'Upper-right compact panel');
+              await page.locator('#ppNext').click();
+              assert.match(await page.locator('#ppPos').innerText(),/^Compás 2 \/ /);
+              await page.locator('#ppClose').click();
+              await page.locator('#btnPiano').click();
+              await page.locator('#pianoMidiCanvas').waitFor({state:'visible'});
+              assert.equal(await page.locator('#pianoWrite').isChecked(),true);
+              assert.equal(await page.locator('#btnPdfImport').count(),0);
+              const sample=await page.evaluate(async()=>{
+                const r=await fetch('sonidos/piano/C4.opus');
+                return {status:r.status,length:(await r.arrayBuffer()).byteLength};
+              });
+              assert.equal(sample.status,200);
+              assert.ok(sample.length>1000,'Real sample bank load');
+              assert.deepEqual(errors,[]);
+              console.log('PASS: pinned preview opens with top-right mini player, real piano keyboard and public existing Opus samples, without production deployment:',page.url());
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
