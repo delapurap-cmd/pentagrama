@@ -48,15 +48,14 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     await page.locator('#pianoMidiCanvas').waitFor({state:'visible'});
     assert.ok(await page.locator('#panelAyuda').isVisible());
     assert.ok(await page.locator('#pianoWrite').isChecked());
-    const keyboard=await page.locator('#pianoMidiCanvas').evaluate(el=>({w:el.width,h:el.height}));
-    assert.ok(keyboard.w>viewport.width && keyboard.h>=90,'Original MTM E1-G7 scrollable geometry');
+    const keyboard=await page.locator('#pianoMidiCanvas').evaluate(el=>({w:el.width,h:el.height,viewport:el.parentElement.clientWidth}));
+    assert.ok(keyboard.w>keyboard.viewport && keyboard.h>=90,'Original MTM E1-G7 scrollable geometry');
     await page.locator('#pianoConnect').click();
     await page.waitForFunction(()=>document.getElementById('pianoStatus').textContent.includes('Teclado MIDI de prueba'));
     const initial=await page.evaluate(()=>{
       const s=JSON.parse(localStorage.getItem('mtm-score:v1:current'));
       return s.measures.reduce((total,m)=>total+Model.voces(m).flatMap(v=>v.events).filter(e=>e.kind==='note').reduce((n,e)=>n+Model.alturas(e).length,0),0);
     });
-    // One genuine hardware MIDI chord enters three editable heads at one score event.
     await page.evaluate(()=>[60,64,67].forEach(n=>window.__midiDevice.onmidimessage({data:new Uint8Array([0x90,n,100])})));
     await page.waitForFunction(before=>{
       const s=JSON.parse(localStorage.getItem('mtm-score:v1:current')||'null');
