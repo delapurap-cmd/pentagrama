@@ -8,6 +8,7 @@ const Sound = (() => {
   let ctx = null;
   let metro = null;
   let player = null;
+  let playGeneration = 0; // invalidate pending piano sample loads on pause/seek
   let vivos = [];        // fuentes sonando ahora mismo, para poder cortarlas
 
   function ac() {
@@ -175,6 +176,7 @@ const Sound = (() => {
   async function play(score, opts = {}) {
     const { onNote, onEnd } = opts;
     stop();
+    const generation = playGeneration;
     const c = ac();
     // las muestras del piano se piden antes de empezar, para que no entre
     // media melodía con oscilador y la otra media con piano
@@ -187,6 +189,7 @@ const Sound = (() => {
       })));
       if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
+    if (generation !== playGeneration) return; // user navigated before preload completed
 
     /* El tiempo no es lineal: el mapa de tempo dice a qué segundo cae cada
        tick, contando todos los cambios de velocidad escritos. */
@@ -392,6 +395,7 @@ const Sound = (() => {
   }
 
   function stop() {
+    playGeneration++;
     if (player) { clearInterval(player.reloj); player = null; }
     // cortar de verdad lo que ya estuviera sonando, no sólo dejar de programar
     vivos.forEach((s2) => { try { s2.stop(); } catch (e) { /* ya terminó */ } });

@@ -70,6 +70,7 @@
       $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
       $('#btnUndo').disabled = state.undo.length === 0;
       $('#btnRedo').disabled = state.redo.length === 0;
+      actualizarTransporte();
       save();
     });
   }
@@ -691,55 +692,114 @@
     if (!isNaN(v) && v >= min && v <= max) fn(v);
   }
 
-  /* ---------------- Reproducción ----------------
-     El botón de la barra arranca y para. El panel añade lo que hace falta
-     para estudiar una obra: posición, velocidad, metrónomo y bucle entre dos
-     compases, que es como se saca un pasaje difícil. */
-  const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1, pos: 0 };
-  /* Qué instrumento hace de ayuda visual. Se recuerda entre sesiones porque
-     quien lo usa lo usa siempre, y volver a elegirlo cada vez cansa. */
+  /* ---------------- Transporte musical ----------------
+     El cursor es un tick ABSOLUTO de la partitura: pausar, navegar y el bucle
+     deben compartir una sola posición, incluso al cambiar de compás. */
+  const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1,
+    rangoEditado: false, cursorTick: 0, playing: false, sesion: 0, scoreRef: null };
   let ayuda = 'ninguno';
   try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
 
-  function nCompases() { return state.score.measures.length; }
-  const tickDeCompas = (n) => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))];
+  function nCompases() { return Math.max(1, state.score.measures.length); }
+  const tickDeCompas = n => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))] || 0;
   function finDeCompas(n) {
     const i = Math.max(0, Math.min(nCompases() - 1, n - 1));
-    return Model.inicios(state.score)[i] + Model.capacityAt(state.score, i);
+    return tickDeCompas(i + 1) + Model.capacityAt(state.score, i);
   }
-
+  const ultimoTick = () => finDeCompas(nCompases());
+  const limitarTick = t => Math.max(0, Math.min(ultimoTick(), Number.isFinite(+t) ? +t : 0));
+  function compasDelTick(t) {
+    const inicios = Model.inicios(state.score);
+    for (let i = inicios.length - 1; i >= 0; i--) if (t >= inicios[i]) return i + 1;
+    return 1;
+  }
+  function limitesBucle() {
+    rep.a = Math.max(1, Math.min(nCompases(), rep.a));
+    rep.b = Math.max(rep.a, Math.min(nCompases(), rep.b));
+    return { inicio: tickDeCompas(rep.a), fin: finDeCompas(rep.b) };
+  }
+  function actualizarTransporte() {
+    if (!state.score) return;
+    if (rep.scoreRef !== state.score) {
+      // Un archivo importado o una partitura nueva no puede seguir sonando
+      // con el contenido anterior.
+      rep.sesion++; rep.playing = false; Sound.stop(); Sound.metroStop();
+      rep.scoreRef = state.score; rep.cursorTick = 0;
+      rep.a = 1; rep.b = Math.min(2, nCompases());
+      rep.bucle = false; rep.rangoEditado = false;
+    }
+    rep.cursorTick = limitarTick(rep.cursorTick);
+    const actual = compasDelTick(rep.cursorTick);
+    $('#ppPos').textContent = `Compás ${actual} / ${nCompases()}`;
+    $('#ppStop').disabled = rep.cursorTick === 0 && !rep.playing;
+    $('#ppPrev').disabled = actual <= 1;
+    $('#ppNext').disabled = actual >= nCompases();
+    $('#ppPlay').textContent = rep.playing ? '⏸' : '▶';
+    $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
+    $('#btnPlay').textContent = rep.playing ? '⏸' : '▶';
+    $('#btnPlay').classList.toggle('on', rep.playing);
+    $('#ppPlay').classList.toggle('on', rep.playing);
+    $('#ppAInput').max = String(nCompases());
+    $('#ppBInput').max = String(nCompases());
+    if (document.activeElement !== $('#ppAInput')) $('#ppAInput').value = rep.a;
+    if (document.activeElement !== $('#ppBInput')) $('#ppBInput').value = rep.b;
+    $('#ppRegion').textContent = `${rep.b - rep.a + 1} ${rep.b === rep.a ? 'compás' : 'compases'}`;
+    $('#ppBucle').classList.toggle('on', rep.bucle);
+    $('#ppBucle').setAttribute('aria-pressed', String(rep.bucle));
+    $('#ppMetro').classList.toggle('on', rep.metronomo);
+    $('#ppMetro').setAttribute('aria-pressed', String(rep.metronomo));
+    $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
+    const barra = $('#ppBarra');
+    if (!barra.dataset.arrastrando) barra.value = Math.round(rep.cursorTick / Math.max(1, ultimoTick()) * 1000);
+  }
+  function posicionar(tick, navegar = false, seguir = true) {
+    const estaba = rep.playing;
+    if (estaba) pararTodo();
+    rep.cursorTick = limitarTick(tick);
+    if (navegar && rep.bucle) {
+      const { inicio, fin } = limitesBucle();
+      if (rep.cursorTick < inicio || rep.cursorTick >= fin) rep.bucle = false;
+    }
+    actualizarTransporte();
+    if (seguir && !estaba) {
+      const c = Engrave.moverCursor(state.score, rep.cursorTick);
+      if (c) seguirLaHoja(c);
+    }
+    if (estaba) arrancar();
+  }
+  function irACompas(n) {
+    posicionar(tickDeCompas(Math.max(1, Math.min(nCompases(), n))), true);
+  }
   function togglePlay() {
-    if (Sound.playing()) { pararTodo(); return; }
+    if (rep.playing) { pararTodo(); return; }
     arrancar();
   }
-
-  function arrancar(desdeFraccion) {
-    const usaBucle = rep.bucle;
-    const a = usaBucle ? Math.min(rep.a, rep.b) : 1;
-    const b = usaBucle ? Math.max(rep.a, rep.b) : nCompases();
-    let desde = tickDeCompas(a);
-    const hasta = finDeCompas(b);
-    // arrastrar la barra empieza por donde se haya soltado
-    if (desdeFraccion != null) desde = Math.round(desde + (hasta - desde) * desdeFraccion);
-
-    $('#btnPlay').classList.add('on');
-    $('#ppPlay').textContent = '⏸';
+  function arrancar() {
+    const { inicio, fin } = rep.bucle ? limitesBucle() : { inicio: 0, fin: ultimoTick() };
+    if (rep.cursorTick < inicio || rep.cursorTick >= fin) rep.cursorTick = inicio;
+    const sesion = ++rep.sesion;
+    rep.playing = true;
+    Sound.metroStop(); // evite dos metrónomos simultáneos
+    actualizarTransporte();
     if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
-    Sound.play(state.score, {
-      desde, hasta, bucle: usaBucle,
-      factor: rep.velocidad,
-      metronomo: rep.metronomo,
-      /* Ni una nota marcada ni un redibujado por golpe: una línea vertical
-         que recorre el sistema y todas las cabezas que suenan pintadas a la
-         vez, encima de lo ya grabado. El Nocturno son mil notas; redibujar
-         la partitura en cada una era lo que hacía saltar el cursor. */
-      onSonando: (ids, midis) => { Engrave.resaltar(ids); Instrumentos.encender(midis); },
-      onPos: (frac, seg, tick) => {
-        pintarPosicion(frac);
-        const c = Engrave.moverCursor(state.score, tick);
+    Promise.resolve(Sound.play(state.score, {
+      desde: rep.cursorTick, hasta: fin, bucle: rep.bucle,
+      factor: rep.velocidad, metronomo: rep.metronomo,
+      onSonando: (ids, midis) => {
+        if (sesion !== rep.sesion) return;
+        Engrave.resaltar(ids); Instrumentos.encender(midis);
+      },
+      onPos: (_frac, _seg, tick) => {
+        if (sesion !== rep.sesion) return;
+        const siguiente = limitarTick(tick);
+        rep.cursorTick = rep.bucle && siguiente >= fin ? inicio : siguiente;
+        actualizarTransporte();
+        const c = Engrave.moverCursor(state.score, rep.cursorTick);
         if (c) seguirLaHoja(c);
       },
-      onEnd: () => { pararTodo(); }
+      onEnd: () => { if (sesion === rep.sesion) pararTodo(); }
+    })).catch(() => {
+      if (sesion === rep.sesion) { pararTodo(); toast('No se pudo reproducir la partitura'); }
     });
   }
 
@@ -776,14 +836,14 @@
   }
 
   function pararTodo() {
-    Sound.stop();
+    rep.sesion++;
+    rep.playing = false;
+    Sound.stop(); Sound.metroStop();
     Instrumentos.encender([]);
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
-    $('#btnPlay').classList.remove('on');
-    $('#ppPlay').textContent = '▶';
-    render();
+    actualizarTransporte();
     if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
   }
 
@@ -804,41 +864,36 @@
     }
   }
 
-  function pintarPosicion(frac) {
-    rep.pos = frac;
-    const barra = $('#ppBarra');
-    if (barra && !barra.dataset.arrastrando) barra.value = Math.round(frac * 1000);
-    const a = rep.bucle ? Math.min(rep.a, rep.b) : 1;
-    const b = rep.bucle ? Math.max(rep.a, rep.b) : nCompases();
-    $('#ppPos').textContent = 'c. ' + Math.min(b, a + Math.floor(frac * (b - a + 1)));
-  }
-
   function bindPlayPanel() {
-    const refresca = () => {
-      rep.a = Math.max(1, Math.min(nCompases(), rep.a));
-      rep.b = Math.max(rep.a, Math.min(nCompases(), rep.b));
-      $('#ppA').textContent = rep.a;
-      $('#ppB').textContent = rep.b;
-      $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
-      $('#ppBucle').classList.toggle('on', rep.bucle);
-      $('#ppMetro').classList.toggle('on', rep.metronomo);
-    };
-    const reinicia = () => { if (Sound.playing()) { pararTodo(); arrancar(); } };
-
+    const refresca = () => actualizarTransporte();
+    const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(); } };
     $('#ppPlay').addEventListener('click', togglePlay);
-    $('#ppStop').addEventListener('click', () => { pararTodo(); pintarPosicion(0); });
+    $('#ppStop').addEventListener('click', () => {
+      if (rep.playing) pararTodo();
+      rep.bucle = false; posicionar(0, true);
+    });
+    $('#ppPrev').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) - 1));
+    $('#ppNext').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) + 1));
     $('#ppClose').addEventListener('click', () => togglePlayPanel(false));
-
+    $('#ppMore').addEventListener('click', () => {
+      const more = $('#ppAdvanced');
+      more.hidden = !more.hidden;
+      $('#ppMore').setAttribute('aria-expanded', String(!more.hidden));
+      $('#ppMore').textContent = more.hidden ? 'Opciones ▾' : 'Opciones ▴';
+    });
     $('#ppLento').addEventListener('click', () => {
       rep.velocidad = Math.max(0.25, +(rep.velocidad - 0.1).toFixed(2)); refresca(); reinicia();
     });
     $('#ppRapido').addEventListener('click', () => {
       rep.velocidad = Math.min(2, +(rep.velocidad + 0.1).toFixed(2)); refresca(); reinicia();
     });
-    $('#ppMetro').addEventListener('click', () => { rep.metronomo = !rep.metronomo; refresca(); reinicia(); });
-
-    /* El menú de instrumentos se construye desde el catálogo, no a mano: el
-       día que entren el violín o el saxofón aparecen aquí solos. */
+    $('#ppMetro').addEventListener('click', () => {
+      rep.metronomo = !rep.metronomo;
+      if (rep.playing) reinicia();
+      else if (rep.metronomo) Sound.metroStart(state.score.tempo * rep.velocidad, state.score.time.num);
+      else Sound.metroStop();
+      refresca();
+    });
     const selIns = $('#ppInstrumento');
     Instrumentos.catalogo.forEach((ins) => {
       const op = document.createElement('option');
@@ -851,34 +906,59 @@
     montaAyuda();
     $('#ppBucle').addEventListener('click', () => {
       rep.bucle = !rep.bucle;
-      // al encender el bucle sin tramo elegido, se toma el compás de la nota
-      if (rep.bucle && rep.a === rep.b && rep.a === 1) {
-        const found = currentEvent();
-        if (found) { rep.a = found.mi + 1; rep.b = found.mi + 1; }
+      if (rep.bucle && !rep.rangoEditado) {
+        rep.a = compasDelTick(rep.cursorTick);
+        rep.b = Math.min(nCompases(), rep.a + 1);
       }
-      refresca(); reinicia();
+      const { inicio, fin } = limitesBucle();
+      if (rep.bucle && (rep.cursorTick < inicio || rep.cursorTick >= fin)) posicionar(inicio);
+      else reinicia();
+      refresca();
     });
-    [['#ppAmenos', 'a', -1], ['#ppAmas', 'a', 1], ['#ppBmenos', 'b', -1], ['#ppBmas', 'b', 1]]
-      .forEach(([sel, campo, d]) => $(sel).addEventListener('click', () => {
-        rep[campo] += d;
-        if (campo === 'a' && rep.a > rep.b) rep.b = rep.a;
-        refresca(); reinicia();
-      }));
-
+    const campo = (nombre, valor) => {
+      const n = Math.max(1, Math.min(nCompases(), Number.isFinite(+valor) ? Math.trunc(+valor) : rep[nombre]));
+      rep[nombre] = n;
+      if (rep.a > rep.b) {
+        if (nombre === 'a') rep.b = rep.a;
+        else rep.a = rep.b;
+      }
+      rep.rangoEditado = true;
+      const { inicio, fin } = limitesBucle();
+      if (rep.bucle && (rep.cursorTick < inicio || rep.cursorTick >= fin)) posicionar(inicio);
+      else reinicia();
+      refresca();
+    };
+    $('#ppAInput').addEventListener('change', (e) => campo('a', e.target.value));
+    $('#ppBInput').addEventListener('change', (e) => campo('b', e.target.value));
+    $('#ppSetA').addEventListener('click', () => campo('a', compasDelTick(rep.cursorTick)));
+    $('#ppSetB').addEventListener('click', () => campo('b', compasDelTick(rep.cursorTick)));
     const barra = $('#ppBarra');
-    barra.addEventListener('pointerdown', () => { barra.dataset.arrastrando = '1'; });
+    let ultimoValor = null;
+    barra.addEventListener('pointerdown', () => { barra.dataset.arrastrando = '1'; ultimoValor = null; });
     const soltar = () => {
-      if (!barra.dataset.arrastrando) return;
+      const valor = +barra.value;
+      if (valor === ultimoValor) return; // pointerup and change can fire for the same seek
+      ultimoValor = valor;
       delete barra.dataset.arrastrando;
-      const frac = barra.value / 1000;
-      if (Sound.playing()) { pararTodo(); arrancar(frac); } else { pintarPosicion(frac); }
+      posicionar((valor / 1000) * ultimoTick(), true);
     };
     barra.addEventListener('pointerup', soltar);
     barra.addEventListener('change', soltar);
     refresca();
+    if (!EMBED && typeof ResizeObserver !== 'undefined') {
+      const medir = () => document.documentElement.style.setProperty('--transport-height', $('#panelPlay').getBoundingClientRect().height + 'px');
+      new ResizeObserver(medir).observe($('#panelPlay'));
+      medir();
+    }
   }
 
   function togglePlayPanel(force) {
+    // The complete transport stays visible in standalone mode; only the
+    // optional speed/instrument settings expand. Embedded editor can close.
+    if (!EMBED) {
+      if (force === true) $('#ppMore').click();
+      return;
+    }
     const p = $('#panelPlay');
     const open = force != null ? force : !p.classList.contains('open');
     p.classList.toggle('open', open);
@@ -1424,14 +1504,12 @@
   if (EMBED) window.addEventListener('message', (e) => {
     const d = e.data || {};
     if (d.type === 'reper-stop' && d.id === BLOCK_ID) {
-      Sound.stop(); Sound.metroStop();
-      state.playingId = null;
-      if ($('#btnPlay')) $('#btnPlay').classList.remove('on');
+      pararTodo();
       render();
       return;
     }
     if (d.type !== 'reper-load' || d.id !== BLOCK_ID || !d.score) return;
-    Sound.stop(); Sound.metroStop();
+    pararTodo();
     state.score = Model.clone(d.score);
     Model.reflow(state.score);
     state.selectedId = null; state.playingId = null;

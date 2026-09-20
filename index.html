@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="js/sync-inline.css">
 <link rel="stylesheet" href="js/workspace-sides.css">
 <link rel="stylesheet" href="js/workspace-header.css">
+<link rel="stylesheet" href="js/transport.css">
 </head>
 <body>
 
@@ -57,42 +58,41 @@
   <p class="ins-aviso" id="insAviso"></p>
 </section>
 
-<!-- Panel de reproducción -->
-<section class="panel play" id="panelPlay" aria-label="Reproducción">
-  <div class="row">
-    <button class="btn icon primary" id="ppPlay" title="Reproducir / pausa">▶</button>
-    <button class="btn ghost icon" id="ppStop" title="Volver al principio">■</button>
-    <span class="lbl" id="ppPos">c. 1</span>
-    <button class="btn ghost icon" id="ppClose" title="Cerrar">✕</button>
+<!-- Reproductor -->
+<section class="panel play" id="panelPlay" aria-label="Reproductor de partitura">
+  <div class="transport-main row" role="group" aria-label="Transporte musical">
+    <button class="btn ghost icon" id="ppStop" type="button" aria-label="Ir al inicio" title="Ir al inicio">⏮</button>
+    <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior">◀┃</button>
+    <button class="btn icon primary" id="ppPlay" type="button" aria-label="Reproducir" title="Reproducir / pausar">▶</button>
+    <button class="btn ghost icon" id="ppNext" type="button" aria-label="Compás siguiente" title="Compás siguiente">┃▶</button>
+    <output class="transport-pos" id="ppPos" aria-live="off">Compás 1 / 1</output>
+    <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción">♩ Metrónomo</button>
+    <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B">↻ Bucle A–B</button>
+    <button class="btn ghost" id="ppMore" type="button" aria-controls="ppAdvanced" aria-expanded="false">Opciones ▾</button>
+    <button class="btn ghost icon embed-only" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor">✕</button>
   </div>
-
-  <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición">
-
-  <div class="row">
-    <div class="bpm-step" title="Velocidad">
-      <button class="btn ghost icon" id="ppLento" title="Más despacio">−</button>
-      <output class="num ancho" id="ppVel">100%</output>
-      <button class="btn ghost icon" id="ppRapido" title="Más deprisa">＋</button>
+  <div class="transport-timeline">
+    <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Desplazar reproducción por la partitura">
+    <div class="transport-loop" role="group" aria-label="Seleccionar compases para bucle">
+      <label for="ppAInput">Desde A</label>
+      <input id="ppAInput" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="Compás inicial A">
+      <button class="btn ghost" id="ppSetA" type="button" title="Usar el compás actual como A">Marcar A</button>
+      <span class="transport-arrow" aria-hidden="true">→</span>
+      <label for="ppBInput">Hasta B</label>
+      <input id="ppBInput" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="Compás final B">
+      <button class="btn ghost" id="ppSetB" type="button" title="Usar el compás actual como B">Marcar B</button>
+      <output id="ppRegion" aria-live="off">1 compás</output>
     </div>
-    <button class="btn" id="ppMetro" title="Metrónomo mientras suena">Metrónomo</button>
+  </div>
+  <div class="transport-advanced row" id="ppAdvanced" hidden>
+    <span class="lbl">Velocidad</span>
+    <div class="bpm-step" title="Velocidad de reproducción">
+      <button class="btn ghost icon" id="ppLento" type="button" title="Más despacio">−</button>
+      <output class="num ancho" id="ppVel">100%</output>
+      <button class="btn ghost icon" id="ppRapido" type="button" title="Más deprisa">＋</button>
+    </div>
     <label class="lbl" for="ppInstrumento">Ver en</label>
     <select class="sel" id="ppInstrumento" title="Instrumento de ayuda"></select>
-  </div>
-
-  <div class="row">
-    <button class="btn" id="ppBucle" title="Repetir el tramo elegido">🔁 Bucle</button>
-    <span class="lbl">c.</span>
-    <div class="bpm-step" title="Primer compás del bucle">
-      <button class="btn ghost icon" id="ppAmenos" title="Compás inicial anterior">−</button>
-      <output class="num" id="ppA">1</output>
-      <button class="btn ghost icon" id="ppAmas" title="Compás inicial siguiente">＋</button>
-    </div>
-    <span class="lbl">a</span>
-    <div class="bpm-step" title="Último compás del bucle">
-      <button class="btn ghost icon" id="ppBmenos" title="Compás final anterior">−</button>
-      <output class="num" id="ppB">1</output>
-      <button class="btn ghost icon" id="ppBmas" title="Compás final siguiente">＋</button>
-    </div>
   </div>
 </section>
 
