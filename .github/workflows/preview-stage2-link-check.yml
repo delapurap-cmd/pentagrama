@@ -1,0 +1,54 @@
+name: Verify practice preview web URL without publishing
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-stage2-link-check.yml
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Verify actual third-party static preview URL in real browser
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PREVIEW_URL: https://raw.githack.com/delapurap-cmd/pentagrama/7d8cd05c3c079313b6a7ac94a0c6597158346511/studio.html
+        run: |
+          node <<'JS'
+          const {chromium}=require('playwright-core'),assert=require('node:assert/strict');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try {
+              const context=await browser.newContext({viewport:{width:390,height:844}});
+              await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await context.newPage(),errors=[];
+              page.on('pageerror',err=>errors.push(err.message));
+              const response=await page.goto(process.env.PREVIEW_URL,{waitUntil:'domcontentloaded',timeout:30000});
+              assert.equal(response.status(),200);
+              await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+              assert.equal(await page.locator('#btnPdfImport').count(),0);
+              assert.equal(await page.locator('#panelPlay').isVisible(),false);
+              await page.locator('#btnPlay').click();
+              const bounds=await page.locator('#panelPlay').boundingBox(),header=await page.locator('header.bar').boundingBox();
+              assert.ok(bounds&&header&&bounds.width<390&&bounds.y>=header.y+header.height-2&&bounds.y<420,'Top-right compact panel');
+              assert.equal(await page.locator('#ppSaveLoop').isVisible(),true);
+              await page.locator('#ppMore').click();
+              assert.equal(await page.locator('#ppCount').isVisible(),true);
+              await page.locator('#ppClose').click();
+              await page.locator('#btnPiano').click();
+              assert.equal(await page.locator('#pianoRecord').isVisible(),true);
+              assert.equal(await page.locator('#pianoGrid').isVisible(),true);
+              const sample=await page.evaluate(async()=>{const r=await fetch('sonidos/piano/C4.opus');return {status:r.status,bytes:(await r.arrayBuffer()).byteLength};});
+              assert.equal(sample.status,200);assert.ok(sample.bytes>1000);
+              assert.deepEqual(errors,[]);
+              console.log('PASS online review (no production deployment):',page.url(),'top-right transport, loop save, count-in, MIDI record, bundled samples');
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
