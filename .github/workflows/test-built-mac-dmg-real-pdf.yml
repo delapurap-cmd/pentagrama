@@ -1,0 +1,99 @@
+name: Test distributed Mac DMG with real PDF and Audiveris
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-built-mac-dmg-real-pdf.yml'
+      - 'pruebas/omr-real-browser.cjs'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  test-distributed-dmg:
+    runs-on: macos-15-intel
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download ACTUAL already-built DMG from successful build
+        uses: actions/download-artifact@v4
+        with:
+          name: Pentagrama-Nativo-Mac-Intel-DMG
+          run-id: 35480700334
+          repository: delapurap-cmd/pentagrama
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded
+      - name: Mount DMG, verify installed app and copy to Applications-style location
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s downloaded/Pentagrama-Mac-Intel.dmg
+          hdiutil verify downloaded/Pentagrama-Mac-Intel.dmg
+          mkdir -p "$RUNNER_TEMP/mounted" "$RUNNER_TEMP/install"
+          hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/mounted" downloaded/Pentagrama-Mac-Intel.dmg
+          ditto "$RUNNER_TEMP/mounted/Pentagrama.app" "$RUNNER_TEMP/install/Pentagrama.app"
+          hdiutil detach "$RUNNER_TEMP/mounted"
+          APP="$RUNNER_TEMP/install/Pentagrama.app"
+          test -x "$APP/Contents/MacOS/Pentagrama"
+          test -x "$APP/Contents/Resources/PentagramaServer/PentagramaServer"
+          test -x "$APP/Contents/Resources/Audiveris.app/Contents/MacOS/Audiveris"
+          codesign --verify --deep --verbose=2 "$APP"
+          echo 'PASS: verified and mounted actual distributed DMG; copied native app, bundled server and Audiveris'
+      - name: Obtain public example sheet music PDF without touching private user files
+        run: |
+          curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/real.pdf"
+          test -s "$RUNNER_TEMP/real.pdf"
+      - name: Launch actual installed GUI app without Terminal and check its own service
+        shell: bash
+        run: |
+          set -euo pipefail
+          open -n "$RUNNER_TEMP/install/Pentagrama.app"
+          for i in $(seq 1 120); do
+            if curl -fsS 'http://127.0.0.1:8787/api/omr/health' > "$RUNNER_TEMP/health.json" 2>/dev/null; then break; fi
+            sleep 0.25
+          done
+          python3 - <<'PY'
+          import json,os
+          health=json.load(open(os.environ['RUNNER_TEMP']+'/health.json'))
+          assert health['available'] is True and health['background_jobs'] is True,health
+          print('PASS: actual mounted DMG launched native app and bundled local recognition engine')
+          PY
+      - name: REAL PDF through ACTUAL packaged local engine, status polling, downloadable MusicXML
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -F "pdf=@$RUNNER_TEMP/real.pdf" 'http://127.0.0.1:8787/api/omr/jobs' > "$RUNNER_TEMP/job.json"
+          python3 - <<'PY'
+          import os,json,time,urllib.request,xml.etree.ElementTree as ET
+          base='http://127.0.0.1:8787/api/omr/jobs/'
+          identifier=json.load(open(os.environ['RUNNER_TEMP']+'/job.json'))['job_id']
+          deadline=time.monotonic()+195
+          while time.monotonic()<deadline:
+              with urllib.request.urlopen(base+identifier,timeout=6) as r: status=json.load(r)
+              if status['status']=='error': raise AssertionError(status)
+              if status['status']=='done': break
+              assert status['status'] in ('running','queued'),status
+              time.sleep(1)
+          else: raise AssertionError('Actual DMG recognition never completed')
+          with urllib.request.urlopen(base+identifier+'/result',timeout=8) as r: xml=r.read()
+          root=ET.fromstring(xml)
+          assert root.tag=='score-partwise',root.tag
+          count=len(root.findall('.//note'))
+          assert count>0,count
+          print('PASS: ACTUAL DMG engine recognized a real PDF with',count,'MusicXML notes')
+          PY
+      - name: REAL editor UI imports a second actual PDF and renders editable notation
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.57.0
+          OMR_REAL_HOST='http://127.0.0.1:8787' \
+          OMR_REAL_PDF="$RUNNER_TEMP/real.pdf" \
+          CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+            node pruebas/omr-real-browser.cjs
+      - name: Print local diagnostic log on failure
+        if: failure()
+        run: tail -120 "$HOME/Library/Logs/Pentagrama/pentagrama.log" 2>/dev/null || true
