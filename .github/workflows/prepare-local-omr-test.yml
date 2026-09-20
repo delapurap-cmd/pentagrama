@@ -1,0 +1,31 @@
+name: Prepare official Audiveris for local PDF diagnosis
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/prepare-local-omr-test.yml'
+permissions:
+  contents: read
+jobs:
+  package-official-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Fetch official Audiveris 5.11.0 Linux installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 --connect-timeout 30 'https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb' -o "$RUNNER_TEMP/audiveris.deb"
+          test -s "$RUNNER_TEMP/audiveris.deb"
+          dpkg-deb -x "$RUNNER_TEMP/audiveris.deb" "$RUNNER_TEMP/root"
+          test -x "$RUNNER_TEMP/root/opt/audiveris/bin/Audiveris"
+          find "$RUNNER_TEMP/root/opt/audiveris" -maxdepth 2 -type d | head -30
+          tar -C "$RUNNER_TEMP/root/opt" -czf audiveris-5.11.0-linux-runtime.tar.gz audiveris
+          ls -lh audiveris-5.11.0-linux-runtime.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Official-Audiveris-Linux-Local-Diagnosis
+          path: audiveris-5.11.0-linux-runtime.tar.gz
+          retention-days: 1
+          if-no-files-found: error
