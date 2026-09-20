@@ -1,0 +1,43 @@
+name: Verify transport preview URL without deployment
+on:
+  push:
+    branches: [preview/estabilidad-editor-20260920]
+    paths: [.github/workflows/preview-transport-link-check.yml]
+permissions:
+  contents: read
+jobs:
+  verify-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Verify actual commit-pinned remote web preview, no Pages deployment
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          PREVIEW_URL: https://raw.githack.com/delapurap-cmd/pentagrama/301ee708cb6ef715a0019046bec976021fc90b8d/studio.html
+        run: |
+          node <<'JS'
+          const assert=require('node:assert/strict');
+          const {chromium}=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{
+              const context=await browser.newContext({viewport:{width:390,height:844}});
+              await context.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await context.newPage();
+              const response=await page.goto(process.env.PREVIEW_URL,{waitUntil:'domcontentloaded',timeout:30000});
+              assert.equal(response.status(),200);
+              await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+              for(const id of ['ppStop','ppPrev','ppPlay','ppNext','ppMetro','ppBucle','ppAInput','ppBInput']){
+                assert.equal(await page.locator('#'+id).isVisible(),true,`${id} missing`);
+              }
+              assert.equal(await page.locator('#btnPdfImport').count(),0);
+              await page.locator('#ppNext').click();
+              assert.match(await page.locator('#ppPos').innerText(),/^Compás 2 \/ /);
+              console.log('PASS: public-branch pinned preview URL opens new functional transport in browser:',page.url());
+            }finally{await browser.close()}
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
