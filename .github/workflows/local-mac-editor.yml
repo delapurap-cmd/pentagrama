@@ -1,0 +1,152 @@
+name: Pentagrama local Mac Intel with Audiveris
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'js/**'
+      - 'index.html'
+      - 'style.css'
+      - '.github/workflows/local-mac-editor.yml'
+
+jobs:
+  package-mac-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python dependencies and test PDF worker
+        run: |
+          python -m pip install -r server/requirements.txt 'pyinstaller>=6.13,<7'
+          python -m unittest discover -s server/tests -v
+      - name: Download original Audiveris 5.11.0 for Intel macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --show-error --silent \
+            'https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-macosx-x86_64.dmg' \
+            --output "$RUNNER_TEMP/Audiveris.dmg"
+          mkdir -p "$RUNNER_TEMP/audiveris-volume" "Pentagrama-Local"
+          hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/audiveris-volume" "$RUNNER_TEMP/Audiveris.dmg"
+          APP=$(find "$RUNNER_TEMP/audiveris-volume" -name 'Audiveris.app' -type d -print -quit)
+          if [[ -z "$APP" ]]; then echo 'No Audiveris.app in official DMG'; exit 1; fi
+          ditto "$APP" "Pentagrama-Local/Audiveris.app"
+          hdiutil detach "$RUNNER_TEMP/audiveris-volume"
+          test -x 'Pentagrama-Local/Audiveris.app/Contents/MacOS/Audiveris'
+          'Pentagrama-Local/Audiveris.app/Contents/MacOS/Audiveris' -help > "$RUNNER_TEMP/audiveris-help.log" 2>&1 || { tail -60 "$RUNNER_TEMP/audiveris-help.log"; exit 1; }
+          grep -qi 'batch' "$RUNNER_TEMP/audiveris-help.log" || { echo 'Expected batch CLI not found'; tail -60 "$RUNNER_TEMP/audiveris-help.log"; exit 1; }
+      - name: Stage complete offline web editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package-web
+          for f in index.html studio.html sync.html style.css manifest.json sw.js service-worker.js icon-192.png icon-512.png icon-maskable.png; do
+            if [[ -f "$f" ]]; then cp "$f" package-web/; fi
+          done
+          for d in js vendor ejemplos sonidos assets fonts; do
+            if [[ -d "$d" ]]; then ditto "$d" "package-web/$d"; fi
+          done
+          test -s package-web/index.html
+          test -s package-web/js/pdf-import.js
+          test -s package-web/vendor/vexflow.js
+      - name: Freeze local Python server with complete site
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --name PentagramaServer \
+            --paths . --collect-submodules uvicorn --add-data 'package-web:web' \
+            server/desktop_entry.py
+          ditto dist/PentagramaServer Pentagrama-Local/PentagramaServer
+          test -f Pentagrama-Local/PentagramaServer/_internal/web/index.html
+      - name: Add launcher, usage guide and Audiveris source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > 'Pentagrama-Local/Abrir Pentagrama.command' <<'LAUNCH'
+          #!/bin/bash
+          cd "$(dirname "$0")" || exit 1
+          if [[ ! -x ./PentagramaServer/PentagramaServer ]]; then
+            echo 'No se encuentra el motor local de Pentagrama. Extrae el ZIP entero.'
+            read -r -p 'Enter para salir...'
+            exit 1
+          fi
+          echo 'Abriendo editor y Audiveris locales; deja esta ventana abierta mientras editas.'
+          ./PentagramaServer/PentagramaServer
+          rc=$?
+          if [[ $rc -ne 0 ]]; then read -r -p 'Pentagrama termino con un error. Enter para salir...'; fi
+          exit "$rc"
+          LAUNCH
+          chmod +x 'Pentagrama-Local/Abrir Pentagrama.command'
+          cat > 'Pentagrama-Local/LEEME.txt' <<'GUIDE'
+          PENTAGRAMA LOCAL + AUDIVERIS 5.11.0 - MAC INTEL (x86_64)
+
+          1. Descomprime el ZIP completo; no ejecutes archivos desde dentro del ZIP.
+          2. Haz doble clic en "Abrir Pentagrama.command"; se abre el editor en tu navegador.
+          3. Presiona "PDF -> Partitura", elige tu PDF y pulsa "Convertir y editar".
+          4. Deja abierta la ventana de Terminal mientras utilizas el editor.
+             Para cerrar el servidor local, pulsa Ctrl+C en esa ventana.
+
+          Audiveris.app y el servidor de Pentagrama están INCLUIDOS: no hay
+          instalación de Python/Java ni cuenta externa. Todos los archivos PDF
+          se procesan en este ordenador, en 127.0.0.1, y se borran temporalmente
+          al terminar cada operación. Se necesita conexión solo para descargar
+          este paquete; una vez extraído, funciona sin Internet.
+
+          Este paquete está destinado a Mac Intel. No se ha probado en tu versión
+          concreta de macOS. No está firmado ni notarizado: macOS puede pedir
+          confirmación de seguridad para abrir componentes desconocidos.
+          Revisa el contenido y, si confías en él, usa clic derecho -> Abrir.
+          Nunca desactives la protección del sistema de forma global.
+
+          Reconocimiento óptico: puede errar notas y ritmos. Por ahora el
+          importador MusicXML puede ignorar partes adicionales en partituras
+          para varios instrumentos; consulta el informe y guarda una copia
+          en Archivo antes de importar. Límite: 12 MB / 16 páginas / 3 minutos.
+
+          Audiveris se redistribuye sin modificar, bajo AGPL-3.0-or-later.
+          Código fuente original correspondiente en Audiveris-fuente-5.11.0.tar.gz
+          y proyecto: https://github.com/Audiveris/audiveris/tree/5.11.0
+          Licencia: https://github.com/Audiveris/audiveris/blob/5.11.0/LICENSE
+          Proyecto del editor: https://github.com/delapurap-cmd/pentagrama
+          GUIDE
+          curl --fail --location --retry 3 --show-error --silent \
+            'https://github.com/Audiveris/audiveris/archive/refs/tags/5.11.0.tar.gz' \
+            --output 'Pentagrama-Local/Audiveris-fuente-5.11.0.tar.gz'
+          test -s Pentagrama-Local/Audiveris-fuente-5.11.0.tar.gz
+      - name: Smoke test actual packaged executable and Audiveris discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./Pentagrama-Local/PentagramaServer/PentagramaServer > "$RUNNER_TEMP/pentagrama-desktop.log" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          URL=''
+          for i in $(seq 1 80); do
+            URL=$(grep -Eo 'http://127\.0\.0\.1:[0-9]+/index\.html' "$RUNNER_TEMP/pentagrama-desktop.log" | tail -n1 || true)
+            if [[ -n "$URL" ]]; then break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then cat "$RUNNER_TEMP/pentagrama-desktop.log"; exit 1; fi
+            sleep 0.5
+          done
+          if [[ -z "$URL" ]]; then cat "$RUNNER_TEMP/pentagrama-desktop.log"; exit 1; fi
+          curl --fail --silent --show-error "$URL" | grep -q 'id="stage"'
+          ROOT="${URL%/index.html}"
+          curl --fail --silent --show-error "$ROOT/api/omr/health" | python -c 'import json,sys; result=json.load(sys.stdin); assert result["available"] is True, result; print("PASS: local Audiveris detected")'
+          curl --fail --silent --show-error "$ROOT/js/pdf-import.js" | grep -q 'pdfImportGo'
+          ! curl -s "$ROOT/server/omr.py" | grep -q 'def convert_pdf'
+          echo 'PASS: packaged offline editor, bundled Audiveris CLI and PDF import integration'
+      - name: Create Mac distributable ZIP preserving executable permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          ditto -c -k --sequesterRsrc --keepParent Pentagrama-Local Pentagrama-Mac-Intel-Audiveris.zip
+          test -s Pentagrama-Mac-Intel-Audiveris.zip
+          unzip -tq Pentagrama-Mac-Intel-Audiveris.zip | tail -1
+          ls -lh Pentagrama-Mac-Intel-Audiveris.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pentagrama-Mac-Intel-Audiveris
+          path: Pentagrama-Mac-Intel-Audiveris.zip
+          retention-days: 30
+          if-no-files-found: error
