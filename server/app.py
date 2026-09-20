@@ -24,7 +24,7 @@ PUBLIC_ROOT = {"index.html", "studio.html", "sync.html", "style.css", "manifest.
                "icon-192.png", "icon-512.png", "icon-maskable.png", "sw.js", "service-worker.js"}
 PUBLIC_FOLDERS = {"js", "vendor", "ejemplos", "sonidos", "assets", "fonts"}
 PUBLIC_EXT = {".html", ".css", ".js", ".json", ".mxl", ".xml", ".mid", ".midi",
-              ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".ogg"}
+              ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".ogg", ".opus"}
 
 
 @app.middleware("http")
