@@ -1,10 +1,13 @@
 """Tests for the local Audiveris pipeline. Audiveris itself is mocked."""
+import asyncio
 import io
 import subprocess
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from fastapi import UploadFile
 from pypdf import PdfWriter
 
 from server.omr import MAX_PDF_BYTES, OMRFailure, check_pdf, convert_pdf
@@ -69,6 +72,20 @@ class OMRTests(unittest.TestCase):
             raise subprocess.TimeoutExpired(args, 180)
         with self.assertRaisesRegex(OMRFailure, 'tres minutos'):
             convert_pdf(pdf(), runner=runner, program='/usr/bin/audiveris')
+
+    def test_extensionless_pdf_is_passed_to_converter(self):
+        # An actual Chopin download arrived named 'Nocturne in E flat major',
+        # although it contained a valid %PDF header and three scanned pages.
+        # Its display filename is not a reliable way to determine its format.
+        from server import app as omr_api
+        document = UploadFile(file=io.BytesIO(pdf(3)), filename='Nocturne in E flat major')
+        with patch.object(omr_api, 'executable', return_value='/fake/Audiveris'), \
+             patch.object(omr_api, 'convert_pdf', return_value=(b'<score-partwise/>', '.musicxml')) as worker:
+            response = asyncio.run(omr_api.recognize(document))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.body, b'<score-partwise/>')
+        self.assertEqual(worker.call_count, 1)
+        self.assertEqual(worker.call_args.args[0][:5], b'%PDF-')
 
 
 if __name__ == '__main__':
