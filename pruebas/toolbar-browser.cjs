@@ -12,7 +12,9 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await page.goto('http://127.0.0.1:18882/index.html');await page.locator('.sheet-svg').first().waitFor();
   const desktop=viewport.width>780;
   assert.equal(await page.locator('#barTools').evaluate(el=>el.parentElement.tagName),'HEADER','la barra general debe seguir en el encabezado');
-  assert.equal(await page.locator('#btnPdfImport').count(),1,'importar PDF permanece en la barra general');
+  assert.equal(await page.locator('#btnPdfImport,#pdfImportDialog').count(),0,'se elimina solamente el reconocimiento de PDF');
+  assert.equal(await page.locator('#btnPrint').count(),1,'se conserva la impresión y exportación a PDF');
+  assert.equal(await page.locator('#btnFile').count(),1,'se conserva Archivo y la importación MusicXML/MIDI');
   const top=await page.evaluate(()=>{const h=document.querySelector('header.bar').getBoundingClientRect(),b=document.querySelector('#barTools').getBoundingClientRect(),s=document.querySelector('.stage').getBoundingClientRect();return {headerBottom:h.bottom,barTop:b.top,barBottom:b.bottom,scoreTop:s.top,barHeight:b.height};});
   assert.ok(top.barTop<top.scoreTop && top.barBottom<=top.headerBottom+2,'barra general arriba del lienzo');
   assert.ok(top.barHeight<=40,'barra superior debe ser compacta');
@@ -37,7 +39,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
    await page.getByRole('tab',{name:tab}).click();assert.ok(await page.locator(`[data-command="${selector}"]`).isVisible());
   }
   await page.locator('.pt-finish').click();assert.equal(await page.locator('.pt-wrap.open').count(),0);
-  assert.deepEqual(errors,[]);console.log(`PASS: general top toolbar, contextual left rail and musical commands at ${viewport.width}px`);
+  assert.deepEqual(errors,[]);console.log(`PASS: PDF OMR absent; full notation toolbar, print and musical commands at ${viewport.width}px`);
   await context.close();
  }
 }finally{if(browser)await browser.close();server.kill();}})().catch(err=>{console.error(err);process.exitCode=1});
