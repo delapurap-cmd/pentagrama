@@ -1,4 +1,4 @@
-name: Test distributed Mac DMG with real PDF and Audiveris
+name: Test distributed Mac DMG with real three-page PDF and Audiveris
 on:
   workflow_dispatch:
   push:
@@ -12,17 +12,20 @@ permissions:
 jobs:
   test-distributed-dmg:
     runs-on: macos-15-intel
-    timeout-minutes: 18
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download ACTUAL already-built DMG from successful build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download ACTUAL new DMG built with multi-page piano fixes
         uses: actions/download-artifact@v4
         with:
           name: Pentagrama-Nativo-Mac-Intel-DMG
-          run-id: 35480700334
+          run-id: 35483360924
           repository: delapurap-cmd/pentagrama
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: downloaded
@@ -40,13 +43,29 @@ jobs:
           test -x "$APP/Contents/MacOS/Pentagrama"
           test -x "$APP/Contents/Resources/PentagramaServer/PentagramaServer"
           test -x "$APP/Contents/Resources/Audiveris.app/Contents/MacOS/Audiveris"
+          test -s "$APP/Contents/Resources/web/js/pdf-parts.js" || find "$APP/Contents/Resources" -name pdf-parts.js -print -quit | grep -q pdf-parts.js
           codesign --verify --deep --verbose=2 "$APP"
-          echo 'PASS: verified and mounted actual distributed DMG; copied native app, bundled server and Audiveris'
-      - name: Obtain public example sheet music PDF without touching private user files
+          echo 'PASS: actual DMG verified and mounted; native app, private offline server, Audiveris and piano part selection bundled'
+      - name: Make a public three-page sheet-music PDF fixture (never upload personal scores)
+        shell: bash
         run: |
-          curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/real.pdf"
-          test -s "$RUNNER_TEMP/real.pdf"
-      - name: Launch actual installed GUI app without Terminal and check its own service
+          set -euo pipefail
+          python -m pip install 'pypdf>=5,<7'
+          curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/sample.pdf"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from pypdf import PdfReader, PdfWriter
+          base=Path(os.environ['RUNNER_TEMP'])
+          sample=PdfReader(base/'sample.pdf', strict=True)
+          assert len(sample.pages)==1
+          out=PdfWriter()
+          for _ in range(3): out.add_page(sample.pages[0])
+          with (base/'real3.pdf').open('wb') as file: out.write(file)
+          assert len(PdfReader(base/'real3.pdf', strict=True).pages)==3
+          print('PASS: test input is a genuine, public three-page PDF with three scanned music pages')
+          PY
+      - name: Launch actual installed GUI app without Terminal and check bundled service
         shell: bash
         run: |
           set -euo pipefail
@@ -55,45 +74,47 @@ jobs:
             if curl -fsS 'http://127.0.0.1:8787/api/omr/health' > "$RUNNER_TEMP/health.json" 2>/dev/null; then break; fi
             sleep 0.25
           done
-          python3 - <<'PY'
+          python - <<'PY'
           import json,os
           health=json.load(open(os.environ['RUNNER_TEMP']+'/health.json'))
           assert health['available'] is True and health['background_jobs'] is True,health
-          print('PASS: actual mounted DMG launched native app and bundled local recognition engine')
+          print('PASS: native DMG app launches its own bundled offline recognition engine')
           PY
-      - name: REAL PDF through ACTUAL packaged local engine, status polling, downloadable MusicXML
+      - name: REAL 3-PAGE PDF through the ACTUAL packaged local engine
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS -F "pdf=@$RUNNER_TEMP/real.pdf" 'http://127.0.0.1:8787/api/omr/jobs' > "$RUNNER_TEMP/job.json"
-          python3 - <<'PY'
+          curl -fsS -F "pdf=@$RUNNER_TEMP/real3.pdf" 'http://127.0.0.1:8787/api/omr/jobs' > "$RUNNER_TEMP/job.json"
+          python - <<'PY'
           import os,json,time,urllib.request,xml.etree.ElementTree as ET
           base='http://127.0.0.1:8787/api/omr/jobs/'
           identifier=json.load(open(os.environ['RUNNER_TEMP']+'/job.json'))['job_id']
-          deadline=time.monotonic()+195
+          deadline=time.monotonic()+615
           while time.monotonic()<deadline:
               with urllib.request.urlopen(base+identifier,timeout=6) as r: status=json.load(r)
               if status['status']=='error': raise AssertionError(status)
               if status['status']=='done': break
               assert status['status'] in ('running','queued'),status
               time.sleep(1)
-          else: raise AssertionError('Actual DMG recognition never completed')
+          else: raise AssertionError('Three-page recognition in actual DMG never completed')
           with urllib.request.urlopen(base+identifier+'/result',timeout=8) as r: xml=r.read()
           root=ET.fromstring(xml)
           assert root.tag=='score-partwise',root.tag
-          count=len(root.findall('.//note'))
-          assert count>0,count
-          print('PASS: ACTUAL DMG engine recognized a real PDF with',count,'MusicXML notes')
+          noteheads=len(root.findall('.//note/pitch'))
+          assert noteheads>100,noteheads
+          measures=sum(len(part.findall('measure')) for part in root.findall('part'))
+          assert measures>12,measures
+          print('PASS: ACTUAL DMG converted a REAL THREE-PAGE PDF:',noteheads,'pitched noteheads,',measures,'source measures')
           PY
-      - name: REAL editor UI imports a second actual PDF and renders editable notation
+      - name: REAL editor UI imports a SECOND THREE-PAGE PDF and renders editable notation
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-save --no-package-lock playwright-core@1.57.0
           OMR_REAL_HOST='http://127.0.0.1:8787' \
-          OMR_REAL_PDF="$RUNNER_TEMP/real.pdf" \
+          OMR_REAL_PDF="$RUNNER_TEMP/real3.pdf" \
           CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
             node pruebas/omr-real-browser.cjs
       - name: Print local diagnostic log on failure
         if: failure()
-        run: tail -120 "$HOME/Library/Logs/Pentagrama/pentagrama.log" 2>/dev/null || true
+        run: tail -150 "$HOME/Library/Logs/Pentagrama/pentagrama.log" 2>/dev/null || true
