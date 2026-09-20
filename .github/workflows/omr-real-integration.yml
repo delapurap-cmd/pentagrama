@@ -5,8 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/omr-real-integration.yml'
-      - 'server/omr.py'
-      - 'server/tests/test_omr.py'
+      - 'server/**'
+      - 'js/pdf-import.js'
+      - 'pruebas/omr-real-browser.cjs'
 jobs:
   convert-real-pdf:
     runs-on: macos-15-intel
@@ -16,21 +17,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install backend dependencies
-        run: python -m pip install -r server/requirements.txt
-      - name: Download actual music score from Audiveris official examples
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencies and worker unit tests
+        run: |
+          python -m pip install -r server/requirements.txt
+          python -m unittest discover -s server/tests -v
+          npm install --no-save --no-package-lock playwright-core@1.57.0
+      - name: Download a real PDF from the official Audiveris example set
         shell: bash
         run: |
           set -euo pipefail
           curl -fLsS --retry 3 https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/SchbAvMaSample.pdf -o "$RUNNER_TEMP/official-example.pdf"
-          file "$RUNNER_TEMP/official-example.pdf"
           python - <<'PY'
           import os
           from server.omr import check_pdf
           data=open(os.environ['RUNNER_TEMP']+'/official-example.pdf','rb').read()
-          print('Example PDF pages:',check_pdf(data),'bytes:',len(data))
+          print('PASS: real PDF pages:',check_pdf(data),'bytes:',len(data))
           PY
-      - name: Install original Mac Intel Audiveris and print available CLI commands
+      - name: Install real Mac Intel Audiveris and inspect CLI
         shell: bash
         run: |
           set -euo pipefail
@@ -40,41 +46,84 @@ jobs:
           BIN=$(find "$RUNNER_TEMP/audiveris-volume" -type f -path '*/Audiveris.app/Contents/MacOS/Audiveris' -print -quit)
           test -x "$BIN"
           echo "AUDIVERIS_BIN=$BIN" >> "$GITHUB_ENV"
-          "$BIN" -help 2>&1 | tail -75
-      - name: REAL CONVERSION direct Audiveris batch PDF to MusicXML
+          "$BIN" -help 2>&1 | grep -E 'transcribe|export|batch|output'
+      - name: REAL direct Audiveris PDF to MusicXML
         shell: bash
         run: |
           set -uo pipefail
           "$AUDIVERIS_BIN" -batch -transcribe -export -output "$RUNNER_TEMP/omrout" "$RUNNER_TEMP/official-example.pdf" > "$RUNNER_TEMP/audiveris-real.log" 2>&1
           code=$?
-          echo "AUDIVERIS_EXIT=$code"
-          echo '---- Real recognition log (last 90 lines) ----'
-          tail -90 "$RUNNER_TEMP/audiveris-real.log"
-          echo '---- Real export files ----'
-          find "$RUNNER_TEMP/omrout" -type f -maxdepth 5 -print
-          if [[ "$code" -ne 0 ]]; then exit "$code"; fi
+          tail -30 "$RUNNER_TEMP/audiveris-real.log"
+          test "$code" = 0 || exit "$code"
           FILE=$(find "$RUNNER_TEMP/omrout" -type f \( -iname '*.mxl' -o -iname '*.musicxml' -o -iname '*.xml' \) | head -1)
-          test -s "$FILE" || { echo 'FAIL: Audiveris exited successfully but no MusicXML was exported'; exit 1; }
-          echo 'PASS: Audiveris produced actual MusicXML from a PDF'
-      - name: REAL CONVERSION via same Pentagrama Python worker
+          test -s "$FILE" || { echo 'FAIL: Audiveris did not export MusicXML'; exit 1; }
+          echo 'PASS: actual Audiveris PDF -> MusicXML'
+      - name: REAL worker converts compressed Audiveris MXL to plain editable XML
         shell: bash
         run: |
           python - <<'PY'
-          import os,time,zipfile,io,traceback
+          import os, time
+          from xml.etree import ElementTree as ET
           from server.omr import convert_pdf
           sample=open(os.environ['RUNNER_TEMP']+'/official-example.pdf','rb').read()
-          now=time.monotonic()
-          try:
-              contents,suffix=convert_pdf(sample)
-              print('WORKER RESULT', suffix,len(contents),'bytes in',round(time.monotonic()-now,1),'seconds')
-              if suffix == '.mxl':
-                  with zipfile.ZipFile(io.BytesIO(contents)) as z:
-                      names=z.namelist()
-                      print('MusicXML zip member names:',names)
-                      assert any(n.endswith(('.xml','.musicxml')) and not n.startswith('META-INF') for n in names)
-              else: assert b'<score-partwise' in contents
-              print('PASS: actual PDF -> packaged CLI -> MusicXML bytes in Python worker')
-          except Exception:
-              traceback.print_exc()
-              raise
+          start=time.monotonic()
+          xml, extension=convert_pdf(sample)
+          assert extension=='.musicxml',extension
+          root=ET.fromstring(xml)
+          assert root.tag=='score-partwise',root.tag
+          notes=len(root.findall('.//note'))
+          assert notes>0, 'recognized file has no editable note elements'
+          print('PASS: real worker returns uncompressed MusicXML,',notes,'notes,',len(xml),'bytes, seconds',round(time.monotonic()-start,1))
           PY
+      - name: REAL short-request HTTP background recognition and XML result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m uvicorn server.app:app --host 127.0.0.1 --port 18787 --log-level warning > "$RUNNER_TEMP/omr-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/omr-api.pid"
+          for i in $(seq 1 60); do
+            if curl -fsS 'http://127.0.0.1:18787/api/omr/health' > "$RUNNER_TEMP/health.json" 2>/dev/null; then break; fi
+            sleep 0.2
+          done
+          python - <<'PY'
+          import json,os
+          h=json.load(open(os.environ['RUNNER_TEMP']+'/health.json'))
+          assert h['available'] and h['background_jobs'],h
+          print('PASS: real Audiveris health with background job support')
+          PY
+          curl -fsS -F "pdf=@$RUNNER_TEMP/official-example.pdf" 'http://127.0.0.1:18787/api/omr/jobs' > "$RUNNER_TEMP/job.json"
+          python - <<'PY'
+          import json,os,time,urllib.request,xml.etree.ElementTree as ET
+          base='http://127.0.0.1:18787/api/omr/jobs/'
+          job_id=json.load(open(os.environ['RUNNER_TEMP']+'/job.json'))['job_id']
+          for _ in range(180):
+              with urllib.request.urlopen(base+job_id,timeout=4) as r: status=json.load(r)
+              if status['status']=='error': raise AssertionError('REAL OMR job failed: '+str(status))
+              if status['status']=='done': break
+              assert status['status'] in ('queued','running'),status
+              time.sleep(1)
+          else: raise AssertionError('OMR HTTP job never completed')
+          with urllib.request.urlopen(base+job_id+'/result',timeout=10) as r:
+              assert r.status==200,r.status
+              xml=r.read()
+          root=ET.fromstring(xml)
+          assert root.tag=='score-partwise'
+          notes=len(root.findall('.//note'))
+          assert notes>0,notes
+          print('PASS: actual POST -> queued/running -> finished -> GET plain MusicXML:',notes,'notes')
+          PY
+      - name: REAL browser imports the actual PDF and renders editable score
+        shell: bash
+        env:
+          CHROME_BIN: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+        run: |
+          set -euo pipefail
+          test -x "$CHROME_BIN"
+          OMR_REAL_PDF="$RUNNER_TEMP/official-example.pdf" OMR_REAL_HOST='http://127.0.0.1:18787' node pruebas/omr-real-browser.cjs
+      - name: Print actual server diagnostics on failure
+        if: failure()
+        run: |
+          echo '---- Local server log ----'
+          tail -120 "$RUNNER_TEMP/omr-api.log" 2>/dev/null || true
+          echo '---- Official Audiveris recognition log ----'
+          tail -70 "$RUNNER_TEMP/audiveris-real.log" 2>/dev/null || true
