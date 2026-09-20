@@ -44,7 +44,7 @@ class OMRTests(unittest.TestCase):
     def test_convert_produces_xml_and_cleans_temp(self):
         seen = []
         def runner(args, **kwargs):
-            self.assertEqual(args[1:3], ['-batch', '-export'])
+            self.assertEqual(args[1:4], ['-batch', '-transcribe', '-export'])
             output = Path(args[args.index('-output') + 1]); output.mkdir(exist_ok=True)
             result = output / 'recognized.musicxml'
             result.write_text('<score-partwise/>')
