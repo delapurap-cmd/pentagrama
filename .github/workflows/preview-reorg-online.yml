@@ -1,0 +1,47 @@
+name: Verify editor reorganization review URL (no deployment)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-reorg-online.yml
+permissions:
+  contents: read
+jobs:
+  public-review-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright-core@1.55.0
+      - name: Verify pinned source loads as web review with no score overlay
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node <<'JS'
+          const {chromium}=require('playwright-core');
+          const assert=require('node:assert/strict');
+          const url='https://raw.githack.com/delapurap-cmd/pentagrama/912c4287e0424cc5b255054ec44823333995956f/studio.html';
+          (async()=>{const b=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
+            try{const ctx=await b.newContext({viewport:{width:390,height:844}});
+              await ctx.addCookies([{name:'__Http-phish',value:'1',domain:'raw.githack.com',path:'/',secure:true,httpOnly:true}]);
+              const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+              const res=await page.goto(url,{waitUntil:'domcontentloaded',timeout:40000});
+              assert.equal(res.status(),200);
+              await page.locator('#stage .sheet').first().waitFor({timeout:30000});
+              assert.equal(await page.locator('#panelPlay').isVisible(),true);
+              const header=await page.locator('header.bar').boundingBox();
+              const stage=await page.locator('main.stage').boundingBox();
+              assert.ok(stage.y>=header.y+header.height-2&&stage.height>100);
+              assert.equal(await page.locator('#btnMetroAlways').isVisible(),true);
+              await page.locator('#btnPiano').click();
+              assert.equal(await page.locator('#deviceWritten').isVisible(),true);
+              assert.equal(await page.locator('#btnPdfImport').count(),0);
+              const r=await page.evaluate(async()=>{let r=await fetch('sonidos/piano/C4.opus');return {code:r.status,bytes:(await r.arrayBuffer()).byteLength}});
+              assert.equal(r.code,200);assert.ok(r.bytes>1000);
+              assert.deepEqual(errors,[]);
+              console.log('PASS online review: HTTP 200, always-visible inline player, distinct device, MTM audio samples, no production deployment: '+page.url());
+            }finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+          JS
