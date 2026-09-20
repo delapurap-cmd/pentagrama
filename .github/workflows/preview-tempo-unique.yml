@@ -32,6 +32,15 @@ jobs:
           PY
           git apply --check /tmp/pentagrama-tempo-unique.patch
           git apply /tmp/pentagrama-tempo-unique.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('pruebas/tempo-ui-browser.cjs')
+          t=p.read_text()
+          a="  await page.locator('#btnTempoMenu').click();\n  assert.equal(await page.locator('#panel').isVisible(),true,'Tap panel opens from metronome chevron');"
+          b="  await page.locator('#btnTempoMenu').click();\n  await page.locator('#panel').waitFor({state:'visible',timeout:4000});\n  assert.equal(await page.locator('#panel').isVisible(),true,'Tap panel opens from metronome chevron');"
+          assert t.count(a)==1, 'Panel interaction check changed'
+          p.write_text(t.replace(a,b))
+          PY
           git diff --check
           node --check js/audio.js
           node --check js/app.js
