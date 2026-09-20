@@ -87,6 +87,9 @@
       <input id="ppBInput" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="Compás final B">
       <button class="btn ghost" id="ppSetB" type="button" title="Usar el compás actual como B">Marcar B</button>
       <output id="ppRegion" aria-live="off">1 compás</output>
+      <button class="btn ghost" id="ppSaveLoop" type="button" title="Guardar esta región A–B">Guardar bucle</button>
+      <select id="ppLoops" aria-label="Bucles guardados"><option value="">Bucles guardados…</option></select>
+      <button class="btn ghost" id="ppDeleteLoop" type="button" title="Eliminar el bucle seleccionado" disabled>Eliminar</button>
     </div>
   </div>
   <div class="transport-advanced row" id="ppAdvanced" hidden>
@@ -96,6 +99,8 @@
       <output class="num ancho" id="ppVel">100%</output>
       <button class="btn ghost icon" id="ppRapido" type="button" title="Más deprisa">＋</button>
     </div>
+    <label class="lbl" for="ppCount">Cuenta de entrada</label>
+    <select class="sel" id="ppCount" aria-label="Compases de cuenta de entrada"><option value="0">Sin entrada</option><option value="1">1 compás</option><option value="2">2 compases</option></select>
     <label class="lbl" for="ppInstrumento">Ver en</label>
     <select class="sel" id="ppInstrumento" title="Instrumento de ayuda"></select>
   </div>
@@ -141,6 +146,8 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/engrave.js"></script>
 <script src="js/radial.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/range-edit.js"></script>
+<script src="js/practice-core.js"></script>
 <script src="js/piano-midi.js"></script>
 <script src="js/instrumentos.js"></script>
 <script src="js/app.js"></script>

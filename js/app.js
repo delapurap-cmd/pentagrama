@@ -11,6 +11,7 @@
   const LS_CURRENT = 'mtm-score:v1:current';
   const LS_LIB = 'mtm-score:v1:library';
   const LS_ZOOM = 'mtm-score:v1:zoom';
+  const LS_VERSIONS = 'mtm-score:v1:versions';
   const ZOOMS = [0.25, 0.32, 0.4, 0.5, 0.65, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4];
   const PARAMS = new URLSearchParams(location.search);
   const EMBED = PARAMS.get('embed') === '1';
@@ -47,7 +48,14 @@
         if(write)insertMidi(midi,chord);
       },
       onUp:midi=>{keysDown.delete(midi);Sound.liveOff(midi);},
-      onPedal:on=>Sound.livePedal(on)
+      onPedal:on=>Sound.livePedal(on),
+      getTempo:()=>state.score.tempo,
+      getBeats:()=>Math.max(1,Math.round(Model.capacity(state.score.time)/Model.beatTicks(state.score.time))),
+      getTarget:()=>{const f=currentEvent(),pent=f?.pent||0;
+        const inStaff=f?Model.voces(state.score.measures[f.mi]).filter(v=>v.pent===pent):[];
+        return {staff:pent,staves:Model.nPent(state.score),
+          voice:f?Math.max(1,inStaff.findIndex(v=>v.vi===f.vi)+1):1};},
+      onRecorded:insertRecorded
     });
     bindPlayPanel();
     bindKeys();
@@ -168,21 +176,51 @@
     } catch (e) { return null; }
   }
   const readLib = () => { try { return JSON.parse(localStorage.getItem(LS_LIB) || '[]'); } catch (e) { return []; } };
-  const writeLib = (l) => { try { localStorage.setItem(LS_LIB, JSON.stringify(l)); } catch (e) { toast('No hay espacio para guardar'); } };
+  const writeLib = (l) => { try { localStorage.setItem(LS_LIB, JSON.stringify(l)); return true; } catch (e) { toast('No hay espacio para guardar'); return false; } };
 
+  const readVersions=()=>{try{return JSON.parse(localStorage.getItem(LS_VERSIONS)||'{}');}catch(_){return {};}};
   function saveToLibrary() {
     const lib = readLib();
-    const entry = {
-      id: state.score.libId || Model.uid(),
-      title: state.score.title,
-      updated: Date.now(),
-      data: state.score
-    };
-    state.score.libId = entry.id;
-    const i = lib.findIndex((x) => x.id === entry.id);
-    if (i >= 0) lib[i] = entry; else lib.unshift(entry);
-    writeLib(lib);
-    toast('Guardada en «Mis partituras»');
+    const id=state.score.libId||Model.uid();
+    const entry={id,title:state.score.title,updated:Date.now(),data:Model.clone(state.score)};
+    state.score.libId=id;entry.data.libId=id;
+    const i=lib.findIndex(x=>x.id===id);
+    if(i>=0){
+      const old=lib[i];
+      if(JSON.stringify(old.data)!==JSON.stringify(entry.data)){
+        const versions=readVersions(),arr=versions[id]||[];
+        arr.unshift({title:old.title,updated:old.updated,data:old.data});
+        versions[id]=arr.slice(0,8);
+        try{localStorage.setItem(LS_VERSIONS,JSON.stringify(versions));}
+        catch(_){toast('Sin espacio para historial; exporta una copia JSON');}
+      }
+      lib[i]=entry;
+    }else lib.unshift(entry);
+    if(!writeLib(lib))return;save();toast('Guardada en «Mis partituras»');
+  }
+  function buscarBiblioteca(){
+    const q=prompt('Buscar título en Mis partituras:');if(q===null)return;
+    const normal=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    const found=readLib().filter(e=>normal(e.title).includes(normal(q)));
+    if(!found.length)return toast('No hay coincidencias en Mis partituras');
+    menu([{head:`Resultados: ${found.length}`},...found.slice(0,50).map(e=>({
+      label:escapeHtml(e.title||'Sin título'),hint:new Date(e.updated).toLocaleDateString('es-ES'),
+      fn:()=>{if(!confirm('¿Abrir esta partitura? Guarda los cambios antes de continuar.'))return;
+        snapshot();state.score=Model.clone(e.data);Model.reflow(state.score);
+        state.selectedId=null;Radial.close();render();toast('Partitura abierta');}
+    }))],$('#btnFile'));
+  }
+  function versionesAnteriores(){
+    const id=state.score.libId,versions=id?(readVersions()[id]||[]):[];
+    if(!versions.length)return toast('Guarda dos versiones distintas para crear un historial');
+    menu([{head:'Versiones anteriores (locales)'},...versions.map((v,i)=>({
+      label:escapeHtml(v.title||'Sin título'),
+      hint:new Date(v.updated).toLocaleString('es-ES'),
+      fn:()=>{if(!confirm('¿Recuperar esta versión? La actual quedará en Deshacer; guarda una copia si quieres conservarla.'))return;
+        snapshot();state.score=Model.clone(v.data);state.score.libId=id;
+        Model.reflow(state.score);state.selectedId=null;Radial.close();render();
+        toast('Versión recuperada. Guarda en Mis partituras para confirmarla.');}
+    }))],$('#btnFile'));
   }
 
   /* ---------------- Edición ---------------- */
@@ -567,6 +605,67 @@
     Radial.close();render();
   }
 
+  /** Commit one captured MIDI take as ONE undo operation. Does not erase another voice. */
+  function insertRecorded(take,opts={}) {
+    if(!take.groups.length)return toast('No se capturaron notas MIDI');
+    if(rep.playing)pararTodo();
+    const found=currentEvent();
+    const mi=found?found.mi:Math.max(0,compasDelTick(rep.cursorTick)-1);
+    const m=state.score.measures[mi];if(!m)throw Error('Compás de destino no disponible');
+    const pent=Math.max(0,Math.min(Model.nPent(state.score)-1,opts.staff|0));
+    const order=Math.max(1,Math.min(4,opts.voice|0));
+    let matches=Model.voces(m).filter(v=>v.pent===pent);
+    const count=matches.length;
+    if(order>count+1)throw Error('Crea la voz anterior antes de grabar aquí');
+    const events=PracticeCore.events(take,Model,midi=>midiPitch(midi,mi,pent));
+    if(!events.some(e=>e.kind==='note'))return;
+    snapshot();
+    const dest=matches[order-1]||(pent===0&&!count?Model.vozDe(m,0):Model.asegurarVoz(m,Model.nVoces(m),pent));
+    const at=found&&found.vi===dest.vi&&found.pent===pent?found.index+1:dest.events.length;
+    dest.events.splice(at,0,...events);Model.reflow(state.score);
+    state.selectedId=events.find(e=>e.kind==='note').id;
+    Radial.close();render();
+    const notes=take.notes,warning=(take.divergentChordDurations||take.overlappingGroups)
+      ?` · aviso: ${take.divergentChordDurations} duraciones de acorde unificadas; ${take.overlappingGroups} solapamientos recortados`:'';
+    toast(`${notes} notas MIDI escritas en pauta ${pent+1}, voz ${order}${warning}`);
+  }
+
+  /* Whole-measure editing uses the transport A–B region as its selection. */
+  let fragmento=null;
+  function rangoCompases(){
+    const a=Math.max(1,Math.min(nCompases(),rep.a));
+    const b=Math.max(a,Math.min(nCompases(),rep.b));return {a,b};
+  }
+  function editarCompases(action){
+    const {a,b}=rangoCompases();
+    if(action==='copiar'){fragmento=RangeEdit.copy(state.score,a,b);
+      return toast(`Copiados ${fragmento.length} compases`);}
+    if(action==='pegar'){
+      if(!fragmento?.length)return toast('Primero copia un tramo');
+      snapshot();RangeEdit.paste(state.score,fragmento,compasDelTick(rep.cursorTick),Model);
+      state.selectedId=null;render();return toast('Fragmento pegado después del compás actual');
+    }
+    if(action==='duplicar'){
+      snapshot();RangeEdit.paste(state.score,RangeEdit.copy(state.score,a,b),b,Model);
+      state.selectedId=null;render();return toast('Compases duplicados');
+    }
+    if(action==='borrar'){
+      if(!confirm(`¿Borrar los compases ${a}–${b}? Esta operación se puede deshacer.`))return;
+      snapshot();RangeEdit.remove(state.score,a,b,Model);
+      state.selectedId=null;render();return toast('Compases eliminados');
+    }
+    if(action==='transponer'){
+      askNumber('Transponer compases A–B: semitonos (-24 a 24)',0,-24,24,n=>{
+        if(!n)return;
+        const candidate=Model.clone(state.score);
+        try{const count=RangeEdit.transpose(candidate,a,b,n,Model,(m,mi,pent)=>midiPitch(m,mi,pent));
+          snapshot();state.score=candidate;state.selectedId=null;render();
+          toast(`${count} eventos transpuestos. Revisa el cifrado escrito.`);
+        }catch(err){toast(err.message);}
+      });
+    }
+  }
+
   /* ---------------- Barra de herramientas ---------------- */
   function menu(items, anchor) {
     closeMenus();
@@ -682,6 +781,15 @@
         { sep: true },
         { head: 'Guardar' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
+        { label: 'Buscar en mis partituras', fn: buscarBiblioteca },
+        { label: 'Versiones anteriores', fn: versionesAnteriores },
+        { sep: true },
+        { head: `Editar compases A–B (${rep.a}–${rep.b})` },
+        { label: 'Copiar compases', fn:()=>editarCompases('copiar') },
+        { label: 'Pegar después del compás actual', fn:()=>editarCompases('pegar') },
+        { label: 'Duplicar compases', fn:()=>editarCompases('duplicar') },
+        { label: 'Borrar compases', fn:()=>editarCompases('borrar') },
+        { label: 'Transponer compases', hint:'semitonos', fn:()=>editarCompases('transponer') },
         { sep: true },
         { head: 'Importar' },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
@@ -750,7 +858,29 @@
      El cursor es un tick ABSOLUTO de la partitura: pausar, navegar y el bucle
      deben compartir una sola posición, incluso al cambiar de compás. */
   const rep = { velocidad: 1, metronomo: false, bucle: false, a: 1, b: 1,
-    rangoEditado: false, cursorTick: 0, playing: false, sesion: 0, scoreRef: null };
+    rangoEditado: false, cursorTick: 0, playing: false, sesion: 0, scoreRef: null,
+    cuenta:0, esperando:false, timers:[], regiones:[] };
+  const PRACTICE_PREFIX='mtm-score:practice:v1:';
+  const practiceKey=()=>PRACTICE_PREFIX+state.score.practiceId;
+  function cargarPractica(){
+    state.score.practiceId ||= Model.uid();
+    let data=null;try{data=JSON.parse(localStorage.getItem(practiceKey())||'null');}catch(_){}
+    rep.regiones=Array.isArray(data?.loops)?data.loops.filter(x=>Number.isInteger(x.a)&&Number.isInteger(x.b)&&x.a>0&&x.b>=x.a).slice(0,16):[];
+    rep.cuenta=[0,1,2].includes(data?.countIn)?data.countIn:0;
+    $('#ppCount').value=String(rep.cuenta);refrescarBucles();
+  }
+  function guardarPractica(){
+    try{localStorage.setItem(practiceKey(),JSON.stringify({version:1,countIn:rep.cuenta,loops:rep.regiones}));}
+    catch(_){toast('No queda espacio: exporta una copia de la partitura');}
+  }
+  function refrescarBucles(){
+    const sel=$('#ppLoops');sel.replaceChildren(new Option('Bucles guardados…',''));
+    rep.regiones.forEach((r,i)=>sel.add(new Option(r.name||`Compases ${r.a}–${r.b}`,String(i))));
+    $('#ppDeleteLoop').disabled=true;
+  }
+  function limpiarCuenta(){
+    rep.timers.forEach(clearTimeout);rep.timers=[];rep.esperando=false;
+  }
   let ayuda = 'ninguno';
   try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
 
@@ -781,10 +911,11 @@
       rep.scoreRef = state.score; rep.cursorTick = 0;
       rep.a = 1; rep.b = Math.min(2, nCompases());
       rep.bucle = false; rep.rangoEditado = false;
+      limpiarCuenta();cargarPractica();
     }
     rep.cursorTick = limitarTick(rep.cursorTick);
     const actual = compasDelTick(rep.cursorTick);
-    $('#ppPos').textContent = `Compás ${actual} / ${nCompases()}`;
+    $('#ppPos').textContent = rep.esperando ? 'Cuenta de entrada…' : `Compás ${actual} / ${nCompases()}`;
     $('#ppStop').disabled = rep.cursorTick === 0 && !rep.playing;
     $('#ppPrev').disabled = actual <= 1;
     $('#ppNext').disabled = actual >= nCompases();
@@ -819,7 +950,7 @@
       const c = Engrave.moverCursor(state.score, rep.cursorTick);
       if (c) seguirLaHoja(c);
     }
-    if (estaba) arrancar();
+    if (estaba) arrancar(true);
   }
   function irACompas(n) {
     posicionar(tickDeCompas(Math.max(1, Math.min(nCompases(), n))), true);
@@ -828,15 +959,17 @@
     if (rep.playing) { pararTodo(); return; }
     arrancar();
   }
-  function arrancar() {
+  function arrancar(saltarCuenta=false) {
     const { inicio, fin } = rep.bucle ? limitesBucle() : { inicio: 0, fin: ultimoTick() };
     if (rep.cursorTick < inicio || rep.cursorTick >= fin) rep.cursorTick = inicio;
     const sesion = ++rep.sesion;
     rep.playing = true;
     Sound.metroStop(); // evite dos metrónomos simultáneos
-    actualizarTransporte();
-    if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
-    Promise.resolve(Sound.play(state.score, {
+    const sonar=()=>{
+      if(sesion!==rep.sesion)return;
+      limpiarCuenta();actualizarTransporte();
+      if (EMBED) parent.postMessage({ type: 'reper-play-start', id: BLOCK_ID }, '*');
+      Promise.resolve(Sound.play(state.score, {
       desde: rep.cursorTick, hasta: fin, bucle: rep.bucle,
       factor: rep.velocidad, metronomo: rep.metronomo,
       onSonando: (ids, midis) => {
@@ -852,9 +985,22 @@
         if (c) seguirLaHoja(c);
       },
       onEnd: () => { if (sesion === rep.sesion) pararTodo(); }
-    })).catch(() => {
-      if (sesion === rep.sesion) { pararTodo(); toast('No se pudo reproducir la partitura'); }
-    });
+      })).catch(() => {
+        if (sesion === rep.sesion) { pararTodo(); toast('No se pudo reproducir la partitura'); }
+      });
+    };
+    const bars=saltarCuenta?0:rep.cuenta;
+    if(!bars){sonar();return;}
+    Sound.ac(); // activate WebAudio synchronously from the real Play gesture
+    const mi=Math.max(0,compasDelTick(rep.cursorTick)-1);
+    const time=Model.timeAt(state.score,mi),beat=Model.beatTicks(time);
+    const beats=Math.max(1,Math.round(Model.capacity(time)/beat));
+    const durBeat=60/Math.max(1,state.score.tempo*rep.velocidad)*beat/Model.Q;
+    rep.esperando=true;actualizarTransporte();
+    for(let i=0;i<bars*beats;i++)rep.timers.push(setTimeout(()=>{
+      if(sesion===rep.sesion)Sound.click(Sound.ac().currentTime+.01,i%beats===0);
+    },i*durBeat*1000));
+    rep.timers.push(setTimeout(sonar,bars*beats*durBeat*1000));
   }
 
   /** Pone o quita el instrumento de ayuda y ajusta el aviso de lo que no cabe. */
@@ -893,7 +1039,7 @@
   }
 
   function pararTodo() {
-    rep.sesion++;
+    limpiarCuenta();rep.sesion++;
     rep.playing = false;
     Sound.stop(); Sound.metroStop();
     Instrumentos.encender([]);
@@ -923,7 +1069,7 @@
 
   function bindPlayPanel() {
     const refresca = () => actualizarTransporte();
-    const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(); } };
+    const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(true); } };
     $('#ppPlay').addEventListener('click', togglePlay);
     $('#ppStop').addEventListener('click', () => {
       if (rep.playing) pararTodo();
@@ -986,6 +1132,31 @@
       refresca();
     };
     $('#ppAInput').addEventListener('change', (e) => campo('a', e.target.value));
+    $('#ppCount').addEventListener('change',e=>{
+      rep.cuenta=Math.max(0,Math.min(2,parseInt(e.target.value,10)||0));guardarPractica();
+    });
+    $('#ppSaveLoop').addEventListener('click',()=>{
+      const initial=`Compases ${rep.a}–${rep.b}`;
+      const name=prompt('Nombre de esta región A–B:',initial);
+      if(name==null)return;
+      if(!name.trim())return toast('Introduce un nombre para guardar el bucle');
+      rep.regiones.push({name:name.trim().slice(0,80),a:rep.a,b:rep.b});
+      if(rep.regiones.length>16)rep.regiones.shift();
+      guardarPractica();refrescarBucles();toast('Bucle guardado');
+    });
+    $('#ppLoops').addEventListener('change',e=>{
+      if(e.target.value===''){ $('#ppDeleteLoop').disabled=true;return; }
+      const r=rep.regiones[+e.target.value];if(!r)return;
+      $('#ppDeleteLoop').disabled=false;
+      rep.a=Math.min(nCompases(),r.a);rep.b=Math.min(nCompases(),Math.max(rep.a,r.b));
+      rep.rangoEditado=true;rep.bucle=true;
+      posicionar(tickDeCompas(rep.a));actualizarTransporte();
+    });
+    $('#ppDeleteLoop').addEventListener('click',()=>{
+      const at=$('#ppLoops').value;if(at==='')return;
+      if(!confirm('¿Eliminar este bucle guardado?'))return;
+      rep.regiones.splice(+at,1);guardarPractica();refrescarBucles();
+    });
     $('#ppBInput').addEventListener('change', (e) => campo('b', e.target.value));
     $('#ppSetA').addEventListener('click', () => campo('a', compasDelTick(rep.cursorTick)));
     $('#ppSetB').addEventListener('click', () => campo('b', compasDelTick(rep.cursorTick)));

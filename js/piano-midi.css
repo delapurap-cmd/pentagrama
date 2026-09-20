@@ -48,3 +48,8 @@ body:not(.embed).con-ayuda .stage .sheets{padding-bottom:245px}
 @media(max-width:780px){#btnPiano{order:1}body:not(.embed)>.bar>#btnPlay{order:2}}
 @media(max-width:640px){#pianoMidiCanvas{height:96px}.mtm-midi-controls{gap:5px}#pianoStatus{flex-basis:100%;min-width:0}}
 @media print{#panelPlay,#btnPiano,.ayuda-dock{display:none!important}}
+
+#pianoRecord[aria-pressed="true"]{background:#8a262d;color:#fff;border-color:#e07178}
+#pianoGrid,#pianoCount,#pianoStaff,#pianoVoice{height:29px;max-width:175px;background:#211d19;border:1px solid #77613a;border-radius:6px;color:#f4e9d2;font-size:11px}
+#pianoRecordStatus{font-size:11px;color:#e5c678;min-width:100px}
+body:not(.embed)>.ayuda-dock{max-height:min(340px,52dvh)}

@@ -21,13 +21,62 @@ const PianoMidi = (() => {
     equipos.setAttribute('aria-label','Teclado MIDI conectado');
     const estado=document.createElement('output');estado.id='pianoStatus';estado.textContent='Piano táctil listo';
     estado.setAttribute('aria-live','polite');barra.append(label,conectar,equipos,estado);
+    const grabar=document.createElement('button');grabar.type='button';grabar.id='pianoRecord';
+    grabar.className='btn';grabar.textContent='● Grabar interpretación';
+    const rejilla=document.createElement('select');rejilla.id='pianoGrid';rejilla.setAttribute('aria-label','Cuantización MIDI');
+    [[1,'Negra'],[2,'Corchea'],[4,'Semicorchea'],[8,'Fusa']].forEach(([v,t])=>{
+      const op=document.createElement('option');op.value=v;op.textContent='Rejilla: '+t;rejilla.append(op);
+    });rejilla.value='4';
+    const entrada=document.createElement('select');entrada.id='pianoCount';entrada.setAttribute('aria-label','Compases de entrada');
+    ['Sin entrada','1 compás de entrada','2 compases de entrada'].forEach((t,i)=>{
+      const op=document.createElement('option');op.value=i;op.textContent=t;entrada.append(op);
+    });
+    const pauta=document.createElement('select');pauta.id='pianoStaff';pauta.setAttribute('aria-label','Pentagrama de grabación');
+    const target=acciones.getTarget?.()||{staff:0,staves:1};
+    for(let i=0;i<Math.max(1,target.staves);i++){
+      const op=document.createElement('option');op.value=i;op.textContent='Pauta '+(i+1);pauta.append(op);
+    }pauta.value=String(target.staff||0);
+    const voz=document.createElement('select');voz.id='pianoVoice';voz.setAttribute('aria-label','Voz de grabación');
+    for(let i=1;i<=4;i++){
+      const op=document.createElement('option');op.value=i;op.textContent='Voz '+i;voz.append(op);
+    }voz.value=String(target.voice||1);
+    const estadoGrabar=document.createElement('output');estadoGrabar.id='pianoRecordStatus';
+    estadoGrabar.setAttribute('aria-live','polite');
+    barra.append(grabar,rejilla,entrada,pauta,voz,estadoGrabar);
     const scroll=document.createElement('div');scroll.className='mtm-midi-scroll';
     scroll.setAttribute('aria-label','Piano E1 a G7 de More Than Modes');
     const lienzo=document.createElement('canvas');lienzo.id='pianoMidiCanvas';
     lienzo.setAttribute('aria-label','Piano interactivo E1 a G7');lienzo.setAttribute('tabindex','0');
     scroll.append(lienzo);root.append(barra,scroll);
     const ctx=lienzo.getContext('2d'),pulsadas=new Map(),punteros=new Map();
-    let dibujo=[],disposed=false,acceso=null,entrada=null,forma=null;
+    let dibujo=[],disposed=false,acceso=null,entradaMIDI=null,forma=null;
+    let recorder=null,countdownTimer=null;
+    function finishRecording(){
+      if(!recorder)return;
+      if(countdownTimer)clearTimeout(countdownTimer);countdownTimer=null;
+      const shot=recorder.finish(performance.now());recorder=null;
+      grabar.textContent='● Grabar interpretación';grabar.setAttribute('aria-pressed','false');
+      if(!shot.notes){estadoGrabar.textContent='Sin notas grabadas';return;}
+      try{
+        acciones.onRecorded?.(shot,{staff:+pauta.value,voice:+voz.value,grid:+rejilla.value});
+        estadoGrabar.textContent=shot.notes+' notas capturadas';
+      }catch(e){estadoGrabar.textContent='Error: '+e.message;}
+    }
+    grabar.addEventListener('click',()=>{
+      if(recorder){finishRecording();return;}
+      const bpm=Math.max(30,Math.min(300,Number(acciones.getTempo?.()||90)));
+      const beats=Math.max(1,Number(acciones.getBeats?.()||4));
+      const n=Number(entrada.value),lead=n*beats*60000/bpm;
+      const origin=performance.now()+lead;
+      recorder=PracticeCore.capture({bpm,division:+rejilla.value,origin,Q:Model.Q});
+      grabar.textContent='■ Detener y escribir';grabar.setAttribute('aria-pressed','true');
+      estadoGrabar.textContent=lead?'Cuenta de entrada…':'Grabando…';
+      if(lead){
+        const audio=Sound.ac().currentTime+0.03;
+        for(let k=0;k<n*beats;k++)Sound.click(audio+k*60/bpm,k%beats===0);
+        countdownTimer=setTimeout(()=>{countdownTimer=null;if(recorder)estadoGrabar.textContent='Grabando…';},lead);
+      }
+    });
     function pintar(){
       if(!forma||disposed)return;
       const {w,bw,bh,h,negX}=forma;
@@ -62,14 +111,18 @@ const PianoMidi = (() => {
     function on(m,v=.85){
       if(disposed||!Number.isInteger(m)||m<0||m>127)return;
       const n=pulsadas.get(m)||0;pulsadas.set(m,n+1);
-      if(!n)acciones.onDown?.(m,v,escribir.checked);pintar();
+      if(!n){if(recorder)recorder.down(m,performance.now(),Math.round(v*127));
+        acciones.onDown?.(m,v,escribir.checked&&!recorder);}
+      pintar();
     }
     function off(m){
       const n=pulsadas.get(m)||0;if(!n)return;
-      if(n===1){pulsadas.delete(m);acciones.onUp?.(m);}
+      if(n===1){pulsadas.delete(m);if(recorder)recorder.up(m,performance.now());acciones.onUp?.(m);}
       else pulsadas.set(m,n-1);pintar();
     }
-    function soltar(){for(const m of pulsadas.keys())acciones.onUp?.(m);
+    function soltar(){for(const m of pulsadas.keys()){
+      if(recorder)recorder.up(m,performance.now());acciones.onUp?.(m);
+    }
       pulsadas.clear();punteros.clear();pintar();}
     function tecla(e){
       if(!forma)return null;
@@ -106,19 +159,19 @@ const PianoMidi = (() => {
       else if(tipo===0xb0&&m===64)acciones.onPedal?.(v>=64);
     }
     function elegir(){
-      if(entrada)entrada.onmidimessage=null;soltar();
-      entrada=acceso?[...acceso.inputs.values()].find(x=>x.id===equipos.value)||null:null;
-      if(entrada)entrada.onmidimessage=mensaje;
-      estado.textContent=entrada?'MIDI: '+entrada.name:'Piano táctil listo';
+      if(entradaMIDI)entradaMIDI.onmidimessage=null;soltar();
+      entradaMIDI=acceso?[...acceso.inputs.values()].find(x=>x.id===equipos.value)||null:null;
+      if(entradaMIDI)entradaMIDI.onmidimessage=mensaje;
+      estado.textContent=entradaMIDI?'MIDI: '+entradaMIDI.name:'Piano táctil listo';
     }
     function actualizar(){
       if(!acceso||disposed)return;
       const disponibles=[...acceso.inputs.values()].filter(x=>x.state!=='disconnected');
-      const anterior=entrada?.id;equipos.replaceChildren();
+      const anterior=entradaMIDI?.id;equipos.replaceChildren();
       disponibles.forEach(d=>{const o=document.createElement('option');o.value=d.id;o.textContent=d.name;equipos.append(o);});
       equipos.hidden=!disponibles.length;
       if(anterior&&disponibles.some(d=>d.id===anterior))equipos.value=anterior;
-      if(!disponibles.length){if(entrada)entrada.onmidimessage=null;entrada=null;soltar();
+      if(!disponibles.length){if(entradaMIDI)entradaMIDI.onmidimessage=null;entradaMIDI=null;soltar();
         estado.textContent='Sin teclado MIDI. Piano táctil disponible.';}
       else elegir();
     }
@@ -141,8 +194,8 @@ const PianoMidi = (() => {
     const instancia={
       encender(midis){dibujo=(midis||[]).filter(Number.isInteger);pintar();},
       fuera:m=>m<MIN||m>MAX,
-      dispose(){if(disposed)return;soltar();disposed=true;obs.disconnect();
-        if(entrada)entrada.onmidimessage=null;if(acceso)acceso.onstatechange=null;
+      dispose(){if(disposed)return;soltar();finishRecording();disposed=true;obs.disconnect();
+        if(entradaMIDI)entradaMIDI.onmidimessage=null;if(acceso)acceso.onstatechange=null;
         window.removeEventListener('blur',desenfocar);document.removeEventListener('visibilitychange',ocultar);
         if(actual===instancia)actual=null;}
     };

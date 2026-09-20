@@ -39,3 +39,6 @@ body:not(.embed).con-ayuda #panelPlay{transform:none!important}
 @media(max-width:620px){body:not(.embed)>#panelPlay{max-height:calc(100dvh - var(--player-top,95px) - 7px)} #panelPlay .transport-main{gap:2px} body:not(.embed)>.ayuda-dock{max-height:220px}}
 @media print{#panelPlay,.ayuda-dock{display:none!important}}
 #panelAyuda[hidden]{display:none!important}
+
+#panelPlay #ppLoops{max-width:145px;height:28px;background:#222026;color:#eacb8a;border:1px solid #665335;border-radius:5px;font-size:11px}
+#panelPlay #ppSaveLoop,#panelPlay #ppDeleteLoop{font-size:10px;min-height:28px}
