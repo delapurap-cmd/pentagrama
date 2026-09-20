@@ -5,6 +5,7 @@ on:
       - preview/estabilidad-editor-20260920
     paths:
       - .github/workflows/preview-practice-stage2.yml
+      - pruebas/stage2-browser.cjs
 permissions:
   contents: write
 jobs:
