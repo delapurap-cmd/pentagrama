@@ -67,3 +67,10 @@ body:not(.embed)>.bar .metro-always{font-size:12px}
 @media print{body:not(.embed)>.bar,body:not(.embed)>#panelAyuda{display:none!important}}
 
 .menu{max-width:calc(100vw - 16px);max-height:70dvh;overflow-y:auto}
+
+/* Real metronome symbol, not a generic quarter note. Armed ≠ free-running. */
+#btnMetroAlways .metro-icon{flex:0 0 19px;display:block}
+#btnMetroAlways[aria-pressed="true"] .metro-icon{color:#f9d56a}
+#btnMetroAlways.beat-flash .metro-icon{animation:metro-onbeat .18s ease-out}
+@keyframes metro-onbeat{0%{filter:drop-shadow(0 0 5px #e7b94c);transform:rotate(-7deg)}100%{filter:none;transform:rotate(0)}}
+@media(prefers-reduced-motion:reduce){#btnMetroAlways.beat-flash .metro-icon{animation:none}}

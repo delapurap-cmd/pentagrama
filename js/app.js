@@ -991,17 +991,19 @@
     $('#ppMetro').setAttribute('aria-pressed', String(rep.metronomo));
     $('#btnMetroAlways').setAttribute('aria-pressed',String(rep.metronomo));
     $('#btnMetroAlways').classList.toggle('on',rep.metronomo);
+    $('#btnMetroAlways').title = rep.metronomo ? 'Metrónomo armado: comenzará con Play' : 'Activar metrónomo para el próximo Play';
+    $('#btnMetroAlways').setAttribute('aria-label',rep.metronomo ? 'Metrónomo armado, en silencio hasta reproducir' : 'Armar metrónomo para reproducir');
     $('#btnMetro').classList.toggle('on',rep.metronomo);
     $('#btnMetro').setAttribute('aria-pressed',String(rep.metronomo));
     if(rep.metronomo&&rep.playing){
       const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),beat=Model.beatTicks(Model.timeAt(state.score,mi));
       const beatIndex=Math.floor((rep.cursorTick-tickDeCompas(mi+1))/beat);
       $('#btnMetroAlways').classList.toggle('pulse',beatIndex%2===0);
-    }else if(!rep.metronomo)$('#btnMetroAlways').classList.remove('pulse');
+    }else $('#btnMetroAlways').classList.remove('pulse');
     $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
     const barra = $('#ppBarra');
     if (!barra.dataset.arrastrando) barra.value = Math.round(rep.cursorTick / Math.max(1, ultimoTick()) * 1000);
-    if(rep.metronomo&&!rep.playing&&!rep.esperando&&!Sound.metroOn())startStandaloneMetro();
+    // Armed means SILENT. Play alone drives the score and its clicks.
   }
   function posicionar(tick, navegar = false, seguir = true) {
     const estaba = rep.playing;
@@ -1017,7 +1019,6 @@
       if (c) seguirLaHoja(c);
     }
     if (estaba) arrancar(true);
-    else if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
   }
   function irACompas(n) {
     posicionar(tickDeCompas(Math.max(1, Math.min(nCompases(), n))), true);
@@ -1028,7 +1029,8 @@
   }
   function arrancar(saltarCuenta=false) {
     const { inicio, fin } = rep.bucle ? limitesBucle() : { inicio: 0, fin: ultimoTick() };
-    if (rep.cursorTick < inicio || rep.cursorTick >= fin) rep.cursorTick = inicio;
+    // Repeat ALWAYS begins at the downbeat of A, not at an arbitrary seek point.
+    if (rep.bucle || rep.cursorTick < inicio || rep.cursorTick >= fin) rep.cursorTick = inicio;
     const sesion = ++rep.sesion;
     rep.playing = true;
     Sound.metroStop(); // evite dos metrónomos simultáneos
@@ -1039,6 +1041,13 @@
       Promise.resolve(Sound.play(state.score, {
       desde: rep.cursorTick, hasta: fin, bucle: rep.bucle,
       factor: rep.velocidad, metronomo: rep.metronomo,
+      onBeat: () => {
+        const btn=$('#btnMetroAlways'); btn.classList.remove('beat-flash');
+        void btn.offsetWidth;btn.classList.add('beat-flash');
+      },
+      onLoop: (cycle) => {
+        if(cycle>0){rep.cursorTick=inicio;actualizarTransporte();}
+      },
       onSonando: (ids, midis) => {
         if (sesion !== rep.sesion) return;
         Engrave.resaltar(ids); Instrumentos.encender(midis);
@@ -1115,7 +1124,7 @@
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
-    if(rep.metronomo&&!rep.esperando)startStandaloneMetro();
+    $('#btnMetroAlways').classList.remove('pulse','beat-flash');
     actualizarTransporte();
     if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
   }
@@ -1137,22 +1146,10 @@
     }
   }
 
-  function pulseMetro(beat){
-    if(!rep.metronomo)return;
-    const b=$('#btnMetroAlways');b.classList.toggle('pulse',beat%2===0);
-  }
-  function startStandaloneMetro(){
-    if(!rep.metronomo||rep.playing||rep.esperando)return;
-    const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),time=Model.timeAt(state.score,mi);
-    const beat=Model.beatTicks(time),beats=Math.max(1,Math.round(Model.capacity(time)/beat));
-    const bpm=Model.tempoEn(Model.mapaTempo(state.score),rep.cursorTick)*rep.velocidad;
-    Sound.metroStart(bpm,beats,pulseMetro,beat/Model.Q);
-  }
   function toggleMetro(){
     rep.metronomo=!rep.metronomo;
-    Sound.metroStop();
+    Sound.metroStop(); // cancel any legacy free-running click
     if(rep.playing){pararTodo();arrancar(true);}
-    else if(rep.metronomo)startStandaloneMetro();
     actualizarTransporte();
   }
   function bindPlayPanel() {
@@ -1285,7 +1282,7 @@
       v = Math.max(30, Math.min(300, Math.round(v) || 90));
       bpm.value = v;
       state.score.tempo = v;
-      if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
+      if(rep.playing){pararTodo();arrancar(true);}
       render();
     };
     // Mantener pulsado corre el tempo, que de uno en uno hasta 160 son muchos toques.
@@ -1314,7 +1311,7 @@
       if (!detected) return;
       state.score.tempo = detected;
       $('#bpm').value = detected;
-      if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
+      if(rep.playing){pararTodo();arrancar(true);}
       recomputeTaps();
       paintTapPreview();
       render();

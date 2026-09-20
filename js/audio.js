@@ -9,7 +9,15 @@ const Sound = (() => {
   let metro = null;
   let player = null;
   let playGeneration = 0; // invalidate pending piano sample loads on pause/seek
-  let vivos = [];        // fuentes sonando ahora mismo, para poder cortarlas
+  let vivos = [];        // Includes scheduled notes AND metronome clicks (cancel on stop).
+  function registrar(source) {
+    vivos.push(source);
+    source.addEventListener?.('ended', () => {
+      const i = vivos.indexOf(source);
+      if (i >= 0) vivos.splice(i, 1);
+    });
+    return source;
+  }
 
   function ac() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -28,7 +36,8 @@ const Sound = (() => {
     g.gain.exponentialRampToValueAtTime(accent ? 0.32 : 0.18, at + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, at + 0.055);
     o.connect(g).connect(c.destination);
-    o.start(at); o.stop(at + 0.08);
+    registrar(o); o.start(at); o.stop(at + 0.08);
+    return o;
   }
 
   /* ---------- Piano de muestras ----------
@@ -78,14 +87,13 @@ const Sound = (() => {
     const g = c.createGain();
     src.buffer = buf;
     src.playbackRate.value = rate;
-    const end = at + Math.max(0.12, dur);
+    // Release happens INSIDE the allotted duration; no sample tail crosses B→A.
+    const end = at + Math.max(0.025, dur);
     g.gain.setValueAtTime(vol, at);
-    g.gain.setValueAtTime(vol, Math.max(at, end - 0.12));
-    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.22);   // suelta la tecla
+    g.gain.setValueAtTime(vol, Math.max(at, end - Math.min(0.06, dur * 0.25)));
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
     src.connect(g).connect(c.destination);
-    src.start(at);
-    src.stop(end + 0.3);
-    vivos.push(src);
+    registrar(src); src.start(at); src.stop(end + 0.005);
     return true;
   }
 
@@ -148,13 +156,17 @@ const Sound = (() => {
     o.type = timbre==='piano'?'triangle':wave(timbre); o.frequency.setValueAtTime(f, at);
     o2.type = 'sine'; o2.frequency.setValueAtTime(f * (timbre==='organ'?3:2), at);
     const g2 = c.createGain(); g2.gain.value = 0.12;
-    const peak = (timbre==='brass'?.095:timbre==='reed'?.07:timbre==='organ'?.2:.22) * (vol / 0.9), end = at + Math.max(0.12, dur * 0.96);
+    const peak = (timbre==='brass'?.095:timbre==='reed'?.07:timbre==='organ'?.2:.22) * (vol / 0.9);
+    const end = at + Math.max(0.025, dur * 0.96);
+    const attack = Math.min(0.012, (end - at) * 0.25);
+    const sustain = Math.min(end - 0.001, at + Math.max(attack + 0.001, Math.min(0.25, dur * 0.5)));
     g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(peak, at + 0.012);
-    g.gain.exponentialRampToValueAtTime(peak * 0.55, at + Math.min(0.25, dur * 0.5));
+    g.gain.exponentialRampToValueAtTime(peak, at + attack);
+    g.gain.exponentialRampToValueAtTime(peak * 0.55, sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, end);
     o.connect(g); o2.connect(g2).connect(g); g.connect(c.destination);
-    o.start(at); o2.start(at); o.stop(end + 0.02); o2.stop(end + 0.02);
+    registrar(o); registrar(o2);
+    o.start(at); o2.start(at); o.stop(end); o2.stop(end);
   }
 
   /* ---------- Metrónomo ---------- */
@@ -163,13 +175,14 @@ const Sound = (() => {
     const c = ac();
     const spb = 60 / Math.max(10,Math.min(1000,bpm)) * beatFactor;
     const timers=[];
+    const sources=[];
     let beat = 0;
     let next = c.currentTime + 0.08;
     const origin = next;
     const tick = () => {
       while (next < c.currentTime + 0.15) {
         const accent = beat % beatsPerBar === 0;
-        click(next, accent);
+        sources.push(click(next, accent));
         if (onBeat) {
           const when = next, b = beat;
           timers.push(setTimeout(() => {if(metro&&metro.origin===origin)onBeat(b);}, Math.max(0, (when - c.currentTime) * 1000)));
@@ -179,10 +192,14 @@ const Sound = (() => {
       }
     };
     tick();
-    metro = { id: setInterval(tick, 25), origin, bpm, timers, spb };
+    metro = { id: setInterval(tick, 25), origin, bpm, timers, spb, sources };
   }
   function metroStop() {
-    if (metro) { clearInterval(metro.id);metro.timers.forEach(clearTimeout); metro = null; }
+    if (metro) {
+      clearInterval(metro.id); metro.timers.forEach(clearTimeout);
+      metro.sources.forEach(source => { try { source.stop(ctx.currentTime); } catch (_) {} });
+      metro = null;
+    }
   }
   const metroOn = () => !!metro;
   const metroSpacing = () => metro ? metro.spb : null;
@@ -278,7 +295,6 @@ const Sound = (() => {
         });
       });
     });
-    if (!items.length) { if (onEnd) onEnd(); return; }
     items.sort((a, b) => a.at - b.at);
 
     /* El matiz vale hasta que aparezca otro, y un regulador lleva de uno al
@@ -317,21 +333,23 @@ const Sound = (() => {
     const finTick = opts.hasta != null ? opts.hasta
       : inicios[score.measures.length - 1] + Model.capacityAt(score, score.measures.length - 1);
     const segIni = seg(desdeTick), segFin = seg(finTick);
-    const largo = Math.max(0.2, segFin - segIni);
+    const largo = Math.max(0.001, segFin - segIni);
     const region = items
       .map((it, i) => ({ it, cfg: cambios[i] }))
       .filter((x) => x.it.at >= segIni - 1e-6 && x.it.at < segFin - 1e-6);
-    if (!region.length) { if (onEnd) onEnd(); return; }
 
-    const sonar = (it, cfg, cuando) => {
+    const sonar = (it, cfg, cuando, restante) => {
       if (it.ev.kind !== 'note') return;
-      // con el pedal pisado la nota no se corta al soltar la tecla
-      const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
+      // A hard loop boundary cuts notes, grace notes AND sustain at exactly B.
+      const dur = Math.min(cfg.pedal ? it.dur * 1.9 : it.dur, restante);
+      if (dur <= 0.02) return;
       const adornos = it.ev.adornos || [];
-      // las notas de adorno roban un poco de tiempo a la que llevan delante
-      const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
+      const robo = Math.min(dur * 0.35, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        tone(cuando + k * 0.075, ScoreInstrument.concert(score,Model.midiDe(a, score.key, it.clef)) + cfg.octava, 0.09, cfg.vol * 0.8,ScoreInstrument.toneOf(score));
+        const offset = k * 0.075;
+        if (offset + 0.02 < dur) tone(cuando + offset,
+          ScoreInstrument.concert(score,Model.midiDe(a, score.key, it.clef)) + cfg.octava,
+          Math.min(0.09, dur - offset), cfg.vol * 0.8,ScoreInstrument.toneOf(score));
       });
       const midis = Model.midisOf(it.ev, score.key, it.clef).map(m=>ScoreInstrument.concert(score,m));
       midis.forEach((m2, iN) => {
@@ -341,7 +359,11 @@ const Sound = (() => {
           ? desarrollar(it.ev.orn, mid, dur - robo, escala)
           : [[mid, dur - robo]];
         let t = cuando + robo;
-        partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol,ScoreInstrument.toneOf(score)); t += d; } });
+        partes.forEach(([nota, d]) => {
+          const permitted = Math.min(d, dur - (t - cuando));
+          if (permitted > 0.02) tone(t, nota, permitted, cfg.vol,ScoreInstrument.toneOf(score));
+          t += d;
+        });
       });
     };
 
@@ -373,71 +395,90 @@ const Sound = (() => {
       }
     }
 
+    /* WebAudio is the clock. Schedule across B→A *ahead of time* instead of
+       waiting for a 120ms JS timer to notice the previous loop has finished.
+       Each pass has the same absolute duration, no cumulative timing drift. */
     const t0 = c.currentTime + 0.15;
-    let ciclo = 0;              // cuántas vueltas lleva el bucle
-    let ultimaFirma = null;     // qué sonaba la última vez que se miró
-    let iNota = 0, iAviso = 0, iPulso = 0;
-    const base = () => t0 + ciclo * largo;
+    let scheduledCycle = 0, iNota = 0, iPulso = 0;
+    let shownCycle = -1, iAviso = 0, lastSignature = null, lastBeat = -1;
+    const beatPositions = pulsos.map(p => p.at - segIni);
+    const indexable = region.map(x => ({ ...x, offset: x.it.at - segIni }));
+    const base = n => t0 + n * largo;
+    const playingNow = () => player && player.generation === generation;
 
     const adelantar = () => {
-      const ahora = c.currentTime;
-      const hasta = ahora - base() + segIni + VENTANA;
+      if (!playingNow()) return;
+      const now = c.currentTime;
+      const horizon = now + VENTANA;
+      // A backgrounded tab may skip minutes of timer callbacks. Do not flood
+      // WebAudio with hundreds of already-expired loop iterations on resume.
+      if (opts.bucle && base(scheduledCycle + 1) < now - 0.04) {
+        scheduledCycle = Math.max(scheduledCycle, Math.floor((now - t0) / largo));
+        iNota = 0; iPulso = 0;
+      }
+      // This may schedule multiple iterations for a short (one-beat) loop.
+      while (base(scheduledCycle) <= horizon && (opts.bucle || scheduledCycle === 0)) {
+        const origin = base(scheduledCycle);
+        while (iNota < indexable.length && origin + indexable[iNota].offset <= horizon) {
+          const { it, cfg, offset } = indexable[iNota++];
+          if (origin + offset >= now - 0.04)
+            sonar(it, cfg, origin + offset, largo - offset);
+        }
+        while (iPulso < pulsos.length && origin + beatPositions[iPulso] <= horizon) {
+          const p = pulsos[iPulso];
+          const when = origin + beatPositions[iPulso++];
+          if (when >= now - 0.04) click(when, p.fuerte);
+        }
+        if (origin + largo > horizon) break;
+        scheduledCycle++; iNota = 0; iPulso = 0;
+      }
 
-      while (iNota < region.length && region[iNota].it.at <= hasta) {
-        const { it, cfg } = region[iNota++];
-        sonar(it, cfg, base() + (it.at - segIni));
+      if (now < t0) {
+        opts.onPos?.(0, segIni, desdeTick);
+        return;
       }
-      while (iPulso < pulsos.length && pulsos[iPulso].at <= hasta) {
-        const p = pulsos[iPulso++];
-        click(base() + (p.at - segIni), p.fuerte);
+      const elapsed = now - t0;
+      const cycle = opts.bucle ? Math.floor(elapsed / largo) : 0;
+      const phase = opts.bucle ? elapsed - cycle * largo : Math.min(largo, elapsed);
+      const scoreSeconds = segIni + phase;
+      const scoreTick = Math.min(finTick, Model.tickEn(mapa, scoreSeconds * (opts.factor || 1)));
+      if (cycle !== shownCycle) {
+        shownCycle = cycle; iAviso = 0; lastSignature = null; lastBeat = -1;
+        opts.onLoop?.(cycle, desdeTick);
       }
-      const reloj = ahora - base() + segIni;
-      while (iAviso < aSenalar.length && aSenalar[iAviso].at <= reloj) {
-        const it = aSenalar[iAviso++];
-        if (onNote) onNote(it.ev);
+      while (iAviso < aSenalar.length && aSenalar[iAviso].at - segIni <= phase + 1e-6) {
+        const event = aSenalar[iAviso++].ev;
+        if (onNote) onNote(event);
       }
-      /* Lo que de verdad está sonando en este instante: en un piano son las
-         dos manos a la vez, no una nota. Con esto el cursor puede marcar
-         todas y no ir dando saltos de una pauta a otra. */
+      if (opts.onBeat && opts.metronomo) {
+        for (let bi = lastBeat + 1; bi < beatPositions.length; bi++) {
+          if (beatPositions[bi] > phase + 1e-6) break;
+          opts.onBeat(pulsos[bi].fuerte, bi, cycle);
+          lastBeat = bi;
+        }
+      }
       if (opts.onSonando) {
-        const ids = [];
-        const midis = [];
-        for (const { it } of region) {
-          if (it.at > reloj) break;
-          if (it.ev.kind === 'note' && it.at + it.dur > reloj) {
+        const ids = [], midis = [];
+        for (const {it,offset} of indexable) {
+          if (offset > phase) break;
+          if (it.ev.kind === 'note' && Math.min(largo, offset + it.dur) > phase) {
             ids.push(it.ev.id);
-            /* Las alturas ya resueltas, para las ayudas visuales. Se sacan
-               aquí porque aquí está la clave de ese compás y ese pentagrama:
-               calcularlas fuera obligaría a recorrer la obra por segunda vez
-               para averiguar algo que este bucle ya tiene delante. */
-            const ms = Model.midisOf(it.ev, score.key, it.clef).map(m=>ScoreInstrument.concert(score,m));
-            for (const m of ms) if (m != null) midis.push(m);
+            Model.midisOf(it.ev, score.key, it.clef)
+              .map(m => ScoreInstrument.concert(score,m)).forEach(m => {if(m != null) midis.push(m);});
           }
         }
-        const firma = ids.join(',');
-        if (firma !== ultimaFirma) { ultimaFirma = firma; opts.onSonando(ids, midis); }
+        const signature = ids.join(',');
+        if (signature !== lastSignature) {lastSignature = signature;opts.onSonando(ids,midis);}
       }
-      if (opts.onPos) {
-        opts.onPos(Math.min(1, Math.max(0, (reloj - segIni) / largo)), reloj,
-                   Model.tickEn(mapa, reloj * (opts.factor || 1)));
-      }
-
-      if (reloj >= segFin) {
-        if (opts.bucle) {
-          ciclo++; iNota = 0; iAviso = 0; iPulso = 0;
-          return;
-        }
-        if (iNota >= region.length && ahora - base() > largo + 0.25) {
-          clearInterval(reloj2);
-          player = null;
-          vivos = [];
-          if (onEnd) onEnd();
-        }
+      opts.onPos?.(Math.min(1,phase/largo), scoreSeconds, scoreTick);
+      if (!opts.bucle && elapsed >= largo + 0.25) {
+        clearInterval(player.reloj); player = null;
+        if (onEnd) onEnd();
       }
     };
+    player = {reloj: null, generation};
     adelantar();
-    const reloj2 = setInterval(adelantar, PASO);
-    player = { reloj: reloj2 };
+    if (playingNow()) player.reloj = setInterval(adelantar, PASO);
   }
 
   function stop() {
