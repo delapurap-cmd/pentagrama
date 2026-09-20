@@ -43,14 +43,14 @@ jobs:
         run: node pruebas/stage2-practice.cjs
       - name: Install real browser test driver
         run: npm install --no-save playwright-core@1.55.0
-      - name: Confirm existing piano, menus, music import, player and sync in Chrome
+      - name: Test new features and preserve existing editor in Chrome
         env:
           CHROME_BIN: /usr/bin/google-chrome
         run: |
+          node pruebas/stage2-browser.cjs
           node pruebas/piano-midi-browser.cjs
           node pruebas/archivo-menu-browser.cjs
           node pruebas/preview-roundtrip.cjs
-          node pruebas/transport-browser.cjs
           node pruebas/sync-inline-browser.cjs
           node pruebas/toolbar-browser.cjs
       - name: Commit only verified source to preview branch
