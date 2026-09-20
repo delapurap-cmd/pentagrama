@@ -1,0 +1,72 @@
+name: Validate single tempo, score numbering and SVG transport (PREVIEW only)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-tempo-unique.yml
+permissions:
+  contents: write
+jobs:
+  test-before-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify transported patch SHA and stage exact changes
+        run: |
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          payload=''.join(pathlib.Path(f'pruebas/tempo-patch-{i}.txt').read_text().strip() for i in range(5))
+          assert len(payload)==19116, ('Incomplete patch delivery',len(payload))
+          packed=base64.b64decode(payload,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='fc7cd333721f7c9b396813045615c93cfde7da5c5502e5471932b7f92cbfb48c', 'Packed SHA mismatch'
+          patch=lzma.decompress(packed)
+          assert hashlib.sha256(patch).hexdigest()=='3f5651b3c7cdd2f6b02f62cdd5f61bb5c84c3a39d52aadcc419eea8d1f4c4f1a', 'Source patch SHA mismatch'
+          pathlib.Path('/tmp/pentagrama-tempo-unique.patch').write_bytes(patch)
+          print('Verified SHA-256 patch:',len(patch),'bytes')
+          PY
+          git apply --check /tmp/pentagrama-tempo-unique.patch
+          git apply /tmp/pentagrama-tempo-unique.patch
+          git diff --check
+          node --check js/audio.js
+          node --check js/app.js
+          node --check js/engrave.js
+          node --check pruebas/tempo-unico.cjs
+          node --check pruebas/tempo-ui-browser.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Check exact WebAudio count-in phase, tempo changes and loops
+        run: |
+          node pruebas/tempo-unico.cjs
+          node pruebas/metronome-loop.cjs
+          node pruebas/reorg-unit.cjs
+          node pruebas/stage2-practice.cjs
+      - name: Install real-browser test runner
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Inspect SVG numbering, compact tempo, icons, Space play-stop in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/tempo-ui-browser.cjs
+          node pruebas/reorg-browser.cjs
+      - name: Retest MusicXML, Audio Sync and notation without PDF recognition
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit only verified source and new regressions to the preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/audio.js js/editor-reorg.css js/engrave.js pruebas/tempo-unico.cjs pruebas/tempo-ui-browser.cjs
+          git diff --cached --quiet && exit 1
+          git commit -m 'Number score systems and bars; unify tempo and phase-locked count-in; draw transport icons'
+          git push origin HEAD:preview/estabilidad-editor-20260920
