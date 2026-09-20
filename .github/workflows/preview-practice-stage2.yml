@@ -1,0 +1,64 @@
+name: Preview practice milestone, verify then commit (no deployment)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-practice-stage2.yml
+permissions:
+  contents: write
+jobs:
+  stage-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore exact SHA-verified preview patch
+        run: |
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          data=''.join(pathlib.Path(f'pruebas/stage2-part-{i}.txt').read_text().strip() for i in range(4))
+          assert len(data)==14056, 'Missing patch data'
+          packed=base64.b64decode(data,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='fb834197a552297e46adaef44c9340c39a97b94894fa6fbc36b2eef619efd083'
+          patch=lzma.decompress(packed)
+          assert hashlib.sha256(patch).hexdigest()=='682a5837a04dee85a40f4304f5a2dbf9fa56099ef712fd56620af89de07d7b88'
+          pathlib.Path('/tmp/pentagrama-stage2.patch').write_bytes(patch)
+          print('SHA verified:',len(patch),'patch bytes')
+          PY
+          git apply --check /tmp/pentagrama-stage2.patch
+          git apply /tmp/pentagrama-stage2.patch
+          git diff --check
+          node --check js/app.js
+          node --check js/piano-midi.js
+          node --check js/practice-core.js
+          node --check js/range-edit.js
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Test MIDI capture, quantization and measure operations
+        run: node pruebas/stage2-practice.cjs
+      - name: Install real browser test driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Confirm existing piano, menus, music import, player and sync in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/piano-midi-browser.cjs
+          node pruebas/archivo-menu-browser.cjs
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/transport-browser.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit only verified source to preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/piano-midi.js js/piano-midi.css js/transport.css js/practice-core.js js/range-edit.js
+          git diff --cached --quiet && exit 1
+          git commit -m 'Add MIDI performance capture, saved practice loops, range edits and revision history'
+          git push origin HEAD:preview/estabilidad-editor-20260920
