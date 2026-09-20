@@ -101,12 +101,21 @@ const Sound = (() => {
       v.source.stop(t+.26);
     }catch(_){}
   }
-  async function liveOn(midi,velocity=.85){
+  async function liveOn(midi,velocity=.85,timbre="piano"){
     if(!Number.isInteger(midi)||midi<0||midi>127)return;
     if(live.has(midi))soltar(live.get(midi));
     const v={active:true,down:true,source:null,gain:null};live.set(midi,v);
     try{
-      const c=ac(),{midi:sample,rate}=nearestSample(midi);
+      const c=ac();
+      if(timbre!=='piano'){
+        const osc=c.createOscillator(),g=c.createGain();
+        osc.type=wave(timbre);osc.frequency.value=440*Math.pow(2,(midi-69)/12);
+        g.gain.setValueAtTime(.0001,c.currentTime);
+        g.gain.exponentialRampToValueAtTime(Math.min(.4,.23*velocity),c.currentTime+.018);
+        osc.connect(g).connect(c.destination);v.source=osc;v.gain=g;
+        osc.start(c.currentTime);return;
+      }
+      const {midi:sample,rate}=nearestSample(midi);
       const buf=await loadSample(sample);
       if(!v.active||live.get(midi)!==v)return; // released while loading
       if(!buf){console.warn('Piano MIDI: muestra no disponible',sampleUrl(sample));
@@ -128,17 +137,18 @@ const Sound = (() => {
   function liveAllOff(){pedal=false;for(const v of live.values())soltar(v);live.clear()}
 
   /* ---------- Nota (reproducción de la partitura) ---------- */
-  function tone(at, midi, dur, vol = 0.9) {
-    if (playSample(at, midi, dur, vol)) return;
+  function wave(timbre){return ({organ:'sine',bass:'triangle',brass:'sawtooth',reed:'square'})[timbre]||'triangle';}
+  function tone(at, midi, dur, vol = 0.9, timbre='piano') {
+    if (timbre==='piano' && playSample(at, midi, dur, vol)) return;
     const c = ac();
     const f = 440 * Math.pow(2, (midi - 69) / 12);
     const o = c.createOscillator();
     const o2 = c.createOscillator();
     const g = c.createGain();
-    o.type = 'triangle'; o.frequency.setValueAtTime(f, at);
-    o2.type = 'sine'; o2.frequency.setValueAtTime(f * 2, at);
+    o.type = timbre==='piano'?'triangle':wave(timbre); o.frequency.setValueAtTime(f, at);
+    o2.type = 'sine'; o2.frequency.setValueAtTime(f * (timbre==='organ'?3:2), at);
     const g2 = c.createGain(); g2.gain.value = 0.12;
-    const peak = 0.22 * (vol / 0.9), end = at + Math.max(0.12, dur * 0.96);
+    const peak = (timbre==='brass'?.095:timbre==='reed'?.07:timbre==='organ'?.2:.22) * (vol / 0.9), end = at + Math.max(0.12, dur * 0.96);
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(peak, at + 0.012);
     g.gain.exponentialRampToValueAtTime(peak * 0.55, at + Math.min(0.25, dur * 0.5));
@@ -148,10 +158,11 @@ const Sound = (() => {
   }
 
   /* ---------- Metrónomo ---------- */
-  function metroStart(bpm, beatsPerBar, onBeat) {
+  function metroStart(bpm, beatsPerBar, onBeat,beatFactor=1) {
     metroStop();
     const c = ac();
-    const spb = 60 / bpm;
+    const spb = 60 / Math.max(10,Math.min(1000,bpm)) * beatFactor;
+    const timers=[];
     let beat = 0;
     let next = c.currentTime + 0.08;
     const origin = next;
@@ -161,19 +172,20 @@ const Sound = (() => {
         click(next, accent);
         if (onBeat) {
           const when = next, b = beat;
-          setTimeout(() => onBeat(b), Math.max(0, (when - c.currentTime) * 1000));
+          timers.push(setTimeout(() => {if(metro&&metro.origin===origin)onBeat(b);}, Math.max(0, (when - c.currentTime) * 1000)));
         }
         next += spb;
         beat++;
       }
     };
     tick();
-    metro = { id: setInterval(tick, 25), origin, bpm };
+    metro = { id: setInterval(tick, 25), origin, bpm, timers, spb };
   }
   function metroStop() {
-    if (metro) { clearInterval(metro.id); metro = null; }
+    if (metro) { clearInterval(metro.id);metro.timers.forEach(clearTimeout); metro = null; }
   }
   const metroOn = () => !!metro;
+  const metroSpacing = () => metro ? metro.spb : null;
   /** Instante del primer clic, para alinear los golpes con el pulso. */
   const metroOrigin = () => (metro ? metro.origin : null);
 
@@ -222,10 +234,10 @@ const Sound = (() => {
       const midis = [];
       score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
         if (ev.kind === 'note') {
-          Model.midisOf(ev, score.key, Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
+          Model.midisOf(ev, score.key, Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(ScoreInstrument.concert(score,x)));
         }
       })));
-      if (midis.length) await preload(midis);
+      if (midis.length && ScoreInstrument.toneOf(score)==='piano') await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
     if (generation !== playGeneration) return; // user navigated before preload completed
 
@@ -319,9 +331,9 @@ const Sound = (() => {
       // las notas de adorno roban un poco de tiempo a la que llevan delante
       const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        tone(cuando + k * 0.075, Model.midiDe(a, score.key, it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
+        tone(cuando + k * 0.075, ScoreInstrument.concert(score,Model.midiDe(a, score.key, it.clef)) + cfg.octava, 0.09, cfg.vol * 0.8,ScoreInstrument.toneOf(score));
       });
-      const midis = Model.midisOf(it.ev, score.key, it.clef);
+      const midis = Model.midisOf(it.ev, score.key, it.clef).map(m=>ScoreInstrument.concert(score,m));
       midis.forEach((m2, iN) => {
         const mid = m2 + cfg.octava;
         // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
@@ -329,7 +341,7 @@ const Sound = (() => {
           ? desarrollar(it.ev.orn, mid, dur - robo, escala)
           : [[mid, dur - robo]];
         let t = cuando + robo;
-        partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol); t += d; } });
+        partes.forEach(([nota, d]) => { if (d > 0.02) { tone(t, nota, d, cfg.vol,ScoreInstrument.toneOf(score)); t += d; } });
       });
     };
 
@@ -352,16 +364,12 @@ const Sound = (() => {
     // Pulsos del metrónomo dentro de la región, si se pide.
     const pulsos = [];
     if (opts.metronomo) {
-      let t = desdeTick, k = 0;
-      let guard = 0;
-      while (t < finTick && guard++ < 20000) {
-        const mi = Math.max(0, inicios.findIndex((x, i) =>
-          x <= t && (inicios[i + 1] == null || inicios[i + 1] > t)));
-        const compas = Model.timeAt(score, mi);
-        const pulso = Model.beatTicks(compas);
-        const enCompas = Math.round((t - inicios[mi]) / pulso);
-        pulsos.push({ at: seg(t), fuerte: enCompas === 0 });
-        t += pulso; k++;
+      for(let mi=0;mi<score.measures.length;mi++){
+        const start=inicios[mi],end=start+Model.capacityAt(score,mi);
+        if(end<=desdeTick||start>=finTick)continue;
+        const beat=Model.beatTicks(Model.timeAt(score,mi));
+        for(let t=start,k=0;t<end&&t<finTick;t+=beat,k++)
+          if(t>=desdeTick-1e-7)pulsos.push({at:seg(t),fuerte:k===0});
       }
     }
 
@@ -402,7 +410,7 @@ const Sound = (() => {
                aquí porque aquí está la clave de ese compás y ese pentagrama:
                calcularlas fuera obligaría a recorrer la obra por segunda vez
                para averiguar algo que este bucle ya tiene delante. */
-            const ms = Model.midisOf(it.ev, score.key, it.clef);
+            const ms = Model.midisOf(it.ev, score.key, it.clef).map(m=>ScoreInstrument.concert(score,m));
             for (const m of ms) if (m != null) midis.push(m);
           }
         }
@@ -583,6 +591,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, metroSpacing, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

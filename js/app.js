@@ -44,7 +44,7 @@
     bindPanel();
     Instrumentos.configurarPiano({
       onDown:(midi,velocity,write)=>{
-        const chord=keysDown.size>0;keysDown.add(midi);Sound.liveOn(midi,velocity);
+        const chord=keysDown.size>0;keysDown.add(midi);Sound.liveOn(midi,velocity,ScoreInstrument.toneOf(state.score));
         if(write)insertMidi(midi,chord);
       },
       onUp:midi=>{keysDown.delete(midi);Sound.liveOff(midi);},
@@ -58,6 +58,7 @@
       onRecorded:insertRecorded
     });
     bindPlayPanel();
+    if(!EMBED)togglePlayPanel(true);
     bindKeys();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
@@ -84,6 +85,9 @@
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#chipTempo').textContent = '♩ = ' + state.score.tempo;
+      $('#metroTempo').textContent=String(state.score.tempo);
+      $('#deviceWritten').value=state.score.instrumentId||'concert';
+      $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
       $('#btnUndo').disabled = state.undo.length === 0;
       $('#btnRedo').disabled = state.redo.length === 0;
       actualizarTransporte();
@@ -558,7 +562,7 @@
   /* Piano MIDI -> notation, respecting score key, selected voice and figure. */
   const keysDown=new Set();let lastMidiEvent=null;
   function midiPitch(midi,mi,pent){
-    const clef=Model.clefAt(state.score,mi,pent),note=midi-(clef.octava||0);
+    const clef=Model.clefAt(state.score,mi,pent),note=ScoreInstrument.written(state.score,midi)-(clef.octava||0);
     const oct=Math.floor(note/12)-1,flats=Model.keyBySpec(state.score.key).fifths<0;
     let best=null;
     for(let o=oct-1;o<=oct+1;o++)for(let k=0;k<7;k++){
@@ -578,7 +582,7 @@
       const found=Model.findEvent(state.score,lastMidiEvent.id);
       if(found&&found.ev.kind==='note'){
         const p=midiPitch(midi,found.mi,found.pent),clef=Model.clefAt(state.score,found.mi,found.pent);
-        if(p&&!Model.midisOf(found.ev,state.score.key,clef).includes(midi)&&Model.anadirAltura(found.ev,p.di,p.acc)){
+        if(p&&!Model.midisOf(found.ev,state.score.key,clef).includes(ScoreInstrument.written(state.score,midi))&&Model.anadirAltura(found.ev,p.di,p.acc)){
           lastMidiEvent.at=now;render();return;
         }
       }
@@ -682,8 +686,10 @@
     });
     document.body.appendChild(el);
     const r = anchor.getBoundingClientRect();
-    el.style.top = (r.bottom + 8) + 'px';
-    el.style.left = Math.min(r.left, innerWidth - el.offsetWidth - 12) + 'px';
+    const top = EMBED ? r.bottom + 8 : $('header.bar').getBoundingClientRect().bottom + 5;
+    el.style.top = top + 'px';
+    el.style.maxHeight = Math.max(110, innerHeight - top - 8) + 'px';
+    el.style.left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8)) + 'px';
     setTimeout(() => document.addEventListener('pointerdown', onDocDown, { once: true }), 0);
   }
   function onDocDown(e) { if (!e.target.closest('.menu')) closeMenus(); }
@@ -772,6 +778,21 @@
         fn: () => { snapshot(); state.score.time = { num: t.num, den: t.den }; Model.reflow(state.score); render(); }
       })), e.currentTarget));
 
+    $('#btnEdit').addEventListener('click',(e)=>menu([
+      {head:'Deshacer y rehacer'},
+      {label:'Deshacer',hint:'Ctrl/Cmd + Z',fn:undo},
+      {label:'Rehacer',hint:'Ctrl/Cmd + Shift + Z',fn:redo},
+      {sep:true},{head:`Trabajar con compases A–B (${rep.a}–${rep.b})`},
+      {label:'Copiar compases',fn:()=>editarCompases('copiar')},
+      {label:'Pegar después del compás actual',fn:()=>editarCompases('pegar')},
+      {label:'Duplicar compases',fn:()=>editarCompases('duplicar')},
+      {label:'Borrar compases',fn:()=>editarCompases('borrar')},
+      {label:'Transponer compases',hint:'Semitonos',fn:()=>editarCompases('transponer')},
+      {sep:true},{head:'Notación'},
+      {label:'Añadir sistema',fn:()=>{snapshot();Model.addSystem(state.score,1);render();}},
+      {label:'Añadir página',fn:()=>{snapshot();Model.addPage(state.score);render();}}
+    ],e.currentTarget));
+    // Do not mix file import/export with mutation commands.
     $('#btnFile').addEventListener('click', (e) => {
       const lib = readLib();
       const items = [
@@ -783,13 +804,6 @@
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
         { label: 'Buscar en mis partituras', fn: buscarBiblioteca },
         { label: 'Versiones anteriores', fn: versionesAnteriores },
-        { sep: true },
-        { head: `Editar compases A–B (${rep.a}–${rep.b})` },
-        { label: 'Copiar compases', fn:()=>editarCompases('copiar') },
-        { label: 'Pegar después del compás actual', fn:()=>editarCompases('pegar') },
-        { label: 'Duplicar compases', fn:()=>editarCompases('duplicar') },
-        { label: 'Borrar compases', fn:()=>editarCompases('borrar') },
-        { label: 'Transponer compases', hint:'semitonos', fn:()=>editarCompases('transponer') },
         { sep: true },
         { head: 'Importar' },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
@@ -830,10 +844,51 @@
     $('#btnTap').addEventListener('click', () => togglePanel());
     $('#btnPlay').addEventListener('click',()=>togglePlayPanel());
     $('#btnPiano').addEventListener('click',()=>{
-      ayuda=ayuda==='piano'?'ninguno':'piano';montaAyuda();
+      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();}
+      else {dispositivosAbiertos=true;ayuda=$('#deviceSelect').value||'piano';if(ayuda==='ninguno')ayuda='piano';
+        if($('#syncDock')&&!$('#syncDock').hidden)$('#syncClose').click();}
+      montaAyuda();
     });
+    $('#btnAudioSync').addEventListener('click',()=>{
+      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();}
+    });
+    $('#deviceSelect').addEventListener('change',e=>{
+      ayuda=e.target.value;Sound.liveAllOff();montaAyuda();
+    });
+    $('#soundSelect').addEventListener('change',e=>{
+      if(rep.playing)pararTodo();Sound.liveAllOff();
+      snapshot();state.score.soundId=e.target.value;render();
+      toast('Timbre seleccionado para la partitura y el teclado MIDI');
+    });
+    $('#deviceWritten').addEventListener('change',e=>{
+      const profile=ScoreInstrument.byId(e.target.value);
+      $('#deviceInfo').textContent=`${profile.name}: la nota escrita suena ${profile.shift} semitonos respecto de la altura notada. Convertir conserva el sonido anterior.`;
+    });
+    $('#deviceApply').addEventListener('click',()=>{
+      const profile=ScoreInstrument.byId($('#deviceWritten').value);
+      if(profile.id===(state.score.instrumentId||'concert'))return toast('La partitura ya utiliza este instrumento');
+      const plural=Model.nPent(state.score)>1?' Todos los pentagramas de esta parte se convertirán.':'';
+      if(!confirm(`¿Convertir la partitura a ${profile.name}? Se reescribirán notas, armadura y claves manteniendo el sonido.${plural} Puedes deshacerlo.`)){
+        $('#deviceWritten').value=state.score.instrumentId||'concert';return;
+      }
+      try{const converted=ScoreInstrument.convert(state.score,profile.id,Model);
+        if(rep.playing)pararTodo();Sound.liveAllOff();snapshot();state.score=converted;
+        state.selectedId=null;Radial.close();render();montaAyuda();
+        toast(`Convertida a ${profile.name}; el sonido se conserva`);
+      }catch(err){$('#deviceWritten').value=state.score.instrumentId||'concert';toast(err.message);}
+    });
+    ScoreInstrument.profiles.forEach(pr=>{const o=document.createElement('option');
+      o.value=pr.id;o.textContent=pr.name;$('#deviceWritten').append(o);});
+    ScoreInstrument.sounds.forEach(pr=>{const o=document.createElement('option');
+      o.value=pr.id;o.textContent=pr.name;$('#soundSelect').append(o);});
+    Instrumentos.catalogo.forEach(ins=>{const o=document.createElement('option');
+      o.value=ins.id;o.textContent=ins.nombre;$('#deviceSelect').append(o);});
+    $('#deviceWritten').value=state.score.instrumentId||'concert';
+    $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
+    $('#deviceSelect').value=ayuda;
+
     $('#btnPianoClose').addEventListener('click',()=>{
-      ayuda='ninguno';Sound.liveAllOff();montaAyuda();
+      dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();
     });
     if (Native.isApp()) $('#btnPrint').hidden = true;
     else $('#btnPrint').addEventListener('click', () => window.print());
@@ -843,7 +898,7 @@
   function newScore(systems) {
     if (!confirm('¿Empezar una partitura nueva? Se perderá lo que no esté guardado.')) return;
     snapshot();
-    state.score = Model.newScore({ systems, key: state.score.key, time: state.score.time, tempo: state.score.tempo });
+    state.score = Model.newScore({ systems, key: ScoreInstrument.keyFor(state.score.key,ScoreInstrument.shift(state.score),Model), time: state.score.time, tempo: state.score.tempo });
     state.selectedId = null;
     Radial.close();
     render();
@@ -881,6 +936,7 @@
   function limpiarCuenta(){
     rep.timers.forEach(clearTimeout);rep.timers=[];rep.esperando=false;
   }
+  let dispositivosAbiertos=false;
   let ayuda = 'ninguno';
   try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
 
@@ -933,9 +989,19 @@
     $('#ppBucle').setAttribute('aria-pressed', String(rep.bucle));
     $('#ppMetro').classList.toggle('on', rep.metronomo);
     $('#ppMetro').setAttribute('aria-pressed', String(rep.metronomo));
+    $('#btnMetroAlways').setAttribute('aria-pressed',String(rep.metronomo));
+    $('#btnMetroAlways').classList.toggle('on',rep.metronomo);
+    $('#btnMetro').classList.toggle('on',rep.metronomo);
+    $('#btnMetro').setAttribute('aria-pressed',String(rep.metronomo));
+    if(rep.metronomo&&rep.playing){
+      const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),beat=Model.beatTicks(Model.timeAt(state.score,mi));
+      const beatIndex=Math.floor((rep.cursorTick-tickDeCompas(mi+1))/beat);
+      $('#btnMetroAlways').classList.toggle('pulse',beatIndex%2===0);
+    }else if(!rep.metronomo)$('#btnMetroAlways').classList.remove('pulse');
     $('#ppVel').textContent = Math.round(rep.velocidad * 100) + '%';
     const barra = $('#ppBarra');
     if (!barra.dataset.arrastrando) barra.value = Math.round(rep.cursorTick / Math.max(1, ultimoTick()) * 1000);
+    if(rep.metronomo&&!rep.playing&&!rep.esperando&&!Sound.metroOn())startStandaloneMetro();
   }
   function posicionar(tick, navegar = false, seguir = true) {
     const estaba = rep.playing;
@@ -951,6 +1017,7 @@
       if (c) seguirLaHoja(c);
     }
     if (estaba) arrancar(true);
+    else if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
   }
   function irACompas(n) {
     posicionar(tickDeCompas(Math.max(1, Math.min(nCompases(), n))), true);
@@ -1008,15 +1075,17 @@
     try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
     const panel = $('#panelAyuda');
     const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
-    panel.hidden = !puesto;
-    $('#pianoDeviceTitle').textContent=ayuda==='piano'?'Piano MIDI · More Than Modes':'Instrumento · '+ayuda;
-    $('#btnPiano').classList.toggle('on',ayuda==='piano');
-    $('#btnPiano').setAttribute('aria-expanded',String(ayuda==='piano'));
-    document.body.classList.toggle('con-ayuda', !!puesto);
-    /* El panel de reproducción se sube justo lo que ocupe la ayuda. Se mide
-       después de montarla porque un teclado y un mástil no miden igual. */
-    document.documentElement.style.setProperty(
-      '--ins-alto-dock', puesto ? (panel.getBoundingClientRect().height + 8) + 'px' : '0px');
+    panel.hidden = !dispositivosAbiertos;
+    const name=Instrumentos.catalogo.find(ins=>ins.id===ayuda)?.nombre||'Instrumentos';
+    $('#pianoDeviceTitle').textContent='Instrumentos · '+name;
+    $('#btnPiano').classList.toggle('on',dispositivosAbiertos);
+    $('#deviceInfo').textContent=`${ScoreInstrument.byId(state.score.instrumentId).name}: el instrumento elegido conserva el sonido real. Los demás timbres son sintéticos, salvo el piano MTM.`;
+    $('#btnPiano').setAttribute('aria-expanded',String(dispositivosAbiertos));
+    document.body.classList.toggle('device-open',dispositivosAbiertos);
+    document.body.classList.toggle('con-ayuda',dispositivosAbiertos);
+    $('#deviceSelect').value=ayuda;
+    $('#deviceWritten').value=state.score.instrumentId||'concert';
+    $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
     const aviso = $('#insAviso');
     aviso.textContent = '';
     if (!puesto) return;
@@ -1029,7 +1098,7 @@
       const clef = Model.clefAt(state.score, mi, v.pent);
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') return;
-        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(x); });
+        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(ScoreInstrument.concert(state.score,x)); });
       });
     }));
     const fuera = Instrumentos.fuera(todas);
@@ -1046,6 +1115,7 @@
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
+    if(rep.metronomo&&!rep.esperando)startStandaloneMetro();
     actualizarTransporte();
     if (EMBED) parent.postMessage({ type: 'reper-play-end', id: BLOCK_ID }, '*');
   }
@@ -1067,10 +1137,33 @@
     }
   }
 
+  function pulseMetro(beat){
+    if(!rep.metronomo)return;
+    const b=$('#btnMetroAlways');b.classList.toggle('pulse',beat%2===0);
+  }
+  function startStandaloneMetro(){
+    if(!rep.metronomo||rep.playing||rep.esperando)return;
+    const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),time=Model.timeAt(state.score,mi);
+    const beat=Model.beatTicks(time),beats=Math.max(1,Math.round(Model.capacity(time)/beat));
+    const bpm=Model.tempoEn(Model.mapaTempo(state.score),rep.cursorTick)*rep.velocidad;
+    Sound.metroStart(bpm,beats,pulseMetro,beat/Model.Q);
+  }
+  function toggleMetro(){
+    rep.metronomo=!rep.metronomo;
+    Sound.metroStop();
+    if(rep.playing){pararTodo();arrancar(true);}
+    else if(rep.metronomo)startStandaloneMetro();
+    actualizarTransporte();
+  }
   function bindPlayPanel() {
     const refresca = () => actualizarTransporte();
     const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(true); } };
     $('#ppPlay').addEventListener('click', togglePlay);
+    $('#ppRangeButton').addEventListener('click',()=>{
+      const controls=$('#ppLoopControls');controls.hidden=!controls.hidden;
+      $('#ppRangeButton').setAttribute('aria-expanded',String(!controls.hidden));
+      $('#ppRangeButton').textContent=controls.hidden?'A–B ▾':'A–B ▴';
+    });
     $('#ppStop').addEventListener('click', () => {
       if (rep.playing) pararTodo();
       rep.bucle = false; posicionar(0, true);
@@ -1090,22 +1183,8 @@
     $('#ppRapido').addEventListener('click', () => {
       rep.velocidad = Math.min(2, +(rep.velocidad + 0.1).toFixed(2)); refresca(); reinicia();
     });
-    $('#ppMetro').addEventListener('click', () => {
-      rep.metronomo = !rep.metronomo;
-      if (rep.playing) reinicia();
-      else if (rep.metronomo) Sound.metroStart(state.score.tempo * rep.velocidad, state.score.time.num);
-      else Sound.metroStop();
-      refresca();
-    });
-    const selIns = $('#ppInstrumento');
-    Instrumentos.catalogo.forEach((ins) => {
-      const op = document.createElement('option');
-      op.value = ins.id;
-      op.textContent = ins.nombre;
-      selIns.appendChild(op);
-    });
-    selIns.value = ayuda;
-    selIns.addEventListener('change', (e) => { ayuda = e.target.value; montaAyuda(); });
+    $('#ppMetro').addEventListener('click',toggleMetro);
+    $('#btnMetroAlways').addEventListener('click',toggleMetro);
     montaAyuda();
     $('#ppBucle').addEventListener('click', () => {
       rep.bucle = !rep.bucle;
@@ -1177,7 +1256,7 @@
 
   function togglePlayPanel(force){
     const panel=$('#panelPlay');
-    const open=force!=null?force:!panel.classList.contains('open');
+    const open=!EMBED?true:(force!=null?force:!panel.classList.contains('open'));
     if(!EMBED)document.documentElement.style.setProperty('--player-top',
       Math.ceil($('header.bar').getBoundingClientRect().bottom+6)+'px');
     panel.classList.toggle('open',open);
@@ -1193,7 +1272,7 @@
     const open = force != null ? force : !p.classList.contains('open');
     p.classList.toggle('open', open);
     $('#btnTap').classList.toggle('on', open);
-    if (!open) { Sound.metroStop(); $('#btnMetro').classList.remove('on'); }
+    if (!open) $('#btnTap').classList.remove('on');
   }
 
   function bindPanel() {
@@ -1206,7 +1285,7 @@
       v = Math.max(30, Math.min(300, Math.round(v) || 90));
       bpm.value = v;
       state.score.tempo = v;
-      if (Sound.metroOn()) { Sound.metroStop(); Sound.metroStart(v, state.score.time.num); }
+      if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
       render();
     };
     // Mantener pulsado corre el tempo, que de uno en uno hasta 160 son muchos toques.
@@ -1228,18 +1307,14 @@
     pasoLargo($('#bpmDown'), -1);
     pasoLargo($('#bpmUp'), 1);
 
-    $('#btnMetro').addEventListener('click', (e) => {
-      if (Sound.metroOn()) { Sound.metroStop(); e.currentTarget.classList.remove('on'); }
-      else { Sound.metroStart(state.score.tempo, state.score.time.num); e.currentTarget.classList.add('on'); }
-    });
-
+    $('#btnMetro').addEventListener('click',toggleMetro);
     $('#btnTapPad').addEventListener('pointerdown', (e) => { e.preventDefault(); doTap(); });
     $('#btnTapUse').addEventListener('click', () => {
       const detected = state.tapBpm;
       if (!detected) return;
       state.score.tempo = detected;
       $('#bpm').value = detected;
-      if (Sound.metroOn()) { Sound.metroStop(); Sound.metroStart(detected, state.score.time.num); }
+      if(rep.metronomo){Sound.metroStop();startStandaloneMetro();}
       recomputeTaps();
       paintTapPreview();
       render();
@@ -1356,7 +1431,7 @@
   /* ---------------- Teclado ---------------- */
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if (e.target.isContentEditable || e.target.tagName === 'INPUT') return;
+      if (e.target.isContentEditable || ['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)) return;
       if (e.key === ' ') {
         e.preventDefault();
         if ($('#panel').classList.contains('open')) doTap(); else togglePlay();
@@ -1595,7 +1670,7 @@
       '<score-partwise version="3.1">\n' +
       `  <work><work-title>${xmlEsc(s.title)}</work-title></work>\n` +
       (s.composer ? `  <identification><creator type="composer">${xmlEsc(s.composer)}</creator></identification>\n` : '') +
-      '  <part-list><score-part id="P1"><part-name>Música</part-name></score-part></part-list>\n' +
+      `  <part-list><score-part id="P1"><part-name>${xmlEsc(ScoreInstrument.byId(s.instrumentId).name)}</part-name></score-part></part-list>\n` +
       '  <part id="P1">\n';
 
     const nPent = Model.nPent(s);
@@ -1621,6 +1696,7 @@
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
           (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
           Model.pentagramas(s).map((_, p) => claveXML(Model.clefAt(s, 0, p), nPent > 1 ? p + 1 : 0)).join('') +
+          ScoreInstrument.xmlTranspose(s) +
           '      </attributes>\n' +
           `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
       } else {

@@ -1,0 +1,69 @@
+/* Separate file/edit/device controls and an ALWAYS VISIBLE inline transport.
+   Expanding the player consumes header height, never overlays the score. */
+body:not(.embed){grid-template-columns:var(--editor-side) minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr)}
+body:not(.embed)>.bar{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:center;gap:5px;padding:6px 9px;min-height:0}
+body:not(.embed)>.bar #barTools{order:1;flex:1 1 180px;min-width:0;max-width:none;width:auto;justify-content:flex-end}
+body:not(.embed)>.bar #btnNew,body:not(.embed)>.bar #btnPrint,
+body:not(.embed)>.bar>#btnPlay{display:none!important}
+body:not(.embed)>.bar .audio-sync-link{order:0}
+body:not(.embed)>.bar .section-tab,body:not(.embed)>.bar>#btnPiano,
+body:not(.embed)>.bar>#btnMetroAlways{order:0;flex:0 0 auto}
+body:not(.embed)>.bar .sp{order:0;flex:1 1 4px;min-width:0}
+body:not(.embed)>.bar>#panelPlay{position:relative!important;order:10;flex:0 0 100%;display:flex!important;
+ flex-direction:column;align-items:stretch;grid-column:auto;grid-row:auto;left:auto;right:auto;
+ top:auto;bottom:auto;transform:none!important;width:100%;min-width:0;max-width:none;
+ max-height:none;overflow:visible;z-index:auto;margin:2px 0 0;padding:5px 7px;
+ background:#17171a;border:1px solid #453e31;border-radius:8px;box-shadow:none}
+body:not(.embed)>.bar>#panelPlay:not(.open){display:flex!important}
+body:not(.embed) #panelPlay .transport-main{display:flex;flex-wrap:nowrap;justify-content:flex-start;
+ overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;gap:4px;padding:0;min-height:34px}
+body:not(.embed) #panelPlay .transport-main>.btn{flex:0 0 auto}
+body:not(.embed) #panelPlay .transport-main #ppMetro,body:not(.embed) #panelPlay #ppClose{display:none!important}
+body:not(.embed) #panelPlay #ppPos{flex:0 0 auto;min-width:84px;text-align:center}
+body:not(.embed) #panelPlay .transport-timeline{display:flex;flex-direction:column;gap:2px;max-width:none;width:100%}
+body:not(.embed) #panelPlay #ppBarra{width:100%;height:14px;margin:0}
+body:not(.embed) #panelPlay #ppLoopControls{display:flex;justify-content:flex-start;align-items:center;
+ flex-wrap:wrap;padding:5px 0 2px;gap:5px;border-top:1px solid #39332a}
+body:not(.embed) #panelPlay #ppLoopControls[hidden]{display:none!important}
+body:not(.embed) #panelPlay #ppAdvanced{justify-content:flex-start}
+#btnMetroAlways{display:inline-flex;gap:5px;align-items:center;font-weight:750;font-variant-numeric:tabular-nums}
+#metroIndicator{font-size:9px;color:#5e5344;transition:color .06s}
+#btnMetroAlways[aria-pressed="true"]{border-color:#c9a84c;color:#e7c86d}
+#btnMetroAlways.pulse #metroIndicator{color:#ffdf76}
+/* A separate right-hand instrument dock; opening it SHRINKS the workspace,
+   and never obscures a score page. Audio Sync uses this slot independently. */
+body:not(.embed)>#panelAyuda:not([hidden]){grid-column:3;grid-row:2;order:initial;position:relative;
+ left:auto;right:auto;top:auto;bottom:auto;transform:none!important;
+ display:flex;flex-direction:column;gap:9px;width:clamp(250px,24vw,355px);height:100%;
+ min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden;padding:10px;
+ border:0;border-left:1px solid #66522d;border-radius:0;box-shadow:none;background:#151518;z-index:4}
+#panelAyuda[hidden]{display:none!important}
+.device-controls{display:grid;grid-template-columns:1fr;gap:5px;min-width:0}
+.device-controls label{font-size:11px;font-weight:650;color:#d7bf83;margin-top:3px}
+.device-controls select{width:100%;max-width:100%;height:33px;min-width:0;border:1px solid #625033;
+ border-radius:6px;padding:0 6px;background:#222124;color:#f3e5c7;font:inherit;font-size:12px}
+.device-controls #deviceApply{width:100%;justify-content:center;margin-top:5px}
+.device-info{margin:0;color:#b9b2a5;font-size:11px;line-height:1.4}
+body:not(.embed)>.ayuda-dock .ins-scroll{width:100%;max-width:100%}
+body:not(.embed)>#panel{bottom:12px}
+body:not(.embed).con-ayuda #panel.open{transform:translateX(-50%) translateY(0)}
+body:not(.embed)>.bar .metro-always{font-size:12px}
+@media(max-width:780px){
+ body:not(.embed)>.bar{gap:3px;padding:4px 5px}
+ body:not(.embed)>.bar #barTools{order:5;flex:1 0 100%;width:100%;max-width:100%;justify-content:flex-start}
+ body:not(.embed)>.bar>#panelPlay{order:10;padding:4px;margin:0}
+ body:not(.embed)>.bar .section-tab,body:not(.embed)>.bar>#btnPiano,body:not(.embed)>.bar>#btnMetroAlways{height:30px;padding:0 5px;font-size:11px}
+ body:not(.embed)>.bar .audio-sync-link{height:30px;padding:0 5px;font-size:11px}
+ body:not(.embed)>#panelAyuda:not([hidden]){position:relative;grid-column:1/-1;grid-row:2;
+ width:100%;height:100%;min-height:0;max-height:none;border-left:0;padding:8px;box-shadow:none}
+ body:not(.embed).device-open{grid-template-rows:auto minmax(180px,38dvh) minmax(0,1fr)}
+ body:not(.embed).device-open>#panelAyuda:not([hidden]){grid-row:2;max-height:38dvh;overflow-y:auto}
+ body:not(.embed).device-open>.stage{grid-row:3;display:block;height:100%}
+ body:not(.embed).device-open>.editor-rail{display:none}
+ body:not(.embed).device-open>#syncDock{display:none!important}
+ body:not(.embed) #panelPlay .transport-main .btn{min-height:30px;height:30px}
+ body:not(.embed) #panelPlay #ppPos{min-width:75px;font-size:10px}
+}
+@media print{body:not(.embed)>.bar,body:not(.embed)>#panelAyuda{display:none!important}}
+
+.menu{max-width:calc(100vw - 16px);max-height:70dvh;overflow-y:auto}

@@ -31,9 +31,10 @@ const RangeEdit=(()=>{
   for(let mi=start;mi<end;mi++)for(const v of model.voces(s.measures[mi])){
    const clef=model.clefAt(s,mi,v.pent);
    for(const ev of v.events){if(ev.kind!=='note')continue;
+    const shift=typeof ScoreInstrument==='undefined'?0:ScoreInstrument.shift(s);
     const pitches=model.midisOf(ev,s.key,clef).map(m=>{
      if(m+semitones<0||m+semitones>127)throw Error('La transposición sale del rango MIDI');
-     const p=pitch(m+semitones,mi,v.pent);if(!p)throw Error('Altura no representable');
+     const p=pitch(m+semitones+shift,mi,v.pent);if(!p)throw Error('Altura no representable');
      return p;
     });changes.push({ev,pitches});
    }

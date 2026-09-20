@@ -208,6 +208,15 @@ const MusicXML = (() => {
     score.measures = [];
     score.title = (partwise.querySelector('work > work-title')?.textContent || '').trim() || 'Sin título';
     score.composer = (partwise.querySelector('identification > creator[type="composer"]')?.textContent || '').trim();
+    // Recognize transposition metadata from a single known instrument part.
+    // Unknown instruments remain concert scores; never guess a transposition.
+    const chromatic=Number(part.querySelector('measure attributes transpose chromatic')?.textContent);
+    if(typeof ScoreInstrument!=='undefined'&&Number.isFinite(chromatic)){
+      const instrument=ScoreInstrument.profiles.find(p=>p.name===report.partName&&p.shift===chromatic);
+      if(instrument){score.instrumentId=instrument.id;score.soundId=instrument.sound;}
+      else if(part.querySelector('measure attributes transpose'))drop('transposición de instrumento sin perfil compatible');
+    }
+
 
     let divisions = 24;
     let keySet = false, timeSet = false, vigente = null;

@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="js/workspace-header.css">
 <link rel="stylesheet" href="js/transport.css">
 <link rel="stylesheet" href="js/piano-midi.css">
+<link rel="stylesheet" href="js/editor-reorg.css">
 </head>
 <body>
 
@@ -41,30 +42,16 @@
     <button class="btn ghost icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↺</button>
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
     <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
-    <button class="btn" id="btnFile">Archivo</button>
+
   </div>
   <span class="sp"></span>
-  <button class="btn" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Piano MIDI de More Than Modes">🎹 Piano MIDI</button>
-  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="false" title="Abrir reproductor">♫ Reproductor</button>
-</header>
-
-<!-- El lateral contiene los botones reales; no es una réplica del editor. -->
-<aside class="editor-rail standalone-only" id="editorRail" aria-label="Herramientas de partitura"></aside>
-<main class="stage" id="scroller">
-  <div class="sheets" id="stage"></div>
-</main>
-
-<!-- Ayuda visual de instrumento para reproducción. -->
-<section class="ayuda-dock" id="panelAyuda" aria-label="Instrumento" hidden>
-  <div class="piano-device-head"><strong id="pianoDeviceTitle">Piano MIDI · More Than Modes</strong>
-    <button class="btn ghost" id="btnPianoClose" type="button" aria-label="Cerrar instrumento">✕</button>
-  </div>
-  <div class="ins-caja" id="insCaja"></div>
-  <p class="ins-aviso" id="insAviso"></p>
-</section>
-
+  <button class="btn section-tab" id="btnFile" type="button" aria-haspopup="menu">Archivo</button>
+  <button class="btn section-tab" id="btnEdit" type="button" aria-haspopup="menu">Edición</button>
+  <button class="btn section-tab" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Dispositivos, sonido y transposición">♬ Instrumentos</button>
+  <button class="btn metro-always" id="btnMetroAlways" type="button" aria-pressed="false" title="Metrónomo sincronizado con la partitura; alternar clic">♩ <span id="metroTempo">90</span><span id="metroIndicator" aria-hidden="true">●</span></button>
+  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="true" title="Transporte">♫ Reproductor</button>
 <!-- Reproductor -->
-<section class="panel play" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="true">
+<section class="panel play open" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="false">
   <div class="transport-main row" role="group" aria-label="Transporte musical">
     <button class="btn ghost icon" id="ppStop" type="button" aria-label="Ir al inicio" title="Ir al inicio">⏮</button>
     <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior">◀┃</button>
@@ -73,12 +60,13 @@
     <output class="transport-pos" id="ppPos" aria-live="off">Compás 1 / 1</output>
     <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción">♩ Metrónomo</button>
     <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B">↻ Bucle A–B</button>
+    <button class="btn ghost" id="ppRangeButton" type="button" aria-controls="ppLoopControls" aria-expanded="false">A–B ▾</button>
     <button class="btn ghost" id="ppMore" type="button" aria-controls="ppAdvanced" aria-expanded="false">Opciones ▾</button>
     <button class="btn ghost icon" id="ppClose" type="button" title="Cerrar reproductor" aria-label="Cerrar reproductor">✕</button>
   </div>
   <div class="transport-timeline">
     <input class="barra" id="ppBarra" type="range" min="0" max="1000" value="0" step="1" aria-label="Desplazar reproducción por la partitura">
-    <div class="transport-loop" role="group" aria-label="Seleccionar compases para bucle">
+    <div class="transport-loop" id="ppLoopControls" role="group" hidden aria-label="Seleccionar compases para bucle">
       <label for="ppAInput">Desde A</label>
       <input id="ppAInput" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="Compás inicial A">
       <button class="btn ghost" id="ppSetA" type="button" title="Usar el compás actual como A">Marcar A</button>
@@ -101,9 +89,31 @@
     </div>
     <label class="lbl" for="ppCount">Cuenta de entrada</label>
     <select class="sel" id="ppCount" aria-label="Compases de cuenta de entrada"><option value="0">Sin entrada</option><option value="1">1 compás</option><option value="2">2 compases</option></select>
-    <label class="lbl" for="ppInstrumento">Ver en</label>
-    <select class="sel" id="ppInstrumento" title="Instrumento de ayuda"></select>
   </div>
+</section>
+
+</header>
+
+<!-- El lateral contiene los botones reales; no es una réplica del editor. -->
+<aside class="editor-rail standalone-only" id="editorRail" aria-label="Herramientas de partitura"></aside>
+<main class="stage" id="scroller">
+  <div class="sheets" id="stage"></div>
+</main>
+
+<!-- Panel independiente: el dispositivo ocupa su propia columna, no el lienzo. -->
+<section class="ayuda-dock" id="panelAyuda" aria-label="Dispositivos e instrumentos" hidden>
+  <div class="piano-device-head"><strong id="pianoDeviceTitle">Instrumentos · More Than Modes</strong>
+    <button class="btn ghost" id="btnPianoClose" type="button" aria-label="Cerrar instrumento">✕</button>
+  </div>
+  <div class="device-controls">
+    <label for="deviceSelect">Dispositivo visual</label><select id="deviceSelect" aria-label="Elegir dispositivo visual"></select>
+    <label for="soundSelect">Sonido de reproducción</label><select id="soundSelect" aria-label="Seleccionar timbre de reproducción"></select>
+    <label for="deviceWritten">Partitura para instrumento</label><select id="deviceWritten" aria-label="Elegir instrumento transpositor"></select>
+    <button class="btn" type="button" id="deviceApply" title="Reescribir las notas y la armadura conservando las alturas sonoras">Convertir partitura</button>
+    <p id="deviceInfo" class="device-info">Las notas escritas y las alturas que suenan se mantienen vinculadas.</p>
+  </div>
+  <div class="ins-caja" id="insCaja"></div>
+  <p class="ins-aviso" id="insAviso"></p>
 </section>
 
 <!-- Panel de escritura de tiempos -->
@@ -146,6 +156,7 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/engrave.js"></script>
 <script src="js/radial.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/score-instruments.js"></script>
 <script src="js/range-edit.js"></script>
 <script src="js/practice-core.js"></script>
 <script src="js/piano-midi.js"></script>
