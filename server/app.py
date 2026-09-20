@@ -1,10 +1,12 @@
-"""Serve Pentagrama and an optional same-origin Audiveris PDF recognition API.
+"""Serve Pentagrama and its same-origin Audiveris PDF recognition API.
 
-Run at the repository root: uvicorn server.app:app --host 127.0.0.1 --port 8000
+Development: uvicorn server.app:app --host 127.0.0.1 --port 8000
+Bundled desktop app: PENTAGRAMA_WEB_ROOT points to packaged public assets.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
@@ -15,9 +17,9 @@ from starlette.concurrency import run_in_threadpool
 
 from server.omr import MAX_PDF_BYTES, OMRFailure, convert_pdf, executable
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get("PENTAGRAMA_WEB_ROOT") or Path(__file__).resolve().parents[1]).resolve()
 app = FastAPI(title="Pentagrama OMR", docs_url=None, redoc_url=None, openapi_url=None)
-_lock = asyncio.Semaphore(1)  # OMR is CPU/memory-intensive.
+_lock = asyncio.Semaphore(1)
 PUBLIC_ROOT = {"index.html", "studio.html", "sync.html", "style.css", "manifest.json",
                "icon-192.png", "icon-512.png", "icon-maskable.png", "sw.js", "service-worker.js"}
 PUBLIC_FOLDERS = {"js", "vendor", "ejemplos", "sonidos", "assets", "fonts"}
