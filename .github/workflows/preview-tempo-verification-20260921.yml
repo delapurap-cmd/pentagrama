@@ -1,0 +1,31 @@
+name: Verify score tempo and transport controls (preview only)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-tempo-verification-20260921.yml
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check exact audio-clock precount and A-B loop
+        run: |
+          node pruebas/tempo-unico.cjs
+          node pruebas/metronome-loop.cjs
+      - name: Install browser regression driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Verify notation numbering, SVG transport, Space and unified tempo in desktop and mobile
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/tempo-ui-browser.cjs
+          node pruebas/reorg-browser.cjs
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/toolbar-browser.cjs
