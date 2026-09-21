@@ -1,0 +1,83 @@
+name: Verify linked guitar and bass TAB, engraving and transport (preview only)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-tab-linked.yml
+permissions:
+  contents: write
+jobs:
+  test-then-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore exact SHA verified source patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,base64,lzma
+          data=''.join(Path(f'pruebas/linked-tab-patch-{i}.txt').read_text().strip() for i in range(5))
+          assert len(data)==13708,('Incomplete patch',len(data))
+          packed=base64.b64decode(data,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='8567506f733815efbc7ea7b1ad109d0af86fd73300671d63f019129aaad09769','Packed patch mismatch'
+          patch=lzma.decompress(packed)
+          assert hashlib.sha256(patch).hexdigest()=='15e049f400a5fed5328eea17ff56a34faf41ceeff503ed54b9e923f2baad71f6','Source patch mismatch'
+          Path('/tmp/pentagrama-linked-tab.patch').write_bytes(patch)
+          print('Verified TAB patch',len(patch),'bytes')
+          PY
+          git apply --check /tmp/pentagrama-linked-tab.patch
+          git apply /tmp/pentagrama-linked-tab.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('pruebas/tempo-ui-browser.cjs');s=p.read_text()
+          old="(_,i)=>'S'+(i+1)";new="(_,i)=>String(i+1)"
+          assert s.count(old)==1,'Existing numbering test changed unexpectedly'
+          s=s.replace(old,new)
+          old="Number(await page.locator('#metroTempo').innerText())"
+          assert s.count(old)==2,'Existing tempo display test changed unexpectedly'
+          s=s.replace(old,"parseInt(await page.locator('#metroTempo').innerText(),10)")
+          p.write_text(s)
+          PY
+          git diff --check
+          node --check js/tablature.js
+          node --check js/engrave.js
+          node --check js/app.js
+          node --check pruebas/tab-browser.cjs
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Prove bidirectional TAB, sounding MIDI, metronome and previous music logic
+        run: |
+          node pruebas/tab-linked.cjs
+          node pruebas/metronome-loop.cjs
+          node pruebas/reorg-unit.cjs
+          node pruebas/stage2-practice.cjs
+      - name: Install real Chromium browser driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Test TAB editing, icon-only transport, systems and score timing in Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/tab-browser.cjs
+          node pruebas/tempo-ui-browser.cjs
+      - name: Preserve MusicXML, Audio Sync and print and notation regressions
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+      - name: Commit only verified changes to preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/engrave.js js/editor-reorg.css js/tablature.js pruebas/tempo-ui-browser.cjs
+          git diff --cached --quiet && exit 1
+          git commit -m 'Add bidirectional linked tablature, refined chord engraving and inline metro controls'
+          git push origin HEAD:preview/estabilidad-editor-20260920
