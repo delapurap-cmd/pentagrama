@@ -1,0 +1,25 @@
+name: Package latest preview source (no deployment)
+on:
+  push:
+    branches:
+      - preview/estabilidad-editor-20260920
+    paths:
+      - .github/workflows/preview-source-export-20260921.yml
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package exact source including newest linked TAB and metro
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          zip -q -r /tmp/Pentagrama-Web-Current-Source.zip index.html studio.html sync.html style.css manifest.json icon-192.png icon-512.png icon-maskable.png js sonidos pruebas -x '*/node_modules/*'
+          unzip -t /tmp/Pentagrama-Web-Current-Source.zip | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-preview-source
+          path: /tmp/Pentagrama-Web-Current-Source.zip
+          retention-days: 3
