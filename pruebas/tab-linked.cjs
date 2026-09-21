@@ -1,0 +1,45 @@
+/* Linked notation and TAB use a single pitched score event. */
+const assert=require('node:assert/strict');
+const M=global.Model=require('../js/model.js');
+const S=global.ScoreInstrument=require('../js/score-instruments.js');
+const T=require('../js/tablature.js');
+function setup(id='guitar',clef='treble-8v',preset='guitar'){
+ const s=M.newScore({systems:1,clef});s.instrumentId=id;
+ s.tablature={enabled:true,preset,staff:0,capo:0};return s;
+}
+let score=setup(),e=M.note(37,'q',0);M.insertEvent(score,0,0,0,e);
+assert.equal(M.findEvent(score,e.id).ev,e);
+assert.deepEqual(T.midi(score,e,0,0),[64],'Written guitar E5 sounds actual E4');
+assert.deepEqual(T.positions(score,e,0,0),[{string:1,fret:0}]);
+const undo=JSON.stringify(score);
+assert.ok(T.edit(score,e,0,0,0,2,5).ok,'same sounding pitch alternate string');
+assert.deepEqual(T.midi(score,e,0,0),[64]);
+assert.deepEqual(T.positions(score,e,0,0),[{string:2,fret:5}]);
+assert.ok(T.edit(score,e,0,0,0,1,3).ok,'TAB edit changes shared score pitch');
+assert.deepEqual(T.midi(score,e,0,0),[67],'TAB 1:3 sounds G4');
+assert.equal(M.midiDe(M.alturas(e)[0],score.key,M.clefAt(score,0,0)),67);
+assert.deepEqual(T.positions(score,e,0,0),[{string:1,fret:3}]);
+const restored=M.clone(score);
+assert.deepEqual(T.midi(restored,M.findEvent(restored,e.id).ev,0,0),[67],'JSON persists pitch and fingering');
+assert.equal(JSON.parse(undo).measures[0].events[0].di,37,'Undo snapshot intact');
+const snap=JSON.stringify(score);
+assert.equal(T.edit(score,e,0,0,0,19,32).ok,false);
+assert.equal(JSON.stringify(score),snap,'Invalid edit cannot mutate score');
+let bass=setup('electric-bass','bass','bass4');
+let inserted=T.insert(bass,0,4,0,'q',0);
+assert.ok(inserted.ok);assert.deepEqual(T.midi(bass,inserted.event,0,0),[28],'Electric bass E1 is concert MIDI 28');
+assert.deepEqual(T.positions(bass,inserted.event,0,0),[{string:4,fret:0}]);
+assert.equal(M.findEvent(bass,inserted.event.id).pent,0);
+let capo=setup();capo.tablature.capo=2;
+const f=T.insert(capo,0,1,0,'q',0);
+assert.deepEqual(T.midi(capo,f.event,0,0),[66],'Capo II first open string sounds F-sharp 4');
+assert.equal(T.edit(capo,f.event,0,0,0,1,2).ok,true);
+assert.deepEqual(T.midi(capo,f.event,0,0),[68]);
+let chord=setup();const c=M.note(35,'q',0);c.mas=[{di:37,acc:null},{di:39,acc:null}];
+M.insertEvent(chord,0,0,0,c);
+const voicing=T.positions(chord,c,0,0);
+assert.equal(voicing.filter(Boolean).length,3,'Chord receives three playable numbers');
+assert.equal(new Set(voicing.filter(Boolean).map(p=>p.string)).size,3,'Unique chord strings');
+const sounding=T.midi(chord,c,0,0);
+voicing.forEach((p,i)=>assert.equal(T.tuning(chord)[p.string-1]+p.fret,sounding[i]));
+console.log('PASS LINKED TAB: guitar, alternate string, TAB-score shared pitch, bass, capo, chords, JSON and invalid edits');
