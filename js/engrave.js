@@ -52,22 +52,31 @@ const Engrave = (() => {
   };
   const SIEMPRE_ENCIMA = { marcato: true, calderon: true };
 
-  /* El cifrado se escribe con una serif, pero las alteraciones y el signo de
-     aumentado sólo existen en la fuente musical: cada trozo lleva la suya. */
-  const SERIF = '"Iowan Old Style","Palatino Linotype",Georgia,serif';
-  const GLIFO_CIFRADO = { '#': '', b: '', '+': '', '/': '' };
+  /* Cifrado estándar: raíz tipográfica en cuerpo principal, calidad y
+     extensiones elevadas; alteraciones en símbolos ♯/♭, no letras #/b ni
+     glifos privados dibujados con una fuente equivocada. La familia serif
+     tiene proporciones similares a las de la edición convencional (Edwin). */
+  const SERIF = '"Edwin","Iowan Old Style","Palatino Linotype",Georgia,serif';
+  const cifraAcc = s => String(s).replace(/#/g,'♯').replace(/\b([A-G])b/g,'$1♭');
   function ponerCifrado(cs, txt) {
-    const s = String(txt);
-    let buf = '';
-    const suelta = () => { if (buf) { cs.setFont(SERIF, 12, 600); cs.addText(buf); buf = ''; } };
-    for (let i = 0; i < s.length; i++) {
-      const c = s[i];
-      // una «b» inicial es la nota Si, no un bemol
-      const g = (c === 'b' && i === 0) ? null : GLIFO_CIFRADO[c];
-      if (g) { suelta(); cs.setFont('Bravura,Academico,serif', 12, 400); cs.addText(g); }
-      else buf += c;
-    }
-    suelta();
+    const input=String(txt).trim();
+    const m=/^([A-Ga-g])([#♯b♭]?)(.*?)(?:\/([A-Ga-g])([#♯b♭]?))?$/.exec(input);
+    cs.setFont(SERIF,14,500);
+    if(!m){cs.addText(cifraAcc(input));return;}
+    const acc=a=>a==='#'||a==='♯'?'♯':a==='b'||a==='♭'?'♭':'';
+    cs.addText(m[1].toUpperCase()+acc(m[2]));
+    let suffix=m[3]||'';
+    let quality='';
+    const q=/^(maj|min|dim|aug|sus|add|m|M|ø|°|Δ|\+|\-)/.exec(suffix);
+    if(q){ quality=q[1];suffix=suffix.slice(q[0].length); }
+    if(quality==='m'||quality==='min'||quality==='-')cs.addText('m');
+    else if(quality==='maj'||quality==='M'||quality==='Δ')cs.addTextSuperscript('maj');
+    else if(quality==='dim'||quality==='°')cs.addTextSuperscript('°');
+    else if(quality==='ø')cs.addTextSuperscript('ø');
+    else if(quality==='aug'||quality==='+')cs.addTextSuperscript('+');
+    else if(quality)cs.addTextSuperscript(quality);
+    if(suffix)cs.addTextSuperscript(cifraAcc(suffix).replace(/b(?=\d)/g,'♭'));
+    if(m[4])cs.addText('/'+m[4].toUpperCase()+acc(m[5]));
   }
 
   /* Adornos de VexFlow. El trino lleva además su ondulación, que la pone
@@ -279,7 +288,7 @@ const Engrave = (() => {
   function numberText(svg,x,y,value,type,anchor='start') {
     const t=document.createElementNS('http://www.w3.org/2000/svg','text');
     [['x',x],['y',y],['fill',COLORS.ink],['font-family','Georgia,serif'],
-     ['font-size',type==='system-number'?14:16],['font-weight',650],['text-anchor',anchor],
+     ['font-size',type==='system-number'?13:14],['font-weight',400],['text-anchor',anchor],
      ['pointer-events','none'],[`data-${type}`,String(value)]].forEach(([k,v])=>t.setAttribute(k,v));
     t.textContent=String(value);svg.appendChild(t);return t;
   }
@@ -296,7 +305,7 @@ const Engrave = (() => {
     const pageWidth = compact ? 760 : PAGE.w;
     const marginLeft = compact ? 34 : M.left;
     const marginRight = compact ? 24 : M.right;
-    const systemHeight = altoSistema(score, compact ? 108 : SYSTEM_H);
+    const systemHeight = altoSistema(score, compact ? 108 : SYSTEM_H) + (Tablature.config(score).enabled ? 130 : 0);
     const nPentTotal0 = Model.nPent(score);
 
     /* El reparto en páginas, por ALTO y no por número de sistemas.
@@ -442,7 +451,7 @@ const Engrave = (() => {
         y+=h.arriba;
         const x0 = marginLeft, x1 = pageWidth - marginRight;
         const numberY=y-h.arriba+17;
-        numberText(svg,x0-8,numberY,'S'+(Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1),'system-number','end');
+        numberText(svg,x0-8,numberY,Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1,'system-number','end');
         for (let line = 0; line < 5; line++) svg.appendChild(make('line', {
           x1: x0, y1: y + line * 10, x2: x1, y2: y + line * 10,
           stroke: COLORS.ink, 'stroke-width': 1
@@ -479,6 +488,9 @@ const Engrave = (() => {
             }
             noteMap.push({ ev, vi: 0, index: i, real: i < measure.events.length, x });
           });
+          if(Tablature.config(score).enabled)
+            Tablature.draw(svg,score,sys.from+mi,{x:mx0,width:measureW,
+              y:y+(Model.nPent(score)-1)*PENT_H+97,first:mi===0,notes:noteMap});
           hits.push({ mi: sys.from + mi, pent: 0, vi: 0, iPagina, pageIndex, svg, systemHeight, x0: mx0, x1: mx1,
             yTop: y, yBottom: y + 40, spacing: 10, notes: noteMap });
         });
@@ -522,7 +534,7 @@ const Engrave = (() => {
       else if (ev.lig === 'fin') {
         const par = cerrar('lig', ev.id);
         if (par && Curve) {
-          try { new Curve(par.a.note, par.b.note, {}).setContext(par.a.ctx).draw(); } catch (e) { }
+          try { new Curve(par.a.note, par.b.note, {thickness:3.4}).setContext(par.a.ctx).draw(); } catch (e) { }
         }
       }
       if (ev.reg === 'cresc' || ev.reg === 'dim') abiertos.reg = { id: ev.id, dato: ev.reg };
@@ -569,7 +581,7 @@ const Engrave = (() => {
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
       const mi = sys.from + i;
-      if (i === 0) numberText(o.svg,o.x-8,o.numberY,'S'+o.systemNumber,'system-number','end');
+      if (i === 0) numberText(o.svg,o.x-8,o.numberY,o.systemNumber,'system-number','end');
       numberText(o.svg,x+8,o.numberY,mi+1,'measure-number');
       const primero = i === 0;
       const ultimo = i === measures.length - 1;
@@ -672,6 +684,13 @@ const Engrave = (() => {
             if (!ev.auto) refs.set(ev.id, { note: b.notes[idx], system: o.systemKey, ctx: o.ctx });
           });
         });
+      }
+
+      if(Tablature.config(score).enabled){
+        const tabCfg=Tablature.config(score);
+        const notes=bloques.filter(b=>b.v.pent===tabCfg.staff).flatMap(b=>
+          b.all.map((ev,k)=>({ev,vi:b.v.vi,x:b.notes[k]?.getAbsoluteX()||x+35})));
+        Tablature.draw(o.svg,score,mi,{x,width:w,y:o.y+(nPent-1)*PENT_H+97,first:primero,notes});
       }
 
       // Un punto de impacto por pentagrama: al tocar se sabe en qué pauta se

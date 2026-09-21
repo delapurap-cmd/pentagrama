@@ -21,7 +21,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
    per:JSON.parse(localStorage.getItem('mtm-score:v1:current')).measuresPerSystem,
   }));
   assert.deepEqual(numbering.numbers,Array.from({length:numbering.count},(_,i)=>i+1),'Every measure continuously numbered');
-  assert.deepEqual(numbering.systems,Array.from({length:Math.ceil(numbering.count/numbering.per)},(_,i)=>'S'+(i+1)),'Every staff system numbered');
+  assert.deepEqual(numbering.systems,Array.from({length:Math.ceil(numbering.count/numbering.per)},(_,i)=>String(i+1)),'Every staff system numbered');
   const labels=await page.locator('[data-measure-number]').first().evaluate(el=>({y:el.getBBox().y,svg:el.ownerSVGElement.getBoundingClientRect().top}));
   assert.ok(Number.isFinite(labels.y),'Score numbers belong to SVG and will print');
   for(const id of ['ppStop','ppPrev','ppPlay','ppNext','ppBucle','ppRangeButton','btnMetroAlways','btnCountAlways','btnTempoMenu'])
@@ -42,10 +42,10 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const panel=await page.locator('#panel').boundingBox();
   assert.ok(panel.width<=330&&panel.x>=0&&panel.x+panel.width<=viewport.width+1,'Tap panel compact and inside viewport');
   const bpm=Number(await page.locator('#bpm').innerText());
-  assert.equal(Number(await page.locator('#metroTempo').innerText()),bpm,'One score tempo controls both displays');
+  assert.equal(parseInt(await page.locator('#metroTempo').innerText(),10),bpm,'One score tempo controls both displays');
   await page.locator('#bpmUp').click();
   await page.waitForFunction(b=>JSON.parse(localStorage.getItem('mtm-score:v1:current')).tempo===b+1,bpm);
-  assert.equal(Number(await page.locator('#metroTempo').innerText()),bpm+1,'Metronome reflects score change');
+  assert.equal(parseInt(await page.locator('#metroTempo').innerText(),10),bpm+1,'Metronome reflects score change');
   await page.locator('#ppCount').selectOption('2');
   assert.equal(await page.locator('#btnCountAlways').getAttribute('aria-pressed'),'true');
   await page.locator('#btnTapPad').click();await page.waitForTimeout(350);await page.locator('#btnTapPad').click();

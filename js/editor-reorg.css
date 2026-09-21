@@ -116,3 +116,43 @@ body:not(.embed)>#panel .tap-info{font-size:10px}
  .tempo-cluster #btnCountAlways span{font-size:10px}
 }
 @media print{#panel{display:none!important}}
+
+/* Compact transport: metronome and count-in are ICONS next to Play, not a
+   different clock in the top header. The tempo number reads the score. */
+body:not(.embed)>.bar>.tempo-cluster{display:none!important}
+#panelPlay .transport-main>.tempo-cluster{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;
+ padding-inline:4px;border-inline:1px solid #51452d;margin-inline:2px}
+#panelPlay .tempo-cluster .btn{width:29px;height:30px;min-height:30px;min-width:29px;
+ padding:0;display:inline-flex;justify-content:center;align-items:center}
+#panelPlay #btnMetroAlways .metro-icon,#panelPlay #btnCountAlways .transport-icon{width:19px;height:19px;flex:0 0 19px}
+#panelPlay .tempo-readout{font:500 11px/1 system-ui,sans-serif;color:#ecd7a3;white-space:nowrap;
+ font-variant-numeric:tabular-nums;min-width:48px;text-align:center}
+#panelPlay .tempo-chevron{border:0;background:transparent}
+#panelPlay #btnCountAlways[aria-pressed=true],#panelPlay #btnMetroAlways[aria-pressed=true]{border-color:#d0a64d;color:#f7d778;background:#443723}
+#btnTab[aria-pressed=true]{background:#4f4024;border-color:#d5b356;color:#ffdfa1}
+.tab-device-controls{margin:4px 0 0;border:1px solid #66522d;border-radius:8px;
+ display:grid;grid-template-columns:1fr;gap:7px;padding:9px;color:#e1d4b9}
+.tab-device-controls legend{font-size:12px;font-weight:650;color:#efc875;padding:0 5px}
+.tab-device-controls label{font-size:11px;font-weight:550;color:#ddd0b5}
+.tab-device-controls label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px}
+.tab-device-controls select,.tab-device-controls input[type=number]{width:100%;max-width:100%;min-width:0;
+ border-radius:5px;padding:6px;background:#202023;color:#f9e9c6;border:1px solid #6c5738;font:12px system-ui}
+.tab-device-controls p{font-size:10px;line-height:1.5;color:#b2aeab;margin:2px 0}
+#stage svg .tab-target{cursor:crosshair}
+#stage svg .tab-cell{cursor:pointer}
+#stage svg .tab-cell:focus rect{stroke:#a97922;stroke-width:2}
+@media(max-width:780px){#panelPlay .transport-main>.tempo-cluster{padding-inline:2px;margin-inline:1px}
+#panelPlay .tempo-readout{font-size:10px;min-width:42px}}
+@media print{#stage svg .tab-target{display:none!important}}
+/* On narrow screens every transport tool stays reachable without horizontal
+   hunting: it wraps inside its reserved header row, never over the page. */
+@media(max-width:780px){body:not(.embed) #panelPlay .transport-main{
+ flex-wrap:wrap;overflow-x:visible;overflow-y:visible;row-gap:3px}
+ body:not(.embed) #panelPlay .transport-main>.tempo-cluster{order:0}
+ body:not(.embed) #panelPlay .transport-main #ppPos{order:1}
+ body:not(.embed) #panelPlay .transport-main #ppBucle{order:2}
+ body:not(.embed) #panelPlay .transport-main #ppRangeButton{order:3}
+}
+
+#stage svg .tab-target{pointer-events:all!important;fill:rgba(0,0,0,.001)}
+#stage svg .tab-cell{pointer-events:all!important}

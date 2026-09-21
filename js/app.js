@@ -40,6 +40,7 @@
       : (parseFloat(localStorage.getItem(LS_ZOOM)) || 0.75);
     applyZoom();
     bindBar();
+    bindTab();
     bindStage();
     bindPanel();
     Instrumentos.configurarPiano({
@@ -87,6 +88,20 @@
       $('#metroTempo').textContent=String(state.score.tempo);
       $('#deviceWritten').value=state.score.instrumentId||'concert';
       $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
+      const tc=Tablature.config(state.score);
+      $('#btnTab').setAttribute('aria-pressed',String(tc.enabled));
+      $('#btnTab').classList.toggle('on',tc.enabled);
+      $('#tabEnabled').checked=tc.enabled;
+      $('#tabPreset').value=tc.preset;
+      $('#tabCapo').value=String(tc.capo);
+      const staffs=$('#tabStaff');
+      if(staffs.options.length!==nPent){
+        staffs.replaceChildren();
+        for(let i=0;i<nPent;i++){
+          const o=document.createElement('option');o.value=String(i);o.textContent=`Pentagrama ${i+1}`;staffs.append(o);
+        }
+      }
+      staffs.value=String(tc.staff);
       $('#btnUndo').disabled = state.undo.length === 0;
       $('#btnRedo').disabled = state.redo.length === 0;
       actualizarTransporte();
@@ -472,7 +487,7 @@
         return;
       }
       if (pts.size > 2) { cand = null; return; }
-      if (e.target.closest('[data-field]')) { cand = null; return; }
+      if (e.target.closest('[data-field], [data-tab-event], [data-tab-add]')) { cand = null; return; }
       const hit = Engrave.hitTest(e.clientX, e.clientY);
       cand = hit ? { id: e.pointerId, x: e.clientX, y: e.clientY, hit } : null;
     });
@@ -531,6 +546,87 @@
       state.zoom = Math.max(0.4, Math.min(3, state.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
       applyZoom();
     }, { passive: false });
+  }
+
+  /* TAB and notation share score.measures' pitch events. Each tab edit is
+     atomic and redraws both views; no second, unsynchronized note collection. */
+  function bindTab(){
+    const settings=$('#tabDeviceControls');
+    for(const [id,preset] of Object.entries(Tablature.PRESETS)){
+      const o=document.createElement('option');o.value=id;o.textContent=preset.label;
+      $('#tabPreset').append(o);
+    }
+    function changeTab(update){
+      const next=Model.clone(state.score);
+      next.tablature={...Tablature.config(next)};
+      update(next.tablature);
+      const old=JSON.stringify(state.score.tablature||{}),nw=JSON.stringify(next.tablature);
+      if(old===nw)return;
+      if(rep.playing)pararTodo();
+      snapshot();state.score=next;Radial.close();render();
+    }
+    $('#btnTab').addEventListener('click',()=>{
+      changeTab(c=>{
+        c.enabled=!c.enabled;
+        if(c.enabled&&!state.score.tablature?.preset&&/bass/.test(state.score.instrumentId||''))c.preset='bass4';
+      });
+      if(!dispositivosAbiertos&&Tablature.config(state.score).enabled){
+        // The TAB is on the page; device options can be opened independently.
+        $('#btnTab').title='Tablatura activa. Pulsa de nuevo para ocultarla. Afinación en Instrumentos.';
+      }
+    });
+    $('#tabEnabled').addEventListener('change',e=>changeTab(c=>{c.enabled=e.target.checked}));
+    $('#tabPreset').addEventListener('change',e=>changeTab(c=>{c.preset=e.target.value}));
+    $('#tabStaff').addEventListener('change',e=>changeTab(c=>{c.staff=Number(e.target.value)}));
+    $('#tabCapo').addEventListener('change',e=>{
+      const n=Number(e.target.value);
+      if(!Number.isInteger(n)||n<0||n>12){e.target.value=String(Tablature.config(state.score).capo);return toast('Capotraste: 0–12.');}
+      changeTab(c=>{c.capo=n});
+    });
+    const parsePair=value=>{
+      const m=/^\s*(\d+)\s*[:/, -]\s*(\d+)\s*$/.exec(value||'');
+      return m?{string:Number(m[1]),fret:Number(m[2])}:null;
+    };
+    function tabAction(el){
+      if(!el||!Tablature.config(state.score).enabled)return;
+      const mi=Number(el.closest('[data-tab-measure]')?.getAttribute('data-tab-measure'))-1;
+      if(!Number.isInteger(mi)||mi<0||mi>=state.score.measures.length)return;
+      const source=Model.clone(state.score),c=Tablature.config(source);
+      let result;
+      if(el.hasAttribute('data-tab-event')){
+        const id=el.getAttribute('data-tab-event'),found=Model.findEvent(source,id);
+        if(!found||found.mi!==mi)return toast('La nota ya no está en este compás.');
+        const i=Number(el.getAttribute('data-tab-head'));
+        const old=Tablature.positions(source,found.ev,mi,c.staff)[i];
+        const response=prompt(`Cuerda : traste (cuerda 1 = más aguda; traste 0 = al aire)`,
+          old?`${old.string}:${old.fret}`:`${el.getAttribute('data-tab-string')}:0`);
+        if(response===null)return;
+        const pair=parsePair(response);
+        if(!pair)return toast('Escribe cuerda:traste. Ejemplo: 2:5.');
+        result=Tablature.edit(source,found.ev,mi,c.staff,i,pair.string,pair.fret);
+        if(result.ok)result.event=found.ev;
+      }else{
+        const string=Number(el.getAttribute('data-tab-string'));
+        const response=prompt(`Traste para la cuerda ${string} (0–24)`, '0');
+        if(response===null)return;
+        if(!/^\s*\d+\s*$/.test(response))return toast('Introduce un traste entre 0 y 24.');
+        result=Tablature.insert(source,mi,string,Number(response),state.pending.dur,state.pending.dots);
+      }
+      if(!result.ok)return toast(result.message||'No se pudo editar la tablatura.');
+      if(rep.playing)pararTodo();
+      snapshot();state.score=source;state.selectedId=result.event.id;Radial.close();render();
+    }
+    const scroller=$('#scroller');
+    scroller.addEventListener('click',e=>{
+      const el=e.target.closest('[data-tab-event],[data-tab-add]');
+      if(!el)return;
+      e.preventDefault();e.stopPropagation();tabAction(el);
+    });
+    scroller.addEventListener('keydown',e=>{
+      if(e.key!=='Enter')return;
+      const el=e.target.closest('[data-tab-event],[data-tab-add]');
+      if(el){e.preventDefault();e.stopPropagation();tabAction(el);}
+    });
   }
 
   /** Voz en la que escribir al tocar un pentagrama: la que ya tenga música

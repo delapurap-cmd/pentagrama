@@ -46,12 +46,8 @@
   <span class="sp"></span>
   <button class="btn section-tab" id="btnFile" type="button" aria-haspopup="menu">Archivo</button>
   <button class="btn section-tab" id="btnEdit" type="button" aria-haspopup="menu">Edición</button>
+  <button class="btn section-tab" id="btnTab" type="button" aria-pressed="false" title="Mostrar tablatura vinculada al pentagrama" aria-label="Mostrar u ocultar tablatura">TAB</button>
   <button class="btn section-tab" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Dispositivos, sonido y transposición">♬ Instrumentos</button>
-  <div class="tempo-cluster" role="group" aria-label="Tempo y metrónomo">
-    <button class="btn metro-always" id="btnMetroAlways" type="button" aria-pressed="false" title="Armar metrónomo; suena solo con Play" aria-label="Armar metrónomo"><svg class="metro-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg> <output id="metroTempo" aria-label="Tempo de partitura">90</output><span id="metroIndicator" aria-hidden="true"></span></button>
-    <button class="btn tempo-chevron" id="btnTempoMenu" type="button" aria-expanded="false" aria-controls="panel" aria-label="Ajustar tempo y escribir ritmo mediante Tap" title="Tempo y Tap"><svg class="tiny-chevron" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
-    <button class="btn count-always" id="btnCountAlways" type="button" aria-pressed="false" title="Activar precuenta de un compás" aria-label="Armar precuenta de un compás"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 6v6l4 2M12 2v2M20 12h2"/></svg><span>Entrada</span></button>
-  </div>
   <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="true" title="Transporte"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M9 5v14M14 5l7 7-7 7V5Z"/></svg> Reproductor</button>
 <!-- Reproductor -->
 <section class="panel play open" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="false">
@@ -60,6 +56,12 @@
     <button class="btn ghost icon" id="ppPrev" type="button" aria-label="Compás anterior" title="Compás anterior"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14M19 5 7 12l12 7V5Z"/></svg></button>
     <button class="btn icon primary" id="ppPlay" type="button" aria-label="Reproducir" title="Reproducir / pausar"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/></svg></button>
     <button class="btn ghost icon" id="ppNext" type="button" aria-label="Compás siguiente" title="Compás siguiente"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M5 5l12 7-12 7V5Z"/></svg></button>
+  <div class="tempo-cluster" role="group" aria-label="Tempo y metrónomo">
+    <button class="btn metro-always" id="btnMetroAlways" type="button" aria-pressed="false" title="Armar metrónomo; suena solo con Play" aria-label="Armar metrónomo"><svg class="metro-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg><span id="metroIndicator" aria-hidden="true"></span></button>
+    <output id="metroTempo" class="tempo-readout" aria-label="Tempo de partitura en pulsaciones por minuto">90 BPM</output>
+    <button class="btn tempo-chevron" id="btnTempoMenu" type="button" aria-expanded="false" aria-controls="panel" aria-label="Ajustar tempo y escribir ritmo mediante Tap" title="Tempo y Tap"><svg class="tiny-chevron" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+    <button class="btn count-always" id="btnCountAlways" type="button" aria-pressed="false" title="Activar precuenta de un compás" aria-label="Armar precuenta de un compás"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 6v6l4 2M12 2v2M20 12h2"/></svg></button>
+  </div>
     <output class="transport-pos" id="ppPos" aria-live="off">Compás 1 / 1</output>
     <button class="btn transport-toggle" id="ppMetro" type="button" aria-pressed="false" title="Metrónomo durante la reproducción"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg> Metrónomo</button>
     <button class="btn transport-toggle" id="ppBucle" type="button" aria-pressed="false" title="Repetir los compases A–B"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 7H8a5 5 0 0 0-5 5v1M15 4l3 3-3 3M6 17h10a5 5 0 0 0 5-5v-1M9 14l-3 3 3 3"/></svg> Bucle A–B</button>
@@ -104,6 +106,14 @@
     <button class="btn" type="button" id="deviceApply" title="Reescribir las notas y la armadura conservando las alturas sonoras">Convertir partitura</button>
     <p id="deviceInfo" class="device-info">Las notas escritas y las alturas que suenan se mantienen vinculadas.</p>
   </div>
+  <fieldset class="tab-device-controls" id="tabDeviceControls" aria-label="Tablatura vinculada">
+    <legend>Tablatura ↔ pentagrama</legend>
+    <label><input type="checkbox" id="tabEnabled"> Mostrar y editar tablatura</label>
+    <label for="tabPreset">Afinación</label><select id="tabPreset" aria-label="Afinación de la tablatura"></select>
+    <label for="tabStaff">Pentagrama vinculado</label><select id="tabStaff" aria-label="Pentagrama fuente de la tablatura"></select>
+    <label for="tabCapo">Capotraste</label><input id="tabCapo" type="number" min="0" max="12" step="1" value="0" aria-label="Capotraste">
+    <p>Los números son trastes; la primera cuerda es la más aguda. Toca un traste para editar su nota, o una línea vacía para añadirla. La altura sonora es única.</p>
+  </fieldset>
   <div class="ins-caja" id="insCaja"></div>
   <p class="ins-aviso" id="insAviso"></p>
 </section>
@@ -148,6 +158,7 @@ if(!Array.prototype.at)Array.prototype.at=function(i){i=Math.trunc(i)||0;if(i<0)
 <script src="js/radial.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/score-instruments.js"></script>
+<script src="js/tablature.js"></script>
 <script src="js/range-edit.js"></script>
 <script src="js/practice-core.js"></script>
 <script src="js/piano-midi.js"></script>
