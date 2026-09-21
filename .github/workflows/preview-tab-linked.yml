@@ -47,7 +47,14 @@ jobs:
           old="assert.match(await page.locator('#metroTempo').innerText(),/\\d+\\s*BPM/);"
           new="assert.match(await page.locator('#metroTempo').innerText(),/^\\d+(?:\\s*BPM)?$/);"
           assert s.count(old)==1,'Expected tempo readout assertion missing'
-          p.write_text(s.replace(old,new))
+          s=s.replace(old,new)
+          assert s.count('number.innerText()')==1,'SVG number assertion changed'
+          s=s.replace('number.innerText()','number.textContent()')
+          assert s.count("first().innerText(),'0'")==1,'SVG fret assertion changed'
+          s=s.replace("first().innerText(),'0'","first().textContent(),'0'")
+          assert s.count('.allInnerTexts()')==1,'SVG fret collection assertion changed'
+          s=s.replace('.allInnerTexts()','.allTextContents()')
+          p.write_text(s)
           PY
           git diff --check
           node --check js/tablature.js
