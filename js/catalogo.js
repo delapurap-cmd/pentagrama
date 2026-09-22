@@ -38,6 +38,11 @@ const Catalogo = (() => {
   let valor = null;         // qué valor de la pestaña se está viendo
   let busqueda = '';        // lo que se ha tecleado
   let pagina = 0, cargando = false, fin = false;
+  let cola = [];            // los archivos que quedan por mirar al buscar
+  let vistas = new Set();   // para no repetir una ficha que salga en dos cajones
+  let vecinosProbados = false;
+  let hallazgos = [];       // al buscar se juntan todas y se ordenan al final
+  let buscadas = [];        // las palabras tecleadas, ya limpias
   const SEGUIDAS = 20;      // tope de páginas por tirón, no vaya a irse de las manos
   let vigia = null, contador = 0;
 
@@ -45,6 +50,75 @@ const Catalogo = (() => {
 
   const limpiar = (t) => (t || '').normalize('NFD')
     .replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+  /** Las palabras de un texto, ya limpias. */
+  const palabras = (t) => limpiar(t).split(/[^a-z0-9]+/).filter(Boolean);
+
+  /** Cuántas erratas se le perdonan a una palabra según lo larga que sea. */
+  const perdon = (n) => (n <= 3 ? 0 : n <= 6 ? 1 : 2);
+
+  /** Distancia de edición contando el cambio de sitio de dos letras
+   *  seguidas como una sola errata —que es la que más se comete: «brhams»
+   *  por «brahms»—. Corta en cuanto se pasa del tope: no hace falta saber
+   *  cuánto se parecen dos palabras que ya no se parecen. */
+  function distancia(a, b, tope) {
+    if (Math.abs(a.length - b.length) > tope) return tope + 1;
+    let dos = null;
+    let previa = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const fila = [i];
+      let mejor = i;
+      for (let j = 1; j <= b.length; j++) {
+        const igual = a[i - 1] === b[j - 1];
+        let c = Math.min(previa[j] + 1, fila[j - 1] + 1, previa[j - 1] + (igual ? 0 : 1));
+        if (dos && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+          c = Math.min(c, dos[j - 2] + 1);
+        }
+        fila[j] = c;
+        if (c < mejor) mejor = c;
+      }
+      if (mejor > tope) return tope + 1;
+      dos = previa; previa = fila;
+    }
+    return previa[b.length];
+  }
+
+  /** Cuánto vale una palabra buscada dentro de un campo. 0 = no aparece. */
+  function puntos(buscada, campo, peso) {
+    const limpio = limpiar(campo);
+    if (!limpio) return 0;
+    if (limpio.startsWith(buscada)) return 6 * peso;
+    const trozos = limpio.split(/[^a-z0-9]+/).filter(Boolean);
+    if (trozos.some((w) => w.startsWith(buscada))) return 5 * peso;
+    if (limpio.includes(buscada)) return 4 * peso;
+    // y si no está tal cual, se admite que esté mal escrita
+    const tope = perdon(buscada.length);
+    if (!tope) return 0;
+    let mejor = tope + 1, mismaInicial = false;
+    trozos.forEach((w) => {
+      const d = distancia(buscada, w, tope);
+      if (d < mejor || (d === mejor && w[0] === buscada[0])) {
+        mejor = d;
+        mismaInicial = w[0] === buscada[0];
+      }
+    });
+    if (mejor > tope) return 0;
+    // empatadas, gana la que empieza igual: quien escribe «shubert» quiere
+    // «Schubert», no «Hubert»
+    return ((3 - mejor) + (mismaInicial ? 0.5 : 0)) * peso;
+  }
+
+  /** Puntúa una ficha: todas las palabras buscadas tienen que aparecer. */
+  function puntuar(f, buscadas) {
+    let total = 0;
+    for (const b of buscadas) {
+      const v = Math.max(puntos(b, f.titulo, 1), puntos(b, f.autor, 0.8),
+                         puntos(b, f.genero, 0.4), puntos(b, f.instrumentos, 0.4));
+      if (!v) return 0;
+      total += v;
+    }
+    return total;
+  }
 
   const escapar = (t) => (t || '').replace(/[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -167,45 +241,106 @@ const Catalogo = (() => {
     lista.innerHTML = '';
     lista.appendChild(volver);
     pagina = 0; fin = false; contador = 0;
+    vistas = new Set();
+    vecinosProbados = false;
+    hallazgos = [];
+    const n = facetas.letras || 2;
+    buscadas = palabras(busqueda).filter((w) => w.length >= Math.min(3, n));
+    if (buscando()) {
+      prepararCola(false);
+      // ni el cajón de la palabra existe: la errata está en las dos primeras
+      // letras, así que se empieza ya por los de al lado
+      if (!cola.length) { vecinosProbados = true; prepararCola(true); }
+    }
     lista.scrollTop = 0;
     siguientePagina();
   }
 
+  /** Los cajones donde puede estar lo que se busca.
+
+     Se mira el cajón de cada palabra, no solo el de la primera: así
+     «mozart fantasia» y «fantasia mozart» encuentran lo mismo. Y si
+     ninguno da nada, se prueban los cajones de al lado —cambiando una
+     letra o intercambiando las dos— por si la errata estaba justo ahí. */
+  function cajones(conVecinos) {
+    const n = facetas.letras || 2;
+    const hay = facetas.busqueda || {};
+    const claves = [];
+    const mete = (c) => { if (hay[c] && claves.indexOf(c) < 0) claves.push(c); };
+    buscadas.forEach((w) => { if (w.length >= n) mete(w.slice(0, n)); });
+    if (conVecinos && buscadas.length) {
+      const raiz = buscadas[0].slice(0, n);
+      if (raiz.length === 2) {
+        mete(raiz[1] + raiz[0]);                       // letras cambiadas de sitio
+        for (const c of 'abcdefghijklmnopqrstuvwxyz') {
+          mete(c + raiz[1]); mete(raiz[0] + c);        // una letra distinta
+        }
+      }
+    }
+    return claves;
+  }
+
+  /** Prepara la lista de archivos que hay que mirar. */
+  function prepararCola(conVecinos) {
+    cola = [];
+    cajones(conVecinos).forEach((clave) => {
+      const paginas = (facetas.busqueda || {})[clave] || 0;
+      for (let n = 0; n < paginas; n++) {
+        cola.push(`b/${clave}-${String(n).padStart(3, '0')}.tsv.gz`);
+      }
+    });
+  }
+
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
   function rutaPagina() {
-    if (busqueda.length >= (facetas.letras || 2)) {
-      const letras = facetas.letras || 2;
-      const clave = limpiar(busqueda).replace(/[^a-z0-9]/g, '').slice(0, letras).padEnd(letras, '_');
-      const total = (facetas.busqueda || {})[clave] || 0;
-      return pagina < total ? `b/${clave}-${String(pagina).padStart(3, '0')}.tsv.gz` : null;
-    }
+    if (buscando()) return cola[0] || null;   // sólo mira: no la saca de la cola
     if (!valor) return null;
     return pagina < valor.paginas
       ? `p/${pestana}/${valor.id}-${String(pagina).padStart(3, '0')}.tsv.gz`
       : null;
   }
 
+  const buscando = () => buscadas.length > 0;
+
   async function siguientePagina(seguidas = 0) {
     const ruta = rutaPagina();
-    if (!ruta) { fin = true; rematar(); return; }
+    if (!ruta) {
+      if (buscando() && hallazgos.length) { pintarHallazgos(); return; }
+      fin = true; rematar(); return;
+    }
+    if (buscando()) cola.shift();             // ya es nuestra
     cargando = true;
     pie.der.textContent = 'cargando…';
     try {
       const crudo = await texto(await traer(ruta));
-      const filtro = busqueda.length >= (facetas.letras || 2) ? limpiar(busqueda) : null;
-      let puestas = 0;
+      const tanda = [];
       crudo.split('\n').forEach((linea) => {
         if (!linea) return;
         const [titulo, autor, genero, instrumentos, partes, ref] = linea.split('\t');
-        // dentro del cajón de dos letras aún hay que afinar
-        if (filtro && !(limpiar(titulo).includes(filtro) || limpiar(autor).includes(filtro))) return;
-        lista.appendChild(ficha({ titulo, autor, genero, instrumentos, partes, ref }));
-        puestas++;
+        const f = { titulo, autor, genero, instrumentos, partes, ref };
+        if (!buscando()) { tanda.push(f); return; }
+        if (vistas.has(ref)) return;          // un cajón puede repetir ficha
+        const p = puntuar(f, buscadas);
+        if (p > 0) { f.punto = p; tanda.push(f); }
       });
-      contador += puestas;
-      pagina++;
+      const puestas = tanda.length;
+      if (buscando()) {
+        tanda.forEach((f) => { vistas.add(f.ref); hallazgos.push(f); });
+      } else {
+        tanda.forEach((f) => lista.appendChild(ficha(f)));
+        contador += puestas;
+        pagina++;
+      }
       cargando = false;
-      rematar();
+      if (!buscando()) rematar();
+      // el cajón que tocaba no ha dado nada: la errata pudo estar en las
+      // dos primeras letras, así que se miran los cajones vecinos
+      if (buscando() && !contador && !cola.length && !vecinosProbados) {
+        vecinosProbados = true;
+        prepararCola(true);
+        if (cola.length) { fin = false; siguientePagina(seguidas + 1); return; }
+      }
+      if (buscando() && (!cola.length || seguidas >= SEGUIDAS)) { pintarHallazgos(); return; }
       if (seguidas >= SEGUIDAS || !rutaPagina()) return;
       // Si el filtro se comió la página entera, sigue buscando sola. Y si la
       // lista aún no llena la pantalla, trae otra: pero sólo cuando se está
@@ -228,6 +363,15 @@ const Catalogo = (() => {
     }
   }
 
+  /** Ya se ha mirado en todos los cajones: ahora sí, lo mejor primero. */
+  function pintarHallazgos() {
+    hallazgos.sort((a, b) => (b.punto - a.punto) || limpiar(a.titulo).localeCompare(limpiar(b.titulo)));
+    hallazgos.forEach((f) => lista.appendChild(ficha(f)));
+    contador = hallazgos.length;
+    fin = true;
+    rematar();
+  }
+
   function rematar() {
     pie.der.textContent = '';
     if (!contador && fin && !lista.querySelector('.cat-aviso')) {
@@ -238,10 +382,9 @@ const Catalogo = (() => {
         : 'Aquí no hay nada.';
       lista.appendChild(p);
     }
-    const larga = busqueda.length >= (facetas.letras || 2);
-    const de = larga ? 'encontradas' : (valor ? rotulo(valor) : '');
+    const de = buscando() ? 'encontradas' : (valor ? rotulo(valor) : '');
     pie.izq.textContent = contador
-      ? `${contador.toLocaleString('es-ES')} ${larga ? de : 'en ' + de}`
+      ? `${contador.toLocaleString('es-ES')} ${buscando() ? de : 'en ' + de}`
       : '';
   }
 
