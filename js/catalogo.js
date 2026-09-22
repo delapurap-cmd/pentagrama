@@ -10,12 +10,15 @@
 const Catalogo = (() => {
   'use strict';
 
+  // El catálogo vive en su propio sitio y se le llama desde donde haga
+  // falta: autoriza que lo llamen desde otro dominio y deja pedir trozos
+  // sueltos de un archivo, que es lo que permite abrir una partitura sin
+  // bajarse el paquete de 35 MB en que vive.
+  const CASA = 'https://delapurap-cmd.github.io/partituras-catalogo';
+
   const CONFIG = Object.assign({
-    // Dónde están facetas.json y las páginas (igual que el cancionero:
-    // archivos sueltos servidos por la web).
-    datos: 'catalogo',
-    // Dónde están los paquetes .zip con las partituras.
-    paquetes: 'catalogo/paquetes',
+    datos: CASA,                    // facetas.json y las páginas de fichas
+    paquetes: CASA + '/paquetes',   // los .zip con las partituras
     // Si se indica, los paquetes que de verdad están subidos. Las fichas de
     // los que faltan se siguen viendo —el índice es el catálogo entero— pero
     // se marcan, para que nadie toque y se lleve un error sin explicación.
@@ -34,7 +37,8 @@ const Catalogo = (() => {
   let pestana = 'nombre';
   let valor = null;         // qué valor de la pestaña se está viendo
   let busqueda = '';        // lo que se ha tecleado
-  let pagina = 0, paginas = 0, cargando = false, fin = false;
+  let pagina = 0, cargando = false, fin = false;
+  const SEGUIDAS = 20;      // tope de páginas por tirón, no vaya a irse de las manos
   let vigia = null, contador = 0;
 
   /* ---------------- utilidades ---------------- */
@@ -181,7 +185,7 @@ const Catalogo = (() => {
       : null;
   }
 
-  async function siguientePagina() {
+  async function siguientePagina(seguidas = 0) {
     const ruta = rutaPagina();
     if (!ruta) { fin = true; rematar(); return; }
     cargando = true;
@@ -202,9 +206,14 @@ const Catalogo = (() => {
       pagina++;
       cargando = false;
       rematar();
-      // si el filtro se comió la página entera, sigue buscando sola
-      if (puestas === 0 && rutaPagina()) siguientePagina();
-      else if (lista.scrollHeight <= lista.clientHeight && rutaPagina()) siguientePagina();
+      if (seguidas >= SEGUIDAS || !rutaPagina()) return;
+      // Si el filtro se comió la página entera, sigue buscando sola. Y si la
+      // lista aún no llena la pantalla, trae otra: pero sólo cuando se está
+      // viendo, porque en el teléfono está oculta hasta que eliges un valor
+      // y entonces no mide nada y pediría el índice entero.
+      const seVe = lista.clientHeight > 0;
+      if (puestas === 0) siguientePagina(seguidas + 1);
+      else if (seVe && lista.scrollHeight <= lista.clientHeight) siguientePagina(seguidas + 1);
     } catch (err) {
       cargando = false; fin = true;
       if (!contador) {
