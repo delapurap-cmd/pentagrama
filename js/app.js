@@ -904,6 +904,7 @@
         { label: 'Versiones anteriores', fn: versionesAnteriores },
         { sep: true },
         { head: 'Importar' },
+        { label: 'Del catálogo', hint: '226.401 partituras libres', fn: () => Catalogo.abrir() },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
         { label: 'Importar MIDI', hint: '.mid, .midi', fn: () => importScore('midi') },
         { sep: true },
@@ -1907,6 +1908,25 @@
     parentLoaded = true;
     render();
   });
+
+
+  // Puerta para que el catálogo deje aquí la partitura que se ha elegido.
+  window.Editor = {
+    cargar(score, titulo, aviso) {
+      Sound.stop(); Sound.metroStop();
+      snapshot();
+      state.score = score;
+      if (titulo && (!state.score.title || state.score.title === 'Sin título')) {
+        state.score.title = titulo;
+      }
+      Model.reflow(state.score);
+      state.selectedId = null;
+      state.playingId = null;
+      Radial.close();
+      render();
+      if (aviso) { state.lastReport = aviso; toast(aviso); }
+    }
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
