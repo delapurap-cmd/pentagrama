@@ -136,3 +136,11 @@
   background: var(--bg-2, #121214);
   box-shadow: 0 6px 12px -8px rgba(0, 0, 0, .9);
 }
+
+/* Fichas cuyo paquete aún no está subido: se ven, pero se sabe. */
+.cat-ficha.lejos .t, .cat-ficha.lejos .a { opacity: .55; }
+.cat-ficha .m span.no {
+  background: rgba(255, 255, 255, .04);
+  color: var(--txt-dim, #8e8b85);
+  border: 1px dashed rgba(255, 255, 255, .14);
+}
