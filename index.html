@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="js/editor-reorg.css">
 <link rel="stylesheet" href="js/instrument-panel-compact.css">
 <link rel="stylesheet" href="js/catalogo.css">
+<link rel="stylesheet" href="js/product-navigation.css">
 </head>
 <body>
 
@@ -27,29 +28,34 @@
   <button class="btn ghost icon embed-only" id="btnEmbedClose" title="Volver al cuaderno">←</button>
   <button class="btn embed-only" id="btnTools">♫ Herramientas</button>
   <button class="btn standalone-only" id="btnSideTools" type="button" aria-controls="editorRail" aria-expanded="false" title="Mostrar u ocultar herramientas de partitura">☰ Herramientas</button>
+  <button class="btn section-tab" id="btnFile" type="button" aria-haspopup="menu">Archivo</button>
+  <button class="btn section-tab catalog-entry" id="btnCatalogo" type="button" aria-haspopup="dialog" title="Buscar y abrir partituras del catálogo">▤ Catálogo</button>
+  <button class="btn section-tab" id="btnEdit" type="button" aria-haspopup="menu">Edición</button>
+  <span class="header-separator standalone-only" aria-hidden="true"></span>
+  <button class="btn section-tab" id="btnTab" type="button" aria-pressed="false" title="Mostrar tablatura vinculada al pentagrama" aria-label="Mostrar u ocultar tablatura">TAB</button>
+  <button class="btn section-tab" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Dispositivos, sonido y transposición">♬ Instrumentos</button>
   <button class="btn audio-sync-link" id="btnAudioSync" type="button" aria-expanded="false" aria-controls="syncDock" title="Desplegar Audio Sync sobre esta partitura">◉ Audio Sync</button>
   <div class="bar-tools" id="barTools">
     <button class="btn" id="btnNew" title="Añadir sistema, página o ajustar plantilla" aria-label="Añadir sistema, página o ajustar plantilla">＋</button>
+    <span class="tool-label standalone-only" aria-hidden="true">Partitura</span>
     <button class="btn" id="btnClef" title="Clave"><span class="lab">Clave</span> <span class="chip" id="chipClef">Sol</span></button>
     <button class="btn" id="btnKey" title="Armadura"><span class="lab">Armadura</span> <span class="chip" id="chipKey">Do M</span></button>
     <button class="btn" id="btnTime" title="Compás"><span class="lab">Compás</span> <span class="chip" id="chipTime">4/4</span></button>
     <span class="br"></span>
+    <span class="tool-label standalone-only" aria-hidden="true">Vista</span>
     <div class="zoom">
       <button class="btn ghost icon" id="btnZoomOut" title="Reducir">−</button>
       <span class="chip" id="chipZoom">100%</span>
       <button class="btn ghost icon" id="btnZoomIn" title="Ampliar">+</button>
       <button class="btn ghost icon" id="btnZoomFit" title="Ajustar la hoja a la pantalla" aria-label="Ajustar la hoja a la pantalla">⤢</button>
     </div>
+    <span class="tool-label standalone-only" aria-hidden="true">Historial</span>
     <button class="btn ghost icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↺</button>
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
     <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
 
   </div>
   <span class="sp"></span>
-  <button class="btn section-tab" id="btnFile" type="button" aria-haspopup="menu">Archivo</button>
-  <button class="btn section-tab" id="btnEdit" type="button" aria-haspopup="menu">Edición</button>
-  <button class="btn section-tab" id="btnTab" type="button" aria-pressed="false" title="Mostrar tablatura vinculada al pentagrama" aria-label="Mostrar u ocultar tablatura">TAB</button>
-  <button class="btn section-tab" id="btnPiano" type="button" aria-controls="panelAyuda" aria-expanded="false" title="Dispositivos, sonido y transposición">♬ Instrumentos</button>
   <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="true" title="Transporte"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M9 5v14M14 5l7 7-7 7V5Z"/></svg> Reproductor</button>
 <!-- Reproductor -->
 <section class="panel play open" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="false">
