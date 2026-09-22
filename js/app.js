@@ -945,18 +945,21 @@
     $('#btnRedo').addEventListener('click', redo);
     $('#btnTempoMenu').addEventListener('click', () => togglePanel());
     $('#btnPlay').addEventListener('click',()=>togglePlayPanel());
-    $('#btnPiano').addEventListener('click',()=>{
-      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();}
-      else {dispositivosAbiertos=true;ayuda=$('#deviceSelect').value||'piano';if(ayuda==='ninguno')ayuda='piano';
-        if($('#syncDock')&&!$('#syncDock').hidden)$('#syncClose').click();}
-      montaAyuda();
-    });
+    $('#btnPiano').addEventListener('click',()=>setInstrumentMenu(!menuInstrumentosAbierto));
     $('#btnAudioSync').addEventListener('click',()=>{
-      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();}
+      setInstrumentMenu(false);
     });
     $('#deviceSelect').addEventListener('change',e=>{
-      ayuda=e.target.value;Sound.liveAllOff();montaAyuda();
+      ayuda=e.target.value;dispositivosAbiertos=ayuda!=='ninguno';
+      Sound.liveAllOff();montaAyuda();setInstrumentMenu(false);
     });
+    document.addEventListener('pointerdown',e=>{
+      if(menuInstrumentosAbierto&&!e.target.closest('#instrumentMenu,#btnPiano'))setInstrumentMenu(false);
+    });
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&menuInstrumentosAbierto){setInstrumentMenu(false);$('#btnPiano').focus();}
+    });
+    window.addEventListener('resize',()=>{if(menuInstrumentosAbierto)placeInstrumentMenu();});
     $('#soundSelect').addEventListener('change',e=>{
       if(rep.playing)pararTodo();Sound.liveAllOff();
       snapshot();state.score.soundId=e.target.value;render();
@@ -993,7 +996,7 @@
     $('#deviceSelect').value=ayuda;
 
     $('#btnPianoClose').addEventListener('click',()=>{
-      dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();
+      dispositivosAbiertos=false;ayuda='ninguno';Sound.liveAllOff();montaAyuda();
     });
     if (Native.isApp()) $('#btnPrint').hidden = true;
     else $('#btnPrint').addEventListener('click', () => window.print());
@@ -1042,8 +1045,22 @@
     rep.esperando=false;
   }
   let dispositivosAbiertos=false;
+  let menuInstrumentosAbierto=false;
   let ayuda = 'ninguno';
   try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
+
+  function placeInstrumentMenu(){
+    const rect=$('#btnPiano').getBoundingClientRect(),menu=$('#instrumentMenu');
+    menu.style.top=Math.round(rect.bottom+5)+'px';
+    menu.style.left=Math.round(Math.max(6,Math.min(rect.left,innerWidth-menu.offsetWidth-6)))+'px';
+  }
+  function setInstrumentMenu(open){
+    menuInstrumentosAbierto=!!open;
+    const menu=$('#instrumentMenu');menu.hidden=!open;
+    $('#btnPiano').setAttribute('aria-expanded',String(!!open));
+    $('#btnPiano').classList.toggle('on',!!open);
+    if(open)placeInstrumentMenu();
+  }
 
   function nCompases() { return Math.max(1, state.score.measures.length); }
   const tickDeCompas = n => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))] || 0;
@@ -1194,14 +1211,12 @@
   function montaAyuda() {
     try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
     const panel = $('#panelAyuda');
-    const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
+    const puesto = Instrumentos.montar(dispositivosAbiertos?ayuda:'ninguno', $('#insCaja'));
     panel.hidden = !dispositivosAbiertos;
-    $('#pianoDeviceTitle').textContent='Instrumentos';
-    $('#btnPiano').classList.toggle('on',dispositivosAbiertos);
+    $('#pianoDeviceTitle').textContent=Instrumentos.catalogo.find(i=>i.id===ayuda)?.nombre||'Instrumento';
     $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
     $('#deviceInfo').textContent='Conserva el sonido al convertir.';
     $('#deviceApply').disabled=true;
-    $('#btnPiano').setAttribute('aria-expanded',String(dispositivosAbiertos));
     document.body.classList.toggle('device-open',dispositivosAbiertos);
     document.body.classList.toggle('con-ayuda',dispositivosAbiertos);
     $('#deviceSelect').value=ayuda;
