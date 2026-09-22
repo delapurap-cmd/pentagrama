@@ -21,7 +21,8 @@ const Engrave = (() => {
   const PENT_H = 92;              // separación entre los pentagramas de un mismo sistema
 
   /** Alto que ocupa un sistema con todos sus pentagramas. */
-  const altoSistema = (score, base) => (base || SYSTEM_H) + (Model.nPent(score) - 1) * PENT_H;
+  const altoSistema = (score, base, medio) =>
+    (base || SYSTEM_H) + (Model.nPent(score) - 1) * (PENT_H + (medio || 0));
 
   const COLORS = {
     ink: '#12100c',
@@ -179,10 +180,13 @@ const Engrave = (() => {
           .setVerticalJustification(Annotation.VerticalJustify.TOP), 0);
       } catch (e) { }
     }
+    /* Las palabras —Adagio, rit., a tempo— van por encima del pentagrama.
+       Debajo está el matiz, y con los dos abajo se imprimían encima uno del
+       otro: «p» y «Adagio» en el mismo sitio. */
     if (ev.texto && Annotation) {
       try {
         n.addModifier(new Annotation(String(ev.texto)).setFont(SERIF, 12, 400, 'italic')
-          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM), 0);
+          .setVerticalJustification(Annotation.VerticalJustify.TOP), 0);
       } catch (e) { }
     }
     return n;
@@ -254,10 +258,25 @@ const Engrave = (() => {
      página de música por debajo del papel. */
   function holguraDe(score, sys, nPentTotal) {
     let arriba = 0, abajo = 0;
+    /* Lo que baja cada pauta por debajo de sus cinco líneas y lo que sube la
+       siguiente por encima de las suyas. Sin medirlo, en un piano donde la
+       izquierda toca agudo y la derecha grave las dos se pelean por el mismo
+       hueco y las barras acaban cruzándose. */
+    const baja = new Array(nPentTotal).fill(0);
+    const sube = new Array(nPentTotal).fill(0);
     sys.measures.forEach((m, k) => {
       const mi = sys.from + k;
-      Model.voces(m).forEach((v) => {
+      const voces = Model.voces(m);
+      // cuántas voces comparten cada pauta: con más de una, la de arriba
+      // lleva las plicas hacia arriba y la de abajo hacia abajo, mande lo
+      // que mande la altura de la nota
+      const cuantas = {};
+      voces.forEach((v) => { cuantas[v.pent] = (cuantas[v.pent] || 0) + 1; });
+      const orden = {};
+      voces.forEach((v) => {
         const clef = Model.clefAt(score, mi, v.pent);
+        const iEnPauta = orden[v.pent] = (orden[v.pent] == null ? 0 : orden[v.pent] + 1);
+        const compartida = cuantas[v.pent] > 1;
         v.events.forEach((ev) => {
           // el cifrado va sobre el primer pentagrama y el matiz bajo el último
           if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
@@ -278,16 +297,39 @@ const Engrave = (() => {
             const fuera = (clef.midLine - 4) - alt[0].di;
             if (fuera > 0) abajo = Math.max(abajo, fuera * 5 + 34);
           }
+          /* Hasta dónde llega de verdad la figura, plica incluida: una nota
+             aguda lleva la plica hacia abajo y la barra cuelga de ella, que
+             es lo que se mete en el pentagrama de al lado. Siete grados de
+             plica, que son los 35 px de siempre. */
+          const grave = alt[0].di, agudo = alt[alt.length - 1].di;
+          const plicaAbajo = compartida
+            ? iEnPauta > 0
+            : (agudo - clef.midLine) > (clef.midLine - grave);
+          const llegaAbajo = plicaAbajo ? grave - 7 : grave;
+          const llegaArriba = plicaAbajo ? agudo : agudo + 7;
+          const porDebajo = (clef.midLine - 4) - llegaAbajo;
+          if (porDebajo > 0) baja[v.pent] = Math.max(baja[v.pent], porDebajo * 5);
+          const porEncima = llegaArriba - (clef.midLine + 4);
+          if (porEncima > 0) sube[v.pent] = Math.max(sube[v.pent], porEncima * 5);
         });
       });
     });
-    return { arriba: arriba + 28, abajo };
+    /* Entre dos pautas el hueco por defecto son 52 px —92 de separación
+       menos los 40 que mide un pentagrama—. Se pide más sólo cuando hace
+       falta, contando también lo que ocupan plicas y barras. */
+    let medio = 0;
+    for (let p = 0; p + 1 < nPentTotal; p++) {
+      const pide = baja[p] + sube[p + 1] + 14;   // un respiro entre las dos
+      medio = Math.max(medio, Math.min(140, pide - 52));
+    }
+    return { arriba: arriba + 28, abajo, medio: Math.max(0, medio) };
   }
 
   /** Numbers belong to the SVG, so they appear in the editor AND PDF print. */
   function numberText(svg,x,y,value,type,anchor='start') {
     const t=document.createElementNS('http://www.w3.org/2000/svg','text');
-    [['x',x],['y',y],['fill',COLORS.ink],['font-family','Georgia,serif'],
+    [['x',x],['y',y],['fill',type==='system-number'?COLORS.ghost:COLORS.ink],
+     ['font-family','Georgia,serif'],
      ['font-size',type==='system-number'?13:14],['font-weight',400],['text-anchor',anchor],
      ['pointer-events','none'],[`data-${type}`,String(value)]].forEach(([k,v])=>t.setAttribute(k,v));
     t.textContent=String(value);svg.appendChild(t);return t;
@@ -334,7 +376,7 @@ const Engrave = (() => {
       let actual = [], alto = 0, primera = true;
       for (const sys of todos) {
         const h = holguraDe(score, sys, nPentTotal0);
-        const pide = h.arriba + systemHeight + h.abajo;
+        const pide = h.arriba + systemHeight + (nPentTotal0 - 1) * h.medio + h.abajo;
         // La primera hoja empieza más abajo, que lleva título y autor.
         const cabe = usable - (primera ? M.topFirst - M.top : 0);
         if (actual.length && (alto + pide > cabe || actual.length >= tope)) {
@@ -357,7 +399,8 @@ const Engrave = (() => {
 
     try { pages.forEach((systems, pageIndex) => {
       const holguras = systems.map(holgura);
-      const extra = holguras.reduce((s, h) => s + h.arriba + h.abajo, 0);
+      const extra = holguras.reduce(
+        (s, h) => s + h.arriba + h.abajo + (nPentTotal - 1) * h.medio, 0);
       const pageHeight = compact ? Math.max(124, 18 + systems.length * systemHeight + extra) : PAGE.h;
       const pageEl = document.createElement('div');
       pageEl.className = 'sheet';
@@ -399,6 +442,7 @@ const Engrave = (() => {
           systemKey: pageIndex + ':' + sysIndex,
           systemNumber: Math.floor(sys.from / visualPer) + 1,
           numberY: y - holguras[sysIndex].arriba + 17,
+          pentH: PENT_H + holguras[sysIndex].medio,
           y,
           x: marginLeft,
           width: pageWidth - marginLeft - marginRight,
@@ -408,7 +452,8 @@ const Engrave = (() => {
           playingId: opts.playingId,
           lastSystem: pageIndex === pages.length - 1 && sysIndex === systems.length - 1
         });
-        y += systemHeight + holguras[sysIndex].abajo;
+        y += systemHeight + (nPentTotal - 1) * holguras[sysIndex].medio
+             + holguras[sysIndex].abajo;
       });
     }); } catch (error) {
       console.warn('VexFlow no pudo dibujar; usando pentagrama compatible.', error);
@@ -451,7 +496,7 @@ const Engrave = (() => {
         y+=h.arriba;
         const x0 = marginLeft, x1 = pageWidth - marginRight;
         const numberY=y-h.arriba+17;
-        numberText(svg,x0-8,numberY,Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1,'system-number','end');
+        numberText(svg,x0-8,numberY-13,Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1,'system-number','end');
         for (let line = 0; line < 5; line++) svg.appendChild(make('line', {
           x1: x0, y1: y + line * 10, x2: x1, y2: y + line * 10,
           stroke: COLORS.ink, 'stroke-width': 1
@@ -581,7 +626,10 @@ const Engrave = (() => {
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
       const mi = sys.from + i;
-      if (i === 0) numberText(o.svg,o.x-8,o.numberY,o.systemNumber,'system-number','end');
+      /* El número de sistema va una línea por encima del de compás: en el
+         primer compás caían uno al lado del otro y se leían como uno solo
+         («6 11» parecía un número). */
+      if (i === 0) numberText(o.svg,o.x-8,o.numberY-13,o.systemNumber,'system-number','end');
       numberText(o.svg,x+8,o.numberY,mi+1,'measure-number');
       const primero = i === 0;
       const ultimo = i === measures.length - 1;
@@ -591,7 +639,7 @@ const Engrave = (() => {
       for (let p = 0; p < nPent; p++) {
         const clef = Model.clefAt(score, mi, p);
         const clefPrevia = mi > 0 ? Model.clefAt(score, mi - 1, p) : null;
-        const stave = new Stave(x, o.y + p * PENT_H, w);
+        const stave = new Stave(x, o.y + p * (o.pentH || PENT_H), w);
         const compasAqui = Model.timeAt(score, mi);
         const compasAntes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
         if (primero) {
@@ -690,7 +738,8 @@ const Engrave = (() => {
         const tabCfg=Tablature.config(score);
         const notes=bloques.filter(b=>b.v.pent===tabCfg.staff).flatMap(b=>
           b.all.map((ev,k)=>({ev,vi:b.v.vi,x:b.notes[k]?.getAbsoluteX()||x+35})));
-        Tablature.draw(o.svg,score,mi,{x,width:w,y:o.y+(nPent-1)*PENT_H+97,first:primero,notes});
+        Tablature.draw(o.svg,score,mi,{x,width:w,
+          y:o.y+(nPent-1)*(o.pentH||PENT_H)+97,first:primero,notes});
       }
 
       // Un punto de impacto por pentagrama: al tocar se sabe en qué pauta se
