@@ -40,6 +40,10 @@ servidas desde el propio repositorio: no hace falta conexión.
   acordes, 143 ligaduras, 75 digitaciones, 15 notas de adorno, 8 adornos, 7
   pedales, 32 reguladores, 3 cambios de compás y una anacrusa, y el MusicXML
   que se vuelve a exportar no pierde ni uno.
+- **Catálogo**: el botón «Catálogo» de la barra principal abre la búsqueda de
+  partituras. «Archivo» reúne crear, guardar, importar y exportar; «Edición»
+  reúne los cambios de compases. Los ajustes de partitura y vista están en la
+  franja siguiente y el reproductor tiene sus controles propios.
 - **Tiempos automáticos**: cada compás se completa solo con silencios y lo que
   no cabe pasa al compás siguiente.
 - **Escribir tiempos (tap)**: pon el tempo, enciende el metrónomo si quieres y
