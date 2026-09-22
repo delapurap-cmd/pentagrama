@@ -1,0 +1,81 @@
+name: Verify compact instruments and update preview only
+on:
+  push:
+    branches:
+      - preview/instrumentos-compactos-20260921
+    paths:
+      - .github/workflows/preview-compact-instruments-20260921.yml
+permissions:
+  contents: write
+jobs:
+  validate-and-save:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify patch bytes and preserve current preview
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,lzma,hashlib
+          encoded=''.join(Path(f'pruebas/instrument-compact-patch-{i}.txt').read_text().strip() for i in range(2))
+          assert len(encoded)==8972, ('Missing data',len(encoded))
+          packed=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='5eaa0dd467f640fce3d971c90e3922a6d32d4700afce8989de212140457ac3cb'
+          patch=lzma.decompress(packed)
+          assert hashlib.sha256(patch).hexdigest()=='2daa82769d508018faedf90e49cf88b746af3eff78054c3ce48d005d386bbe57'
+          Path('/tmp/instruments-compact.patch').write_bytes(patch)
+          print('Verified',len(patch),'source and regression patch bytes')
+          PY
+          git fetch origin refs/heads/preview/estabilidad-editor-20260920
+          git checkout -B preview/estabilidad-editor-20260920 FETCH_HEAD
+          test "$(git rev-parse HEAD)" = '379e4b44824baad57889c0ae449de3e9b66f2f31'
+          git apply --check /tmp/instruments-compact.patch
+          git apply /tmp/instruments-compact.patch
+          git diff --check
+          node --check js/app.js
+          node --check js/piano-midi.js
+          node --check pruebas/instruments-compact-browser.cjs
+          grep -q 'instrument-panel-compact.css' index.html
+          ! grep -q 'src="js/pdf-import.js"' index.html
+          git diff --stat
+      - name: Install actual Chrome driver
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Test compact UI, transposition and MIDI in desktop and mobile Chrome
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node pruebas/instruments-compact-browser.cjs
+      - name: Run existing tempo, score and notation regressions
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node pruebas/tempo-unico.cjs
+          node pruebas/metronome-loop.cjs
+          node pruebas/tempo-ui-browser.cjs
+          node pruebas/preview-roundtrip.cjs
+          node pruebas/sync-inline-browser.cjs
+          node pruebas/toolbar-browser.cjs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('pruebas/reorg-browser.cjs');s=p.read_text()
+          old="  await page.locator('#deviceWritten').selectOption('trumpet-bb');"
+          assert s.count(old)==1,'Transposition UI regression locator changed'
+          p.write_text(s.replace(old,"  await page.locator('#deviceNotation summary').click();\n"+old))
+          PY
+          node pruebas/reorg-browser.cjs
+          git checkout -- pruebas/reorg-browser.cjs
+      - name: Commit only verified source to the existing preview branch
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app.js js/piano-midi.js js/instrument-panel-compact.css pruebas/instruments-compact-browser.cjs
+          git diff --cached --quiet && exit 1
+          git commit -m 'Make instruments a compact dock with optional notation, TAB and recording settings'
+          git push origin HEAD:preview/estabilidad-editor-20260920
