@@ -87,8 +87,11 @@
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#metroTempo').textContent=String(state.score.tempo);
       $('#deviceWritten').value=state.score.instrumentId||'concert';
+      $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
+      $('#deviceApply').disabled=true;
       $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
       const tc=Tablature.config(state.score);
+      $('#tabActiveLabel').textContent=tc.enabled?'Activa':'Oculta';
       $('#btnTab').setAttribute('aria-pressed',String(tc.enabled));
       $('#btnTab').classList.toggle('on',tc.enabled);
       $('#tabEnabled').checked=tc.enabled;
@@ -957,7 +960,9 @@
     });
     $('#deviceWritten').addEventListener('change',e=>{
       const profile=ScoreInstrument.byId(e.target.value);
-      $('#deviceInfo').textContent=`${profile.name}: la nota escrita suena ${profile.shift} semitonos respecto de la altura notada. Convertir conserva el sonido anterior.`;
+      const same=profile.id===(state.score.instrumentId||'concert');
+      $('#deviceApply').disabled=same;
+      $('#deviceInfo').textContent=same?'Ya está aplicado.':'La altura sonora no cambia.';
     });
     $('#deviceApply').addEventListener('click',()=>{
       const profile=ScoreInstrument.byId($('#deviceWritten').value);
@@ -974,8 +979,9 @@
     });
     ScoreInstrument.profiles.forEach(pr=>{const o=document.createElement('option');
       o.value=pr.id;o.textContent=pr.name;$('#deviceWritten').append(o);});
+    const soundNames={piano:'Piano (muestras)',organ:'Órgano · sint.',bass:'Bajo · sint.',brass:'Metales · sint.',reed:'Cañas · sint.'};
     ScoreInstrument.sounds.forEach(pr=>{const o=document.createElement('option');
-      o.value=pr.id;o.textContent=pr.name;$('#soundSelect').append(o);});
+      o.value=pr.id;o.textContent=soundNames[pr.id]||pr.name;$('#soundSelect').append(o);});
     Instrumentos.catalogo.forEach(ins=>{const o=document.createElement('option');
       o.value=ins.id;o.textContent=ins.nombre;$('#deviceSelect').append(o);});
     $('#deviceWritten').value=state.score.instrumentId||'concert';
@@ -1186,10 +1192,11 @@
     const panel = $('#panelAyuda');
     const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
     panel.hidden = !dispositivosAbiertos;
-    const name=Instrumentos.catalogo.find(ins=>ins.id===ayuda)?.nombre||'Instrumentos';
-    $('#pianoDeviceTitle').textContent='Instrumentos · '+name;
+    $('#pianoDeviceTitle').textContent='Instrumentos';
     $('#btnPiano').classList.toggle('on',dispositivosAbiertos);
-    $('#deviceInfo').textContent=`${ScoreInstrument.byId(state.score.instrumentId).name}: el instrumento elegido conserva el sonido real. Los demás timbres son sintéticos, salvo el piano MTM.`;
+    $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
+    $('#deviceInfo').textContent='Conserva el sonido al convertir.';
+    $('#deviceApply').disabled=true;
     $('#btnPiano').setAttribute('aria-expanded',String(dispositivosAbiertos));
     document.body.classList.toggle('device-open',dispositivosAbiertos);
     document.body.classList.toggle('con-ayuda',dispositivosAbiertos);

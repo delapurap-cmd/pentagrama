@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="js/transport.css">
 <link rel="stylesheet" href="js/piano-midi.css">
 <link rel="stylesheet" href="js/editor-reorg.css">
+<link rel="stylesheet" href="js/instrument-panel-compact.css">
 </head>
 <body>
 
@@ -94,28 +95,37 @@
   <div class="sheets" id="stage"></div>
 </main>
 
-<!-- Panel independiente: el dispositivo ocupa su propia columna, no el lienzo. -->
-<section class="ayuda-dock" id="panelAyuda" aria-label="Dispositivos e instrumentos" hidden>
-  <div class="piano-device-head"><strong id="pianoDeviceTitle">Instrumentos · More Than Modes</strong>
-    <button class="btn ghost" id="btnPianoClose" type="button" aria-label="Cerrar instrumento">✕</button>
+<!-- Instrumentos: selección y teclado a la vista; edición avanzada solo a demanda. -->
+<section class="ayuda-dock" id="panelAyuda" aria-label="Instrumentos" hidden>
+  <div class="piano-device-head"><strong id="pianoDeviceTitle">Instrumentos</strong>
+    <button class="btn ghost icon" id="btnPianoClose" type="button" aria-label="Cerrar instrumentos" title="Cerrar instrumentos"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg></button>
   </div>
-  <div class="device-controls">
-    <label for="deviceSelect">Dispositivo visual</label><select id="deviceSelect" aria-label="Elegir dispositivo visual"></select>
-    <label for="soundSelect">Sonido de reproducción</label><select id="soundSelect" aria-label="Seleccionar timbre de reproducción"></select>
-    <label for="deviceWritten">Partitura para instrumento</label><select id="deviceWritten" aria-label="Elegir instrumento transpositor"></select>
-    <button class="btn" type="button" id="deviceApply" title="Reescribir las notas y la armadura conservando las alturas sonoras">Convertir partitura</button>
-    <p id="deviceInfo" class="device-info">Las notas escritas y las alturas que suenan se mantienen vinculadas.</p>
+  <div class="device-controls" role="group" aria-label="Instrumento y sonido">
+    <label class="device-field" for="deviceSelect"><span>Vista</span><select id="deviceSelect" aria-label="Elegir dispositivo visual"></select></label>
+    <label class="device-field" for="soundSelect"><span>Sonido</span><select id="soundSelect" aria-label="Seleccionar timbre de reproducción"></select></label>
   </div>
-  <fieldset class="tab-device-controls" id="tabDeviceControls" aria-label="Tablatura vinculada">
-    <legend>Tablatura ↔ pentagrama</legend>
-    <label><input type="checkbox" id="tabEnabled"> Mostrar y editar tablatura</label>
-    <label for="tabPreset">Afinación</label><select id="tabPreset" aria-label="Afinación de la tablatura"></select>
-    <label for="tabStaff">Pentagrama vinculado</label><select id="tabStaff" aria-label="Pentagrama fuente de la tablatura"></select>
-    <label for="tabCapo">Capotraste</label><input id="tabCapo" type="number" min="0" max="12" step="1" value="0" aria-label="Capotraste">
-    <p>Los números son trastes; la primera cuerda es la más aguda. Toca un traste para editar su nota, o una línea vacía para añadirla. La altura sonora es única.</p>
-  </fieldset>
   <div class="ins-caja" id="insCaja"></div>
-  <p class="ins-aviso" id="insAviso"></p>
+  <p class="ins-aviso" id="insAviso" role="status"></p>
+  <details class="device-fold" id="deviceNotation">
+    <summary>Transposición <span id="deviceCurrent">Do · sonido real</span></summary>
+    <div class="device-fold-body">
+      <label for="deviceWritten">Escritura para</label>
+      <select id="deviceWritten" aria-label="Elegir instrumento transpositor"></select>
+      <button class="btn" type="button" id="deviceApply" title="Reescribir notas, armadura y claves conservando la altura sonora">Aplicar transposición</button>
+      <p id="deviceInfo" class="device-info">Conserva el sonido al convertir.</p>
+    </div>
+  </details>
+  <details class="device-fold" id="deviceTab">
+    <summary>Tablatura <span id="tabActiveLabel">Oculta</span></summary>
+    <fieldset class="tab-device-controls" id="tabDeviceControls" aria-label="Configuración de tablatura vinculada">
+      <label class="tab-check"><input type="checkbox" id="tabEnabled"> Mostrar tablatura</label>
+      <div class="tab-fields">
+        <label for="tabPreset">Afinación<select id="tabPreset" aria-label="Afinación de la tablatura"></select></label>
+        <label for="tabStaff">Pentagrama<select id="tabStaff" aria-label="Pentagrama fuente de la tablatura"></select></label>
+        <label for="tabCapo">Capo<input id="tabCapo" type="number" min="0" max="12" step="1" value="0" aria-label="Capotraste"></label>
+      </div>
+    </fieldset>
+  </details>
 </section>
 
 <!-- Panel de escritura de tiempos -->

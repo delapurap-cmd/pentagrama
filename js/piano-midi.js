@@ -19,10 +19,10 @@ const PianoMidi = (() => {
     conectar.className='btn';conectar.textContent='Conectar MIDI';
     const equipos=document.createElement('select');equipos.id='pianoInputs';equipos.hidden=true;
     equipos.setAttribute('aria-label','Teclado MIDI conectado');
-    const estado=document.createElement('output');estado.id='pianoStatus';estado.textContent='Piano táctil listo';
+    const estado=document.createElement('output');estado.id='pianoStatus';estado.textContent='Listo';
     estado.setAttribute('aria-live','polite');barra.append(label,conectar,equipos,estado);
     const grabar=document.createElement('button');grabar.type='button';grabar.id='pianoRecord';
-    grabar.className='btn';grabar.textContent='● Grabar interpretación';
+    grabar.className='btn';grabar.textContent='● Grabar';
     const rejilla=document.createElement('select');rejilla.id='pianoGrid';rejilla.setAttribute('aria-label','Cuantización MIDI');
     [[1,'Negra'],[2,'Corchea'],[4,'Semicorchea'],[8,'Fusa']].forEach(([v,t])=>{
       const op=document.createElement('option');op.value=v;op.textContent='Rejilla: '+t;rejilla.append(op);
@@ -42,12 +42,17 @@ const PianoMidi = (() => {
     }voz.value=String(target.voice||1);
     const estadoGrabar=document.createElement('output');estadoGrabar.id='pianoRecordStatus';
     estadoGrabar.setAttribute('aria-live','polite');
-    barra.append(grabar,rejilla,entrada,pauta,voz,estadoGrabar);
+    barra.append(grabar,estadoGrabar);
+    const opciones=document.createElement('details');opciones.className='midi-advanced';
+    opciones.id='pianoRecordOptions';
+    const resumen=document.createElement('summary');resumen.textContent='Opciones de grabación';
+    const ajustes=document.createElement('div');ajustes.className='midi-advanced-fields';
+    ajustes.append(rejilla,entrada,pauta,voz);opciones.append(resumen,ajustes);
     const scroll=document.createElement('div');scroll.className='mtm-midi-scroll';
     scroll.setAttribute('aria-label','Piano E1 a G7 de More Than Modes');
     const lienzo=document.createElement('canvas');lienzo.id='pianoMidiCanvas';
     lienzo.setAttribute('aria-label','Piano interactivo E1 a G7');lienzo.setAttribute('tabindex','0');
-    scroll.append(lienzo);root.append(barra,scroll);
+    scroll.append(lienzo);root.append(barra,scroll,opciones);
     const ctx=lienzo.getContext('2d'),pulsadas=new Map(),punteros=new Map();
     let dibujo=[],disposed=false,acceso=null,entradaMIDI=null,forma=null;
     let recorder=null,countdownTimer=null;
@@ -55,7 +60,7 @@ const PianoMidi = (() => {
       if(!recorder)return;
       if(countdownTimer)clearTimeout(countdownTimer);countdownTimer=null;
       const shot=recorder.finish(performance.now());recorder=null;
-      grabar.textContent='● Grabar interpretación';grabar.setAttribute('aria-pressed','false');
+      grabar.textContent='● Grabar';grabar.setAttribute('aria-pressed','false');
       if(!shot.notes){estadoGrabar.textContent='Sin notas grabadas';return;}
       try{
         acciones.onRecorded?.(shot,{staff:+pauta.value,voice:+voz.value,grid:+rejilla.value});
@@ -69,7 +74,7 @@ const PianoMidi = (() => {
       const n=Number(entrada.value),lead=n*beats*60000/bpm;
       const origin=performance.now()+lead;
       recorder=PracticeCore.capture({bpm,division:+rejilla.value,origin,Q:Model.Q});
-      grabar.textContent='■ Detener y escribir';grabar.setAttribute('aria-pressed','true');
+      grabar.textContent='■ Detener';grabar.setAttribute('aria-pressed','true');
       estadoGrabar.textContent=lead?'Cuenta de entrada…':'Grabando…';
       if(lead){
         const audio=Sound.ac().currentTime+0.03;

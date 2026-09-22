@@ -1,0 +1,85 @@
+/* Instrumentos: lo útil visible; configuraciones de notación y TAB plegables.
+   El panel ocupa su propia columna (o fila móvil), nunca tapa el papel. */
+body:not(.embed)>#panelAyuda:not([hidden]){
+  width:clamp(226px,21vw,290px);height:max-content;align-self:start;
+  min-height:0;max-height:min(540px,76dvh);padding:10px;
+  gap:7px;overflow-y:auto;overscroll-behavior:contain;
+  border:1px solid #574729;border-right:0;border-top:0;
+  border-radius:0 0 0 10px;background:#151518;
+}
+#panelAyuda .piano-device-head{min-height:30px;flex:0 0 auto;padding-bottom:6px;
+  border-bottom:1px solid rgba(201,168,76,.23);color:#ecd29a;font-size:13px}
+#panelAyuda .piano-device-head .btn{width:28px;height:28px;min-height:28px;padding:0;
+  display:inline-flex;align-items:center;justify-content:center}
+#panelAyuda .device-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;flex:0 0 auto;min-width:0}
+#panelAyuda .device-field{display:flex;flex-direction:column;gap:3px;min-width:0;
+  margin:0;color:#cdbb99;font-size:10px;font-weight:600}
+#panelAyuda .device-field select,#panelAyuda .device-fold select{width:100%;max-width:100%;min-width:0;
+  height:31px;padding:0 5px;border:1px solid #615134;border-radius:6px;
+  background:#252428;color:#f7ecd3;font:11px system-ui,sans-serif}
+#panelAyuda #insCaja{flex:0 0 auto;min-width:0;max-width:100%;overflow:hidden}
+#panelAyuda #insCaja:empty{display:none}
+#panelAyuda .ins-scroll{max-width:100%;width:100%}
+#panelAyuda .ins-aviso{flex:0 0 auto;font-size:10px;line-height:1.35;color:#cfab65}
+#panelAyuda .device-fold,#panelAyuda .midi-advanced{flex:0 0 auto;
+  min-width:0;border:1px solid #3d362c;border-radius:7px;background:#1b1a1d}
+#panelAyuda .device-fold>summary,#panelAyuda .midi-advanced>summary{
+  display:flex;align-items:center;gap:6px;min-height:30px;padding:6px 9px;
+  cursor:pointer;list-style:none;color:#dfd2b7;font-size:11px;font-weight:600}
+#panelAyuda .device-fold>summary::-webkit-details-marker,
+#panelAyuda .midi-advanced>summary::-webkit-details-marker{display:none}
+#panelAyuda .device-fold>summary:focus-visible,#panelAyuda .midi-advanced>summary:focus-visible{
+  outline:2px solid #e4ba56;outline-offset:-2px;border-radius:6px}
+#panelAyuda .device-fold>summary::after,#panelAyuda .midi-advanced>summary::after{
+  content:'';flex:0 0 6px;width:6px;height:6px;border-right:1.5px solid #d4b774;
+  border-bottom:1.5px solid #d4b774;transform:rotate(45deg);margin-left:auto;
+  margin-top:-3px;transition:transform .12s ease}
+#panelAyuda .device-fold[open]>summary::after,#panelAyuda .midi-advanced[open]>summary::after{
+  transform:rotate(225deg);margin-top:3px}
+#panelAyuda .device-fold>summary span{color:#ad9f86;font-size:10px;font-weight:400;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:112px}
+#panelAyuda .device-fold-body{display:grid;grid-template-columns:1fr;gap:6px;
+  padding:8px;border-top:1px solid #373128}
+#panelAyuda .device-fold-body>label{font-size:10px;color:#b9a88a}
+#panelAyuda #deviceApply{height:30px;min-height:30px;justify-content:center;font-size:11px}
+#panelAyuda #deviceApply:disabled{opacity:.45;cursor:default}
+#panelAyuda .device-info{margin:0;font-size:10px;line-height:1.3;color:#afa18c}
+#panelAyuda .tab-device-controls{margin:0;padding:8px;border:0;border-top:1px solid #373128;
+  border-radius:0;background:transparent;display:grid;grid-template-columns:1fr;gap:8px}
+#panelAyuda .tab-device-controls .tab-check{margin:0;font-size:11px;display:flex;align-items:center;gap:6px}
+#panelAyuda .tab-fields{display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:7px}
+#panelAyuda .tab-fields label{display:flex;flex-direction:column;gap:3px;min-width:0;
+  font-size:10px;color:#bfad8d}
+#panelAyuda .tab-fields label:first-child{grid-column:1/-1}
+#panelAyuda .tab-device-controls select,#panelAyuda .tab-device-controls input[type=number]{
+  width:100%;max-width:100%;height:30px;min-height:30px;padding:0 5px}
+/* En el piano se ve siempre lo necesario para tocar y grabar. */
+#panelAyuda .mtm-midi-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:5px;align-items:center;margin:0 0 6px;min-width:0}
+#panelAyuda .mtm-midi-controls .btn{height:29px;min-height:29px;min-width:0;width:100%;
+  padding:0 4px;font-size:10px;justify-content:center}
+#panelAyuda .mtm-midi-write{grid-column:1;grid-row:1;min-width:0;font-size:10px}
+#panelAyuda #pianoConnect{grid-column:2;grid-row:1}
+#panelAyuda #pianoRecord{grid-column:1;grid-row:2}
+#panelAyuda #pianoRecordStatus{grid-column:2;grid-row:2;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;font-size:10px}
+#panelAyuda #pianoStatus{grid-column:1/-1;grid-row:3;min-width:0;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+#panelAyuda #pianoInputs:not([hidden]){grid-column:1/-1;grid-row:4;width:100%;max-width:100%}
+#panelAyuda .mtm-midi-scroll{max-width:100%;width:100%}
+#panelAyuda #pianoMidiCanvas{height:96px!important}
+#panelAyuda .midi-advanced{margin-top:6px}
+#panelAyuda .midi-advanced-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px;padding:7px;border-top:1px solid #373128}
+#panelAyuda .midi-advanced-fields select{width:100%;max-width:100%;height:30px;
+  min-width:0;padding:0 3px;border-radius:5px;font-size:10px}
+@media(max-width:780px){
+ body:not(.embed).device-open{grid-template-rows:auto minmax(0,min(30dvh,230px)) minmax(0,1fr)}
+ body:not(.embed).device-open>#panelAyuda:not([hidden]){
+   width:100%;height:100%;max-height:min(30dvh,230px);align-self:stretch;
+   padding:7px 9px;gap:5px;border:0;border-bottom:1px solid #574729;border-radius:0}
+ #panelAyuda .piano-device-head{min-height:26px;padding-bottom:3px}
+ #panelAyuda .device-controls{gap:6px}
+}
+@media print{#panelAyuda{display:none!important}}
