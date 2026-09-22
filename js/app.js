@@ -890,6 +890,10 @@
       {label:'Añadir sistema',fn:()=>{snapshot();Model.addSystem(state.score,1);render();}},
       {label:'Añadir página',fn:()=>{snapshot();Model.addPage(state.score);render();}}
     ],e.currentTarget));
+    $('#btnCatalogo').addEventListener('click', () => {
+      closeMenus();
+      Catalogo.abrir();
+    });
     // Do not mix file import/export with mutation commands.
     $('#btnFile').addEventListener('click', (e) => {
       const lib = readLib();
@@ -904,7 +908,6 @@
         { label: 'Versiones anteriores', fn: versionesAnteriores },
         { sep: true },
         { head: 'Importar' },
-        { label: 'Del catálogo', hint: '226.401 partituras libres', fn: () => Catalogo.abrir() },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
         { label: 'Importar MIDI', hint: '.mid, .midi', fn: () => importScore('midi') },
         { sep: true },
