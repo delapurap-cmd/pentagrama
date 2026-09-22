@@ -16,6 +16,10 @@ const Catalogo = (() => {
     datos: 'catalogo',
     // Dónde están los paquetes .zip con las partituras.
     paquetes: 'catalogo/paquetes',
+    // Si se indica, los paquetes que de verdad están subidos. Las fichas de
+    // los que faltan se siguen viendo —el índice es el catálogo entero— pero
+    // se marcan, para que nadie toque y se lleve un error sin explicación.
+    disponibles: null,
   }, window.CATALOGO_CONFIG || {});
 
   const PESTANAS = [
@@ -165,8 +169,9 @@ const Catalogo = (() => {
 
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
   function rutaPagina() {
-    if (busqueda.length >= 2) {
-      const clave = limpiar(busqueda).replace(/[^a-z0-9]/g, '').slice(0, 2).padEnd(2, '_');
+    if (busqueda.length >= (facetas.letras || 2)) {
+      const letras = facetas.letras || 2;
+      const clave = limpiar(busqueda).replace(/[^a-z0-9]/g, '').slice(0, letras).padEnd(letras, '_');
       const total = (facetas.busqueda || {})[clave] || 0;
       return pagina < total ? `b/${clave}-${String(pagina).padStart(3, '0')}.tsv.gz` : null;
     }
@@ -183,7 +188,7 @@ const Catalogo = (() => {
     pie.der.textContent = 'cargando…';
     try {
       const crudo = await texto(await traer(ruta));
-      const filtro = busqueda.length >= 2 ? limpiar(busqueda) : null;
+      const filtro = busqueda.length >= (facetas.letras || 2) ? limpiar(busqueda) : null;
       let puestas = 0;
       crudo.split('\n').forEach((linea) => {
         if (!linea) return;
@@ -224,16 +229,25 @@ const Catalogo = (() => {
         : 'Aquí no hay nada.';
       lista.appendChild(p);
     }
-    const de = busqueda.length >= 2 ? 'encontradas' : (valor ? rotulo(valor) : '');
+    const larga = busqueda.length >= (facetas.letras || 2);
+    const de = larga ? 'encontradas' : (valor ? rotulo(valor) : '');
     pie.izq.textContent = contador
-      ? `${contador.toLocaleString('es-ES')} ${busqueda.length >= 2 ? de : 'en ' + de}`
+      ? `${contador.toLocaleString('es-ES')} ${larga ? de : 'en ' + de}`
       : '';
+  }
+
+  /** ¿Está subido el paquete en que vive esta partitura? */
+  function hay(f) {
+    if (!CONFIG.disponibles) return true;
+    const paquete = facetas.paquetes[Number(f.ref.split(':')[0])];
+    return CONFIG.disponibles.indexOf(paquete) >= 0;
   }
 
   function ficha(f) {
     const b = document.createElement('button');
     b.className = 'cat-ficha';
     const marcas = [];
+    if (!hay(f)) marcas.push('<span class="no">aún no subida</span>');
     if (f.genero) marcas.push(`<span class="g">${escapar(f.genero)}</span>`);
     if (f.instrumentos) marcas.push(`<span>${escapar(f.instrumentos)}</span>`);
     if (f.partes && +f.partes > 1) marcas.push(`<span>${f.partes} partes</span>`);
@@ -242,6 +256,7 @@ const Catalogo = (() => {
       (pestana === 'artista' && !busqueda ? ''
         : `<div class="a">${escapar(f.autor || 'Autor desconocido')}</div>`) +
       (marcas.length ? `<div class="m">${marcas.join('')}</div>` : '');
+    if (!hay(f)) b.classList.add('lejos');
     b.addEventListener('click', () => abrirFicha(f, b));
     return b;
   }
@@ -260,6 +275,7 @@ const Catalogo = (() => {
     const hasta = desde + largo + 1024;
     const respuesta = await fetch(CONFIG.paquetes + '/' + paquete,
       { headers: { Range: `bytes=${desde}-${hasta}` } });
+    if (respuesta.status === 404) throw new Error('Esta colección todavía no está subida.');
     if (!respuesta.ok) throw new Error('El paquete no se deja leer');
     let trozo = new Uint8Array(await respuesta.arrayBuffer());
     // 206 es «aquí va el trozo que pediste»; con 200 ha mandado todo el
@@ -278,6 +294,7 @@ const Catalogo = (() => {
   }
 
   async function abrirFicha(f, boton) {
+    if (!hay(f)) { decir(boton, 'Esta colección todavía no está subida.'); return; }
     boton.classList.add('cargando');
     pie.der.textContent = 'abriendo…';
     try {
@@ -289,12 +306,17 @@ const Catalogo = (() => {
     } catch (err) {
       pie.der.textContent = '';
       boton.classList.remove('cargando');
-      const aviso = document.createElement('p');
-      aviso.className = 'cat-aviso';
-      aviso.innerHTML = `<b>No se pudo abrir.</b><br>${escapar(err.message || 'Error')}`;
-      boton.after(aviso);
-      setTimeout(() => aviso.remove(), 4000);
+      decir(boton, err.message || 'Error');
     }
+  }
+
+  /** Deja un recado justo debajo de la ficha que se ha tocado. */
+  function decir(boton, mensaje) {
+    const aviso = document.createElement('p');
+    aviso.className = 'cat-aviso';
+    aviso.innerHTML = `<b>No se pudo abrir.</b><br>${escapar(mensaje)}`;
+    boton.after(aviso);
+    setTimeout(() => aviso.remove(), 4000);
   }
 
   /* ---------------- abrir y cerrar ---------------- */
