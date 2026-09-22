@@ -8,6 +8,10 @@
   const audio = document.getElementById('syncDock');
   const header = document.querySelector('header.bar');
   if (!rail || !tools || !toggle || !audio || !header) return;
+  // El transporte se coloca bajo el lienzo sin recrear botones ni listeners.
+  const player = document.getElementById('panelPlay');
+  const canvas = document.getElementById('scroller');
+  if (player && canvas) canvas.after(player);
   // Los botones generales permanecen en el encabezado y conservan sus listeners.
   if (tools.parentElement !== header) header.insertBefore(tools, header.querySelector('.sp'));
   rail.style.overflowAnchor = 'none';
