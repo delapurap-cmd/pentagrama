@@ -1,0 +1,74 @@
+/* Three predictable zones: document and views, score settings, playback. */
+body:not(.embed) > .bar {
+  gap: 6px;
+  padding: 7px 10px;
+  background: #111113;
+}
+body:not(.embed) > .bar > .sp { display: none; }
+body:not(.embed) > .bar > .header-separator {
+  width: 1px; height: 23px; margin: 0 4px;
+  background: rgba(201,168,76,.28);
+  flex: 0 0 auto;
+}
+body:not(.embed) > .bar > .section-tab,
+body:not(.embed) > .bar > .audio-sync-link {
+  height: 34px; padding: 0 11px;
+  border-radius: 7px; font-size: 12px;
+}
+body:not(.embed) > .bar > .catalog-entry {
+  color: #f5d487;
+  background: #3a3020;
+  border-color: #806837;
+  font-weight: 650;
+}
+body:not(.embed) > .bar > .catalog-entry:hover,
+body:not(.embed) > .bar > .catalog-entry:focus-visible {
+  background: #554328; border-color: #d5ae59;
+}
+body:not(.embed) > .bar #barTools {
+  order: 5;
+  flex: 1 0 100%; width: 100%; max-width: 100%;
+  justify-content: flex-start; gap: 5px;
+  padding: 5px 0 3px; margin: 1px 0 0;
+  border-top: 1px solid rgba(255,255,255,.09);
+}
+body:not(.embed) > .bar #barTools .tool-label {
+  display: inline-flex; align-items: center;
+  flex: 0 0 auto; height: 28px;
+  padding: 0 6px 0 3px;
+  color: #ab9d80; font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+body:not(.embed) > .bar #barTools .tool-label:not(:first-of-type) {
+  margin-left: 10px; padding-left: 13px;
+  border-left: 1px solid rgba(201,168,76,.26);
+}
+body:not(.embed) > .bar #barTools > .btn {
+  height: 30px; min-height: 30px; border-radius: 7px;
+}
+body:not(.embed) > .bar #barTools #btnUndo,
+body:not(.embed) > .bar #barTools #btnRedo { font-size: 18px; }
+body:not(.embed) > .bar > #panelPlay {
+  order: 10; margin-top: 0;
+  border-color: rgba(201,168,76,.26);
+  background: #1a1919;
+}
+body:not(.embed) > .bar > #btnPdfImport { order: 0; }
+
+@media (max-width: 780px) {
+  body:not(.embed) > .bar { gap: 4px; padding: 5px 6px; }
+  body:not(.embed) > .bar > .header-separator { display: none; }
+  body:not(.embed) > .bar > .section-tab,
+  body:not(.embed) > .bar > .audio-sync-link {
+    height: 32px; padding: 0 8px; font-size: 11px;
+  }
+  body:not(.embed) > .bar #barTools {
+    order: 5; flex: 1 0 100%; gap: 3px;
+    padding-top: 5px; overflow-x: auto;
+  }
+  body:not(.embed) > .bar #barTools .tool-label { font-size: 9px; padding-right: 3px; }
+  body:not(.embed) > .bar #barTools .tool-label:not(:first-of-type) {
+    margin-left: 5px; padding-left: 8px;
+  }
+  body:not(.embed) > .bar #barTools > .btn { height: 30px; min-height: 30px; }
+}
