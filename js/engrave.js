@@ -496,7 +496,8 @@ const Engrave = (() => {
         y+=h.arriba;
         const x0 = marginLeft, x1 = pageWidth - marginRight;
         const numberY=y-h.arriba+17;
-        numberText(svg,x0-8,numberY-13,Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1,'system-number','end');
+        numberText(svg,x0-34,y+((Model.nPent(score)-1)*PENT_H+40)/2+5,
+          Math.floor(sys.from/(opts.measuresPerSystem||score.measuresPerSystem))+1,'system-number','end');
         for (let line = 0; line < 5; line++) svg.appendChild(make('line', {
           x1: x0, y1: y + line * 10, x2: x1, y2: y + line * 10,
           stroke: COLORS.ink, 'stroke-width': 1
@@ -626,10 +627,16 @@ const Engrave = (() => {
     measures.forEach((m, i) => {
       const w = (i === 0 ? lead : 0) + (weights[i] / wsum) * totalW;
       const mi = sys.from + i;
-      /* El número de sistema va una línea por encima del de compás: en el
-         primer compás caían uno al lado del otro y se leían como uno solo
-         («6 11» parecía un número). */
-      if (i === 0) numberText(o.svg,o.x-8,o.numberY-13,o.systemNumber,'system-number','end');
+      /* El número de compás va donde manda la costumbre: encima del
+         pentagrama, al principio del compás. El de sistema no es notación
+         —ninguna partitura publicada los lleva; sí números de compás,
+         marcas de ensayo y de página—, así que se va al margen izquierdo,
+         a la altura del centro del sistema, donde no le quita el sitio a
+         nada ni se lee como parte de la música. */
+      if (i === 0) {
+        const alto = (nPent - 1) * (o.pentH || PENT_H) + 40;
+        numberText(o.svg, o.x - 34, o.y + alto / 2 + 5, o.systemNumber, 'system-number', 'end');
+      }
       numberText(o.svg,x+8,o.numberY,mi+1,'measure-number');
       const primero = i === 0;
       const ultimo = i === measures.length - 1;
