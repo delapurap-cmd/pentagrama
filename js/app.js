@@ -624,6 +624,7 @@
         { head: 'Partitura' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
         { label: 'Abrir MusicXML o MIDI', hint: 'MuseScore, Sibelius…', fn: importScore },
+        { label: 'Catálogo de partituras', hint: '226.401 libres', fn: () => Catalogo.abrir() },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
         { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
@@ -644,6 +645,8 @@
       }
       menu(items, e.currentTarget);
     });
+
+    $('#btnCatalogo').addEventListener('click', () => Catalogo.abrir());
 
     $('#btnZoomIn').addEventListener('click', () => stepZoom(1));
     $('#btnZoomOut').addEventListener('click', () => stepZoom(-1));
@@ -1415,6 +1418,25 @@
     parentLoaded = true;
     render();
   });
+
+
+  // Puerta para que el catálogo deje aquí la partitura que se ha elegido.
+  window.Editor = {
+    cargar(score, titulo, aviso) {
+      Sound.stop(); Sound.metroStop();
+      snapshot();
+      state.score = score;
+      if (titulo && (!state.score.title || state.score.title === 'Sin título')) {
+        state.score.title = titulo;
+      }
+      Model.reflow(state.score);
+      state.selectedId = null;
+      state.playingId = null;
+      Radial.close();
+      render();
+      if (aviso) { state.lastReport = aviso; toast(aviso); }
+    }
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
