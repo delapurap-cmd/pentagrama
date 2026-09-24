@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Catálogo — 226.401 partituras a las que se llega sin salir del editor.
+   Catálogo — índice depurado servido desde partituras-catalogo.
 
    No se baja el catálogo entero: sólo la página que se está mirando, de mil
    fichas y unos 25 KB. Y al abrir una partitura tampoco se baja el paquete
@@ -66,6 +66,14 @@ const Catalogo = (() => {
   const escapar = (t) => (t || '').replace(/[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // El índice elimina vacíos y «NA». Su generador además convierte otros
+  // marcadores de ausencia en cadenas vacías: no deben reaparecer desde
+  // páginas antiguas en caché ni desde favoritos o aperturas ya guardados.
+  const sinDato = (t) => !t ||
+    ['', 'na', 'n/a', 'none', 'unknown', 'desconocido', '?', '-',
+      'sin titulo', 'autor desconocido'].includes(limpiar(t));
+  const fichaValida = (f) => f && f.ref && !sinDato(f.titulo) && !sinDato(f.autor);
+
   /** Descomprime si hace falta: según quién sirva el archivo, el navegador
    *  puede habérselo comido ya o llegar tal cual con su cabecera gzip. */
   async function texto(respuesta) {
@@ -79,7 +87,7 @@ const Catalogo = (() => {
   async function traer(ruta) {
     // cada tramo por separado: «#» o «?» dentro de un nombre romperían la URL
     const camino = ruta.split('/').map(encodeURIComponent).join('/');
-    const respuesta = await fetch(CONFIG.datos + '/' + camino);
+    const respuesta = await fetch(CONFIG.datos + '/' + camino, { cache: 'no-store' });
     if (!respuesta.ok) throw new Error('No se pudo leer ' + ruta);
     return respuesta;
   }
@@ -165,7 +173,8 @@ const Catalogo = (() => {
   function pintarPestanas() {
     [...pestanas.children].forEach((b, i) => {
       b.classList.toggle('on', PESTANAS[i].id === pestana);
-      if (PESTANAS[i].id === 'favoritos') b.textContent = `Favoritos (${Object.keys(favoritos).length})`;
+      if (PESTANAS[i].id === 'favoritos') b.textContent =
+        `Favoritos (${Object.values(favoritos).filter(fichaValida).length})`;
       b.setAttribute('aria-current', PESTANAS[i].id === pestana ? 'page' : 'false');
     });
   }
@@ -227,14 +236,14 @@ const Catalogo = (() => {
 
   function pintarEspecial() {
     if (pestana === 'favoritos') {
-      const fichas = Object.values(favoritos).filter(f => f && f.ref && coincide(f))
+      const fichas = Object.values(favoritos).filter(f => fichaValida(f) && coincide(f))
         .sort((a, b) => (b.guardada || 0) - (a.guardada || 0));
       encabezado('Tus partituras guardadas', 'Disponibles en este navegador');
       fichas.forEach(f => lista.appendChild(ficha(f)));
       if (!fichas.length) aviso(busqueda ? 'No hay favoritos que coincidan.' : 'Guarda una partitura con ☆ para verla aquí.');
       pie.izq.textContent = `${fichas.length} ${fichas.length === 1 ? 'favorito' : 'favoritos'}`;
     } else {
-      const masAbiertas = Object.values(aperturas).filter(f => f && f.ref && coincide(f))
+      const masAbiertas = Object.values(aperturas).filter(f => fichaValida(f) && coincide(f))
         .sort((a, b) => (b.veces || 0) - (a.veces || 0) || (b.ultima || 0) - (a.ultima || 0))
         .slice(0, 25);
       encabezado('Más abiertas por ti', 'Aperturas completadas en este navegador');
@@ -303,6 +312,7 @@ const Catalogo = (() => {
       crudo.split('\n').forEach((linea) => {
         if (!linea) return;
         const [titulo, autor, genero, instrumentos, partes, ref] = linea.split('\t');
+        if (!fichaValida({ titulo, autor, ref })) return;
         // dentro del cajón de dos letras aún hay que afinar
         if (filtro && !(limpiar(titulo).includes(filtro) || limpiar(autor).includes(filtro))) return;
         lista.appendChild(ficha({ titulo, autor, genero, instrumentos, partes, ref }));
@@ -474,6 +484,10 @@ const Catalogo = (() => {
       lista.innerHTML = '<p class="cat-aviso">Abriendo el catálogo…</p>';
       try {
         facetas = await (await traer('facetas.json')).json();
+        if (Number.isFinite(+facetas.total)) {
+          fondo.querySelector('.cat-titulo').textContent =
+            `Catálogo · ${Number(facetas.total).toLocaleString('es-ES')}`;
+        }
       } catch (err) {
         lista.innerHTML = `<p class="cat-aviso"><b>El catálogo no está disponible.</b><br>` +
                           `${escapar(err.message)}</p>`;
