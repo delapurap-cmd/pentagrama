@@ -252,7 +252,9 @@ const Catalogo = (() => {
       });
       if (!masAbiertas.length) aviso(busqueda ? 'No hay aperturas que coincidan.' : 'Abre partituras para formar tu ranking personal.');
       const autores = [...(facetas.pestanas.artista || [])]
-        .filter(v => !busqueda || limpiar(rotulo(v)).includes(limpiar(busqueda)))
+        .filter(v => !/^otros(?:\s|$|[-·])/.test(limpiar(rotulo(v))) &&
+          !/^(anon\.?|unknown|autor desconocido)$/.test(limpiar(rotulo(v))) &&
+          (!busqueda || limpiar(rotulo(v)).includes(limpiar(busqueda))))
         .sort((a, b) => b.cuenta - a.cuenta).slice(0, 20);
       encabezado('Autores con más partituras', 'Ordenados por cantidad de obras en el catálogo');
       autores.forEach((v, i) => {
