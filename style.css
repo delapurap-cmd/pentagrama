@@ -520,7 +520,7 @@ body.con-ayuda .panel.open{
   left:18px;bottom:17px;padding:1px 3px;border-radius:3px;
   background:#183027;color:#e9f5dc;font:700 8px/1.2 system-ui,sans-serif;
   white-space:nowrap;box-shadow:0 1px 3px #0008}
-@keyframes ins-ataque{from{opacity:.45;scale:.65}to{opacity:1;scale:1}}
+@keyframes ins-ataque{from{scale:.85}to{scale:1}}
 
 .panel.play .sel{
   font: inherit; font-size: 13px; color: var(--txt);
