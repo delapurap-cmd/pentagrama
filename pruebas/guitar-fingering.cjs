@@ -28,7 +28,18 @@ for (const midi of [60,62,64,65,67,69,71,72,71,69,67]) {
   previous=current;
 }
 assert.ok(strings.size>=3,'a scale moves across strings, not up one string');
-assert.deepEqual(Instrumentos.digitacionGuitarra([24]),[],'out-of-range note is not invented');
+for (const [original,visual,octavas] of [[36,48,1],[24,48,2],[84,72,-1]]) {
+  assert.deepEqual(Instrumentos.homologarGuitarra(original),
+    {midi:original,visualMidi:visual,octavas});
+  const note=Instrumentos.digitacionGuitarra([original]);
+  assert.equal(note.length,1,'octave equivalent is playable');
+  assert.equal(note[0].visualMidi,visual);
+  assert.equal(note[0].midi,original,'original pitch survives for the caption');
+  assert.equal(note[0].octavas,octavas);
+}
+assert.deepEqual(Instrumentos.digitacionGuitarra([36,48]).map(p=>p.visualMidi),[48],
+  'unison octave equivalents share one physical string');
+assert.deepEqual(Instrumentos.digitacionGuitarra([NaN]),[]);
 assert.deepEqual(Instrumentos.digitacionGuitarra([60,64,67],Instrumentos.digitacionGuitarra([60,64,67])),
   Instrumentos.digitacionGuitarra([60,64,67]),'repeated chord retains its shape');
-console.log('PASS guitar fingering: open chord, compact voicings, six strings and melodic continuity');
+console.log('PASS guitar fingering: chords, melodic continuity and playable octave equivalents');
