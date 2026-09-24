@@ -481,12 +481,12 @@ body.con-ayuda .panel.open{
   box-shadow: 0 1px 2px #0b0707,0 -1px 1px #f1d5a578;
 }
 .ins-cuerda.sonando::after{
-  filter: brightness(1.5);box-shadow: 0 0 5px #f3c77d,0 0 11px #d8a35399;
+  filter: brightness(1.12);box-shadow: 0 0 3px #e4bd7799,0 1px 1px #100b0a;
   animation: ins-vibracion var(--ins-vib) ease-in-out infinite alternate;
 }
 @keyframes ins-vibracion{
-  from{transform:translateY(calc(-50% - 1.8px)) scaleY(.8)}
-  to{transform:translateY(calc(-50% + 1.8px)) scaleY(1.25)}
+  from{transform:translateY(calc(-50% - .35px))}
+  to{transform:translateY(calc(-50% + .35px))}
 }
 .ins-nombre{
   width: 32px; flex: 0 0 32px; text-align: center;
