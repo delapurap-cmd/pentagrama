@@ -1,7 +1,7 @@
-/* Compact workspace: one toolbar, a small transport below the score, and an
-   optional instrument strip at the bottom of the canvas. */
+/* Compact workspace: the score keeps its height, the transport opens from the
+   header, and the instrument occupies a complete strip below the canvas. */
 body:not(.embed) {
-  grid-template-rows: auto minmax(0,1fr) auto auto;
+  grid-template-rows: auto minmax(0,1fr) auto;
 }
 body:not(.embed) > .bar { gap: 4px; padding: 4px 8px; }
 body:not(.embed) > .bar > .header-separator { height: 20px; margin: 0 2px; }
@@ -36,7 +36,11 @@ body .instrument-menu {
   box-shadow: 0 16px 36px #000a;
 }
 .instrument-menu-title { color: #edce88; font-size: 12px; font-weight: 700; }
-.instrument-menu .device-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.instrument-menu .device-controls { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.instrument-menu .instrument-choice { display: grid; grid-template-columns: minmax(0,1fr) 78px;
+  align-items: end; gap: 7px; }
+.instrument-menu #deviceShow { height: 31px; min-height: 31px; padding: 0 6px;
+  justify-content: center; font-size: 11px; }
 .instrument-menu .device-field { display: flex; flex-direction: column; gap: 4px; min-width: 0;
   color: #cdbb99; font-size: 10px; font-weight: 600; }
 .instrument-menu select { width: 100%; min-width: 0; height: 31px; padding: 0 5px;
@@ -62,21 +66,24 @@ body .instrument-menu {
 .instrument-menu .tab-fields input { width: 100%; height: 30px; background: #252428;
   color: #f7ecd3; border: 1px solid #615134; border-radius: 6px; }
 
-/* Actual player and instrument live below the score, never in a right column. */
-body:not(.embed) > .editor-rail { grid-row: 2/5; }
-body:not(.embed) > #syncDock:not([hidden]) { grid-row: 2/5; }
+/* El transporte se abre como popover compacto bajo su botón superior. */
+body:not(.embed) > .editor-rail { grid-row: 2/4; }
+body:not(.embed) > #syncDock:not([hidden]) { grid-row: 2/4; }
 body:not(.embed) > #panelPlay,
 body:not(.embed) > #panelPlay.open,
 body:not(.embed) > #panelPlay:not(.open) {
-  position: relative!important; grid-column: 2; grid-row: 3;
-  display: flex!important; flex-direction: column; justify-self: center;
-  width: min(100%,470px); height: auto; min-width: 0; max-width: 470px;
-  margin: 0; padding: 4px 8px 5px; overflow: visible;
-  left: auto; right: auto; top: auto; bottom: auto;
-  transform: none!important; z-index: 5;
-  border: 1px solid #4c402d; border-radius: 9px 9px 0 0;
-  box-shadow: none; background: #1a1919;
+  position: fixed!important; grid-column: auto; grid-row: auto;
+  justify-self: auto; right: max(8px,env(safe-area-inset-right,0px));
+  top: var(--player-top,55px); bottom: auto; left: auto;
+  width: min(365px,calc(100vw - 16px)); height: auto; min-width: 0; max-width: none;
+  max-height: calc(100dvh - var(--player-top,55px) - 9px);
+  margin: 0; padding: 9px; overflow-y: auto;
+  transform: none!important; z-index: 110;
+  border: 1px solid rgba(201,168,76,.5); border-radius: 12px;
+  box-shadow: 0 13px 35px #000a; background: #1a1919;
 }
+body:not(.embed) > #panelPlay:not(.open) { display: none!important; }
+body:not(.embed) > #panelPlay.open { display: block!important; }
 body:not(.embed) #panelPlay .transport-main { display: flex; flex-wrap: nowrap;
   justify-content: center; align-items: center; gap: 2px;
   min-height: 28px; overflow: visible; padding: 0; }
@@ -100,10 +107,10 @@ body:not(.embed) #panelPlay #ppLoopControls { max-height: min(180px,30dvh);
 
 body:not(.embed) > #panelAyuda:not([hidden]),
 body:not(.embed).device-open > #panelAyuda:not([hidden]) {
-  position: relative; grid-column: 2; grid-row: 4; order: initial;
+  position: relative; grid-column: 2; grid-row: 3; order: initial;
   display: flex; flex-direction: column; gap: 3px;
-  width: 100%; height: auto; min-height: 0; max-height: min(184px,25dvh);
-  padding: 5px 10px 6px; overflow: hidden;
+  width: 100%; height: auto; min-height: 0; max-height: min(280px,38dvh);
+  padding: 6px 10px 8px; overflow: hidden;
   left: auto; right: auto; top: auto; bottom: auto;
   align-self: stretch; transform: none!important;
   border: 0; border-top: 1px solid #574729; border-radius: 0;
@@ -114,9 +121,10 @@ body:not(.embed) > #panelAyuda .piano-device-head {
 }
 body:not(.embed) > #panelAyuda .piano-device-head .btn { width: 23px;
   height: 23px; min-height: 23px; }
-body:not(.embed) > #panelAyuda #insCaja { flex: 1 1 auto;
-  min-height: 0; overflow-y: auto; overflow-x: hidden; }
-body:not(.embed) > #panelAyuda .ins-scroll { overflow-x: auto; }
+body:not(.embed) > #panelAyuda #insCaja { flex: 0 1 auto;
+  min-height: 0; overflow: visible; }
+body:not(.embed) > #panelAyuda .ins-scroll { overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #a48753 #2c2420; }
 body:not(.embed) > #panelAyuda .mtm-midi-controls { display: flex; gap: 5px;
   align-items: center; flex-wrap: nowrap; margin: 0 0 3px; }
 body:not(.embed) > #panelAyuda .mtm-midi-controls > * { width: auto; min-width: 0; }
@@ -125,7 +133,7 @@ body:not(.embed) > #panelAyuda .midi-advanced > summary { min-height: 25px; padd
 
 @media (max-width: 780px) {
   body:not(.embed), body:not(.embed).device-open {
-    grid-template-rows: auto minmax(0,1fr) auto auto!important;
+    grid-template-rows: auto minmax(0,1fr) auto!important;
     grid-template-columns: minmax(0,1fr);
   }
   body:not(.embed) > .bar { gap: 3px; padding: 3px 5px; }
@@ -137,19 +145,13 @@ body:not(.embed) > #panelAyuda .midi-advanced > summary { min-height: 25px; padd
   body:not(.embed) > .stage,
   body:not(.embed).device-open > .stage { grid-column: 1; grid-row: 2;
     display: block; height: 100%; }
-  body:not(.embed) > #panelPlay,
-  body:not(.embed) > #panelPlay.open,
-  body:not(.embed) > #panelPlay:not(.open) {
-    grid-column: 1; grid-row: 3; width: min(100%,470px);
-    border-radius: 8px 8px 0 0;
-  }
   body:not(.embed) #panelPlay .transport-main { flex-wrap: wrap;
     row-gap: 1px; }
   body:not(.embed) #panelPlay #ppPos { min-width: 64px; }
   body:not(.embed) > #panelAyuda:not([hidden]),
   body:not(.embed).device-open > #panelAyuda:not([hidden]) {
-    grid-column: 1; grid-row: 4; max-height: min(160px,22dvh);
-    padding: 4px 6px; }
+    grid-column: 1; grid-row: 3; max-height: min(250px,38dvh);
+    padding: 5px 7px; }
   body:not(.embed).device-open > .editor-rail.expanded { display: flex; }
   body:not(.embed).device-open > #syncDock:not([hidden]) { display: flex!important; }
 }
