@@ -38,7 +38,10 @@
   <section class="instrument-menu" id="instrumentMenu" aria-label="Elegir instrumento" hidden>
     <div class="instrument-menu-title">Instrumento en el lienzo</div>
     <div class="device-controls" role="group" aria-label="Instrumento y sonido">
-      <label class="device-field" for="deviceSelect"><span>Mostrar</span><select id="deviceSelect" aria-label="Elegir dispositivo visual"></select></label>
+      <div class="instrument-choice">
+        <label class="device-field" for="deviceSelect"><span>Instrumentos disponibles</span><select id="deviceSelect" aria-label="Elegir instrumento visual"></select></label>
+        <button class="btn primary" id="deviceShow" type="button">Mostrar</button>
+      </div>
       <label class="device-field" for="soundSelect"><span>Sonido</span><select id="soundSelect" aria-label="Seleccionar timbre de reproducción"></select></label>
     </div>
     <details class="device-fold" id="deviceNotation">
