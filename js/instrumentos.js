@@ -203,7 +203,7 @@ const Instrumentos = (function () {
           if (p.octavas) {
             d.classList.add('ins-octava');
             d.dataset.octavas = (p.octavas > 0 ? '+' : '−') +
-              (Math.abs(p.octavas) === 1 ? '8ª' : Math.abs(p.octavas) * 8 + 'ª');
+              (1 + Math.abs(p.octavas) * 7) + 'ª';
           }
           d.style.left = xDedo(p.traste);
           d.style.top = 'calc(var(--ins-borde) + ' + p.cuerda + ' * var(--ins-alto-cuerda) + var(--ins-alto-cuerda) / 2)';
