@@ -30,7 +30,24 @@ const Catalogo = (() => {
     { id: 'artista', nombre: 'Artista' },
     { id: 'genero', nombre: 'Género' },
     { id: 'instrumento', nombre: 'Instrumento' },
+    { id: 'ranking', nombre: 'Ranking' },
+    { id: 'favoritos', nombre: 'Favoritos' },
   ];
+
+  const CLAVE_FAVORITOS = 'pentagrama.catalogo.favoritos.v1';
+  const CLAVE_APERTURAS = 'pentagrama.catalogo.aperturas.v1';
+  function leerGuardado(clave) {
+    try {
+      const guardado = JSON.parse(localStorage.getItem(clave) || '{}');
+      return guardado && !Array.isArray(guardado) && typeof guardado === 'object' ? guardado : {};
+    } catch (_) { return {}; }
+  }
+  function guardar(clave, datos) {
+    try { localStorage.setItem(clave, JSON.stringify(datos)); } catch (_) { /* Sin almacenamiento, sigue en esta sesión. */ }
+  }
+  let favoritos = leerGuardado(CLAVE_FAVORITOS);
+  let aperturas = leerGuardado(CLAVE_APERTURAS);
+  const especial = () => pestana === 'ranking' || pestana === 'favoritos';
 
   let fondo, caja, entrada, pestanas, valores, lista, pie, cuerpo, volver;
   let facetas = null;
@@ -39,7 +56,7 @@ const Catalogo = (() => {
   let busqueda = '';        // lo que se ha tecleado
   let pagina = 0, cargando = false, fin = false;
   const SEGUIDAS = 20;      // tope de páginas por tirón, no vaya a irse de las manos
-  let vigia = null, contador = 0;
+  let vigia = null, contador = 0, revision = 0;
 
   /* ---------------- utilidades ---------------- */
 
@@ -120,23 +137,37 @@ const Catalogo = (() => {
 
     PESTANAS.forEach((p) => {
       const b = document.createElement('button');
+      b.type = 'button';
       b.textContent = p.nombre;
       b.addEventListener('click', () => {
         pestana = p.id; valor = null;
         entrada.value = ''; busqueda = '';
+        cuerpo.classList.remove('en-lista');
         pintarPestanas(); pintarValores(); arrancarLista();
       });
       pestanas.appendChild(b);
     });
 
     lista.addEventListener('scroll', () => {
-      if (cargando || fin) return;
+      if (especial() || cargando || fin) return;
       if (lista.scrollTop + lista.clientHeight > lista.scrollHeight - 300) siguientePagina();
+    });
+    window.addEventListener('storage', (e) => {
+      if (e.key === CLAVE_FAVORITOS) favoritos = leerGuardado(CLAVE_FAVORITOS);
+      else if (e.key === CLAVE_APERTURAS) aperturas = leerGuardado(CLAVE_APERTURAS);
+      else return;
+      pintarPestanas();
+      if (especial()) arrancarLista();
+      else actualizarEstrellas();
     });
   }
 
   function pintarPestanas() {
-    [...pestanas.children].forEach((b, i) => b.classList.toggle('on', PESTANAS[i].id === pestana));
+    [...pestanas.children].forEach((b, i) => {
+      b.classList.toggle('on', PESTANAS[i].id === pestana);
+      if (PESTANAS[i].id === 'favoritos') b.textContent = `Favoritos (${Object.keys(favoritos).length})`;
+      b.setAttribute('aria-current', PESTANAS[i].id === pestana ? 'page' : 'false');
+    });
   }
 
   /** El nombre bonito de un valor: «otros-a» no se le enseña a nadie. */
@@ -144,6 +175,7 @@ const Catalogo = (() => {
 
   function pintarValores() {
     valores.innerHTML = '';
+    if (especial()) return;
     const grupo = (facetas.pestanas[pestana] || []);
     grupo.forEach((v) => {
       const b = document.createElement('button');
@@ -164,11 +196,79 @@ const Catalogo = (() => {
   /* ---------------- la lista de fichas ---------------- */
 
   function arrancarLista() {
+    revision++;
     lista.innerHTML = '';
     lista.appendChild(volver);
-    pagina = 0; fin = false; contador = 0;
+    pagina = 0; fin = false; cargando = false; contador = 0;
     lista.scrollTop = 0;
+    cuerpo.classList.toggle('en-especial', especial());
+    if (especial()) { pintarEspecial(); return; }
     siguientePagina();
+  }
+
+  function aviso(mensaje) {
+    const p = document.createElement('p');
+    p.className = 'cat-aviso';
+    p.textContent = mensaje;
+    lista.appendChild(p);
+  }
+
+  function encabezado(texto, detalle) {
+    const h = document.createElement('div');
+    h.className = 'cat-seccion';
+    h.innerHTML = `<strong>${escapar(texto)}</strong><small>${escapar(detalle)}</small>`;
+    lista.appendChild(h);
+  }
+
+  function coincide(f) {
+    const q = limpiar(busqueda);
+    return !q || limpiar(`${f.titulo || ''} ${f.autor || ''}`).includes(q);
+  }
+
+  function pintarEspecial() {
+    if (pestana === 'favoritos') {
+      const fichas = Object.values(favoritos).filter(f => f && f.ref && coincide(f))
+        .sort((a, b) => (b.guardada || 0) - (a.guardada || 0));
+      encabezado('Tus partituras guardadas', 'Disponibles en este navegador');
+      fichas.forEach(f => lista.appendChild(ficha(f)));
+      if (!fichas.length) aviso(busqueda ? 'No hay favoritos que coincidan.' : 'Guarda una partitura con ☆ para verla aquí.');
+      pie.izq.textContent = `${fichas.length} ${fichas.length === 1 ? 'favorito' : 'favoritos'}`;
+    } else {
+      const masAbiertas = Object.values(aperturas).filter(f => f && f.ref && coincide(f))
+        .sort((a, b) => (b.veces || 0) - (a.veces || 0) || (b.ultima || 0) - (a.ultima || 0))
+        .slice(0, 25);
+      encabezado('Más abiertas por ti', 'Aperturas completadas en este navegador');
+      masAbiertas.forEach((f, i) => {
+        const fila = ficha(f);
+        const num = document.createElement('span');
+        num.className = 'cat-posicion';
+        num.textContent = `${i + 1}.`;
+        fila.prepend(num);
+        const cuenta = document.createElement('span');
+        cuenta.className = 'cat-veces';
+        cuenta.textContent = `${f.veces} ${f.veces === 1 ? 'apertura' : 'aperturas'}`;
+        fila.querySelector('.cat-abrir').appendChild(cuenta);
+        lista.appendChild(fila);
+      });
+      if (!masAbiertas.length) aviso(busqueda ? 'No hay aperturas que coincidan.' : 'Abre partituras para formar tu ranking personal.');
+      const autores = [...(facetas.pestanas.artista || [])]
+        .filter(v => !busqueda || limpiar(rotulo(v)).includes(limpiar(busqueda)))
+        .sort((a, b) => b.cuenta - a.cuenta).slice(0, 20);
+      encabezado('Autores con más partituras', 'Ordenados por cantidad de obras en el catálogo');
+      autores.forEach((v, i) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'cat-rank-autor';
+        b.innerHTML = `<span class="cat-posicion">${i + 1}.</span><span>${escapar(rotulo(v))}</span><small>${Number(v.cuenta).toLocaleString('es-ES')} partituras</small>`;
+        b.addEventListener('click', () => {
+          pestana = 'artista'; valor = v; busqueda = ''; entrada.value = '';
+          pintarPestanas(); pintarValores(); arrancarLista();
+          cuerpo.classList.add('en-lista');
+        });
+        lista.appendChild(b);
+      });
+      pie.izq.textContent = `${masAbiertas.length} en tu ranking · ${autores.length} autores`;
+    }
+    pie.der.textContent = '';
   }
 
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
@@ -186,12 +286,15 @@ const Catalogo = (() => {
   }
 
   async function siguientePagina(seguidas = 0) {
+    if (especial() || cargando) return;
+    const actual = revision;
     const ruta = rutaPagina();
     if (!ruta) { fin = true; rematar(); return; }
     cargando = true;
     pie.der.textContent = 'cargando…';
     try {
       const crudo = await texto(await traer(ruta));
+      if (actual !== revision) return;
       const filtro = busqueda.length >= (facetas.letras || 2) ? limpiar(busqueda) : null;
       let puestas = 0;
       crudo.split('\n').forEach((linea) => {
@@ -215,6 +318,7 @@ const Catalogo = (() => {
       if (puestas === 0) siguientePagina(seguidas + 1);
       else if (seVe && lista.scrollHeight <= lista.clientHeight) siguientePagina(seguidas + 1);
     } catch (err) {
+      if (actual !== revision) return;
       cargando = false; fin = true;
       if (!contador) {
         lista.innerHTML = '';
@@ -253,8 +357,10 @@ const Catalogo = (() => {
   }
 
   function ficha(f) {
+    const fila = document.createElement('div');
+    fila.className = 'cat-ficha';
     const b = document.createElement('button');
-    b.className = 'cat-ficha';
+    b.type = 'button'; b.className = 'cat-abrir';
     const marcas = [];
     if (!hay(f)) marcas.push('<span class="no">aún no subida</span>');
     if (f.genero) marcas.push(`<span class="g">${escapar(f.genero)}</span>`);
@@ -262,12 +368,35 @@ const Catalogo = (() => {
     if (f.partes && +f.partes > 1) marcas.push(`<span>${f.partes} partes</span>`);
     b.innerHTML =
       `<div class="t">${escapar(f.titulo || 'Sin título')}</div>` +
-      (pestana === 'artista' && !busqueda ? ''
-        : `<div class="a">${escapar(f.autor || 'Autor desconocido')}</div>`) +
+      `<div class="a">${escapar(f.autor || 'Autor desconocido')}</div>` +
       (marcas.length ? `<div class="m">${marcas.join('')}</div>` : '');
-    if (!hay(f)) b.classList.add('lejos');
-    b.addEventListener('click', () => abrirFicha(f, b));
-    return b;
+    if (!hay(f)) fila.classList.add('lejos');
+    b.addEventListener('click', () => abrirFicha(f, fila));
+    const estrella = document.createElement('button');
+    estrella.type = 'button'; estrella.className = 'cat-favorito';
+    estrella.dataset.ref = f.ref;
+    estadoEstrella(estrella);
+    estrella.addEventListener('click', () => {
+      if (favoritos[f.ref]) delete favoritos[f.ref];
+      else favoritos[f.ref] = { ...f, guardada: Date.now() };
+      guardar(CLAVE_FAVORITOS, favoritos);
+      pintarPestanas();
+      if (pestana === 'favoritos') arrancarLista();
+      else actualizarEstrellas();
+    });
+    fila.append(b, estrella);
+    return fila;
+  }
+
+  function estadoEstrella(b) {
+    const activa = !!favoritos[b.dataset.ref];
+    b.textContent = activa ? '★' : '☆';
+    b.setAttribute('aria-pressed', String(activa));
+    b.setAttribute('aria-label', activa ? 'Quitar de favoritos' : 'Guardar en favoritos');
+    b.title = activa ? 'Quitar de favoritos' : 'Guardar en favoritos';
+  }
+  function actualizarEstrellas() {
+    lista.querySelectorAll('.cat-favorito').forEach(estadoEstrella);
   }
 
   /* ---------------- abrir una partitura ---------------- */
@@ -311,6 +440,9 @@ const Catalogo = (() => {
       const resultado = MusicXML.parse(await MusicXML.readAny(new Blob([bytes])));
       const aviso = MusicXML.reportText(resultado.report);
       window.Editor.cargar(resultado.score, f.titulo, aviso);
+      const anterior = aperturas[f.ref] || {};
+      aperturas[f.ref] = { ...f, veces: (Number(anterior.veces) || 0) + 1, ultima: Date.now() };
+      guardar(CLAVE_APERTURAS, aperturas);
       cerrar();
     } catch (err) {
       pie.der.textContent = '';
