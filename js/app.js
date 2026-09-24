@@ -59,7 +59,7 @@
       onRecorded:insertRecorded
     });
     bindPlayPanel();
-    if(!EMBED)togglePlayPanel(true);
+    if(!EMBED)togglePlayPanel(false);
     bindKeys();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
@@ -949,8 +949,11 @@
     $('#btnAudioSync').addEventListener('click',()=>{
       setInstrumentMenu(false);
     });
-    $('#deviceSelect').addEventListener('change',e=>{
-      ayuda=e.target.value;dispositivosAbiertos=ayuda!=='ninguno';
+    $('#deviceSelect').addEventListener('change',()=>{
+      $('#deviceShow').textContent=$('#deviceSelect').value==='ninguno'?'Ocultar':'Mostrar';
+    });
+    $('#deviceShow').addEventListener('click',()=>{
+      ayuda=$('#deviceSelect').value;dispositivosAbiertos=ayuda!=='ninguno';
       Sound.liveAllOff();montaAyuda();setInstrumentMenu(false);
     });
     document.addEventListener('pointerdown',e=>{
@@ -994,9 +997,10 @@
     $('#deviceWritten').value=state.score.instrumentId||'concert';
     $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
     $('#deviceSelect').value=ayuda;
+    $('#deviceShow').textContent=ayuda==='ninguno'?'Ocultar':'Mostrar';
 
     $('#btnPianoClose').addEventListener('click',()=>{
-      dispositivosAbiertos=false;ayuda='ninguno';Sound.liveAllOff();montaAyuda();
+      dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();
     });
     if (Native.isApp()) $('#btnPrint').hidden = true;
     else $('#btnPrint').addEventListener('click', () => window.print());
@@ -1238,8 +1242,11 @@
       });
     }));
     const fuera = Instrumentos.fuera(todas);
+    const adaptadas = Instrumentos.adaptadas(todas);
     if (fuera) {
       aviso.textContent = `${fuera} de ${todas.length} notas quedan fuera de este instrumento y no se dibujan.`;
+    } else if (adaptadas) {
+      aviso.textContent = `${adaptadas} de ${todas.length} notas se muestran en el registro tocable de la guitarra; su sonido original se conserva.`;
     }
   }
 
@@ -1374,7 +1381,7 @@
 
   function togglePlayPanel(force){
     const panel=$('#panelPlay');
-    const open=!EMBED?true:(force!=null?force:!panel.classList.contains('open'));
+    const open=force!=null?force:!panel.classList.contains('open');
     if(!EMBED)document.documentElement.style.setProperty('--player-top',
       Math.ceil($('header.bar').getBoundingClientRect().bottom+6)+'px');
     panel.classList.toggle('open',open);
