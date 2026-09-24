@@ -43,8 +43,11 @@ servidas desde el propio repositorio: no hace falta conexión.
 - **Catálogo**: el botón «Catálogo» de la barra principal abre la búsqueda de
   partituras. «Archivo» reúne crear, guardar, importar y exportar; «Edición»
   reúne los cambios de compases. Los ajustes de partitura y vista comparten la
-  barra compacta. El reproductor está bajo el lienzo; «Instrumentos» despliega
-  la selección y el instrumento elegido aparece debajo de la partitura.
+  barra compacta. Play está siempre visible y los controles de reproducción se
+  abren en un panel compacto; «Instrumentos» despliega la selección y el
+  instrumento elegido aparece debajo de la partitura. El catálogo incluye
+  favoritos guardados en este navegador, un ranking de aperturas personales y
+  una lista de autores ordenada por la cantidad de partituras del catálogo.
 - **Tiempos automáticos**: cada compás se completa solo con silencios y lo que
   no cabe pasa al compás siguiente.
 - **Escribir tiempos (tap)**: pon el tempo, enciende el metrónomo si quieres y
