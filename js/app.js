@@ -1247,7 +1247,7 @@
     limpiarCuenta();rep.sesion++;
     rep.playing = false;
     Sound.stop(); Sound.metroStop();
-    Instrumentos.encender([]);
+    Instrumentos.reiniciar();
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
