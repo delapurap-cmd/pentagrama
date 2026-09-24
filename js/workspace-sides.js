@@ -8,7 +8,8 @@
   const audio = document.getElementById('syncDock');
   const header = document.querySelector('header.bar');
   if (!rail || !tools || !toggle || !audio || !header) return;
-  // El transporte se coloca bajo el lienzo sin recrear botones ni listeners.
+  // El transporte se saca del encabezado para abrirse como panel flotante,
+  // sin recrear botones ni listeners.
   const player = document.getElementById('panelPlay');
   const canvas = document.getElementById('scroller');
   if (player && canvas) canvas.after(player);
