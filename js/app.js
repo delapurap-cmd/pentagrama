@@ -728,7 +728,7 @@
          que recorre el sistema y todas las cabezas que suenan pintadas a la
          vez, encima de lo ya grabado. El Nocturno son mil notas; redibujar
          la partitura en cada una era lo que hacía saltar el cursor. */
-      onSonando: (ids, midis) => { Engrave.resaltar(ids); Instrumentos.encender(midis); },
+      onSonando: (ids, midis, claves) => { Engrave.resaltar(ids); Instrumentos.encender(midis, claves); },
       onPos: (frac, seg, tick) => {
         pintarPosicion(frac);
         const c = Engrave.moverCursor(state.score, tick);
@@ -756,15 +756,16 @@
     /* Cuántas notas de esta obra no caben en el instrumento elegido. Con
        música de piano en una guitarra son muchas, y vale más decirlo que
        dibujar la mitad y dejar que parezca que falla. */
-    const todas = [];
+    const todas = [], claves = [];
     state.score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
       const clef = Model.clefAt(state.score, mi, v.pent);
+      const clave = clef ? (clef.id || clef) : null;
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') return;
-        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(x); });
+        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) { todas.push(x); claves.push(clave); } });
       });
     }));
-    const fuera = Instrumentos.fuera(todas);
+    const fuera = Instrumentos.fuera(todas, claves);
     if (fuera) {
       aviso.textContent = `${fuera} de ${todas.length} notas quedan fuera de este instrumento y no se dibujan.`;
     }
