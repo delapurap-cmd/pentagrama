@@ -159,7 +159,7 @@ const Instrumentos = (function () {
     CUERDAS.forEach((_, c) => {
       const fila = el('div', 'ins-cuerda');
       fila.style.setProperty('--ins-calibre', [1.2, 1.5, 2, 2.6, 3.2, 3.8][c] + 'px');
-      fila.style.setProperty('--ins-vib', [72, 83, 95, 105, 116, 128][c] + 'ms');
+      fila.style.setProperty('--ins-vib', [105, 115, 125, 138, 150, 165][c] + 'ms');
       if (c >= 3) fila.classList.add('entorchada');
       const n = el('span', 'ins-nombre');
       n.textContent = CUERDA_NOMBRE[c];
