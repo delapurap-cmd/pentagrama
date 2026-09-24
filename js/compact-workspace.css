@@ -4,6 +4,9 @@ body:not(.embed) {
   grid-template-rows: auto minmax(0,1fr) auto;
 }
 body:not(.embed) > .bar { gap: 4px; padding: 4px 8px; }
+body:not(.embed) > .bar > #btnPlay { display: inline-flex!important;
+  order: 1; flex: 0 0 auto; height: 30px; min-height: 30px;
+  padding: 0 8px; font-size: 11px; }
 body:not(.embed) > .bar > .header-separator { height: 20px; margin: 0 2px; }
 body:not(.embed) > .bar > .section-tab,
 body:not(.embed) > .bar > .audio-sync-link {
@@ -75,7 +78,7 @@ body:not(.embed) > #panelPlay:not(.open) {
   position: fixed!important; grid-column: auto; grid-row: auto;
   justify-self: auto; right: max(8px,env(safe-area-inset-right,0px));
   top: var(--player-top,55px); bottom: auto; left: auto;
-  width: min(365px,calc(100vw - 16px)); height: auto; min-width: 0; max-width: none;
+  width: min(390px,calc(100vw - 16px)); height: auto; min-width: 0; max-width: none;
   max-height: calc(100dvh - var(--player-top,55px) - 9px);
   margin: 0; padding: 9px; overflow-y: auto;
   transform: none!important; z-index: 110;
@@ -84,9 +87,10 @@ body:not(.embed) > #panelPlay:not(.open) {
 }
 body:not(.embed) > #panelPlay:not(.open) { display: none!important; }
 body:not(.embed) > #panelPlay.open { display: block!important; }
-body:not(.embed) #panelPlay .transport-main { display: flex; flex-wrap: nowrap;
+body:not(.embed) #panelPlay .transport-main { display: flex; flex-wrap: wrap;
   justify-content: center; align-items: center; gap: 2px;
   min-height: 28px; overflow: visible; padding: 0; }
+body:not(.embed) #panelPlay #ppClose { display: inline-flex!important; }
 body:not(.embed) #panelPlay .transport-main > .btn { flex: 0 0 auto;
   height: 27px; min-height: 27px; }
 body:not(.embed) #panelPlay #ppPlay { width: 33px; height: 30px; min-height: 30px; }
