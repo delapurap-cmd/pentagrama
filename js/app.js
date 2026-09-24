@@ -108,6 +108,7 @@
       $('#btnUndo').disabled = state.undo.length === 0;
       $('#btnRedo').disabled = state.redo.length === 0;
       actualizarTransporte();
+      if(dispositivosAbiertos)actualizarAvisoAyuda();
       save();
     });
   }
@@ -1215,7 +1216,7 @@
   function montaAyuda() {
     try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
     const panel = $('#panelAyuda');
-    const puesto = Instrumentos.montar(dispositivosAbiertos?ayuda:'ninguno', $('#insCaja'));
+    Instrumentos.montar(dispositivosAbiertos?ayuda:'ninguno', $('#insCaja'));
     panel.hidden = !dispositivosAbiertos;
     $('#pianoDeviceTitle').textContent=Instrumentos.catalogo.find(i=>i.id===ayuda)?.nombre||'Instrumento';
     $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
@@ -1226,13 +1227,16 @@
     $('#deviceSelect').value=ayuda;
     $('#deviceWritten').value=state.score.instrumentId||'concert';
     $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
+    actualizarAvisoAyuda();
+  }
+
+  function actualizarAvisoAyuda() {
     const aviso = $('#insAviso');
     aviso.textContent = '';
-    if (!puesto) return;
+    if (!dispositivosAbiertos || ayuda === 'ninguno') return;
 
-    /* Cuántas notas de esta obra no caben en el instrumento elegido. Con
-       música de piano en una guitarra son muchas, y vale más decirlo que
-       dibujar la mitad y dejar que parezca que falla. */
+    /* Una partitura de piano puede superar el registro de una guitarra.
+       Indicamos cuántas alturas se trasladaron visualmente de octava. */
     const todas = [];
     state.score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
       const clef = Model.clefAt(state.score, mi, v.pent);
