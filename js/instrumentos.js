@@ -42,12 +42,25 @@ const Instrumentos = (function () {
   const CUERDA_NOMBRE = ['Mi', 'Si', 'Sol', 'Re', 'La', 'Mi'];
   const TRASTES = 14;
   const MARCAS = [3, 5, 7, 9, 12];
+  const xTraste = t => (1 - Math.pow(2, -t / 12)) /
+    (1 - Math.pow(2, -TRASTES / 12));
+
+  /** La guitarra se visualiza una o más octavas arriba si el bajo de la
+      partitura queda por debajo de Mi2. El audio conserva la altura real. */
+  function homologarGuitarra(midi) {
+    if (!Number.isInteger(midi)) return null;
+    let visualMidi = midi;
+    while (visualMidi < 40) visualMidi += 12;
+    while (visualMidi > 78) visualMidi -= 12;
+    return { midi, visualMidi, octavas: (visualMidi - midi) / 12 };
+  }
 
   function posicionesEnMastil(midi) {
-    if (!Number.isInteger(midi)) return [];
+    const nota = homologarGuitarra(midi);
+    if (!nota) return [];
     return CUERDAS.flatMap((alAire, cuerda) => {
-      const traste = midi - alAire;
-      return traste >= 0 && traste <= TRASTES ? [{ midi, cuerda, traste }] : [];
+      const traste = nota.visualMidi - alAire;
+      return traste >= 0 && traste <= TRASTES ? [{ ...nota, cuerda, traste }] : [];
     });
   }
 
@@ -61,11 +74,17 @@ const Instrumentos = (function () {
 
   function digitacionGuitarra(midis, anterior = [], ancla) {
     const alturas = [...new Set((midis || []).filter(Number.isInteger))]
-      .sort((a, b) => b - a);
+      .map(homologarGuitarra).sort((a, b) =>
+        b.visualMidi - a.visualMidi || Math.abs(a.octavas) - Math.abs(b.octavas));
+    const vistas = new Set();
+    const distintas = alturas.filter(n => {
+      if (vistas.has(n.visualMidi)) return false;
+      vistas.add(n.visualMidi); return true;
+    });
     // Una guitarra sólo dispone de seis cuerdas. Para un bloque de piano muy
     // cargado se conservan el bajo y la voz superior, sin bloquear el dibujo.
-    const notas = alturas.length > 8
-      ? [...alturas.slice(0, 4), ...alturas.slice(-4)] : alturas;
+    const notas = distintas.length > 8
+      ? [...distintas.slice(0, 4), ...distintas.slice(-4)] : distintas;
     if (!notas.length) return [];
     const previo = anterior.filter(p => p && Number.isInteger(p.traste));
     const prevFrets = previo.filter(p => p.traste > 0).map(p => p.traste);
@@ -113,7 +132,7 @@ const Instrumentos = (function () {
         return;
       }
       // Las alturas están ordenadas de aguda a grave: no se cruzan las voces.
-      for (const p of posicionesEnMastil(notas[i])) {
+      for (const p of posicionesEnMastil(notas[i].midi)) {
         if (p.cuerda <= ultimaCuerda) continue;
         elegidas.push(p); buscar(i + 1, p.cuerda, elegidas); elegidas.pop();
       }
@@ -125,22 +144,28 @@ const Instrumentos = (function () {
 
   function montarGuitarra(cont) {
     const caja = el('div', 'ins-mastil');
-    // El traste 0 es la cejilla; los demás se reparten a lo ancho.
-    const x = (t) => 'calc(var(--ins-cabecera) + (100% - var(--ins-cabecera) - 8px) * ' + (t / TRASTES) + ')';
-    const xDedo = (t) => 'calc(var(--ins-cabecera) + (100% - var(--ins-cabecera) - 8px) * ' +
-                         ((t + (t ? -0.5 : 0.1)) / TRASTES) + ')';
+    // Espaciado real de trastes: cada semitono acorta la cuerda en 2^(1/12).
+    const x = (t) => 'calc(var(--ins-cabecera) + (100% - var(--ins-cabecera) - 14px) * ' + xTraste(t) + ')';
+    const xDedo = (t) => t === 0 ? 'calc(var(--ins-cabecera) - 18px)' :
+      'calc(var(--ins-cabecera) + (100% - var(--ins-cabecera) - 14px) * ' +
+      ((xTraste(t - 1) + xTraste(t)) / 2) + ')';
 
     for (let t = 0; t <= TRASTES; t++) {
       const b = el('div', 'ins-traste' + (t === 0 ? ' cejilla' : ''));
       b.style.left = x(t);
       caja.appendChild(b);
     }
+    const cuerdas = [];
     CUERDAS.forEach((_, c) => {
       const fila = el('div', 'ins-cuerda');
+      fila.style.setProperty('--ins-calibre', [1.2, 1.5, 2, 2.6, 3.2, 3.8][c] + 'px');
+      fila.style.setProperty('--ins-vib', [72, 83, 95, 105, 116, 128][c] + 'ms');
+      if (c >= 3) fila.classList.add('entorchada');
       const n = el('span', 'ins-nombre');
       n.textContent = CUERDA_NOMBRE[c];
       fila.appendChild(n);
       caja.appendChild(fila);
+      cuerdas.push(fila);
     });
     MARCAS.forEach((t) => {
       const doble = t === 12 ? [0.34, 0.66] : [0.5];
@@ -153,11 +178,15 @@ const Instrumentos = (function () {
     });
     cont.appendChild(caja);
 
-    let dedos = [], anterior = [], mano = 5;
+    let dedos = [], anterior = [], mano = 5, ultimaFirma = '';
     return {
       encender(midis) {
+        const firma = [...new Set(midis)].sort((a,b)=>a-b).join(',');
+        if (firma === ultimaFirma) return;
+        ultimaFirma = firma;
         dedos.forEach((d) => d.remove());
         dedos = [];
+        cuerdas.forEach(f => f.classList.remove('sonando'));
         if (!midis.length) return;
         const posiciones = digitacionGuitarra(midis, anterior, mano);
         anterior = posiciones;
@@ -167,14 +196,32 @@ const Instrumentos = (function () {
         posiciones.forEach((p) => {
           const d = el('div', 'ins-dedo');
           d.textContent = p.traste;
+          d.title = nombreDe(p.midi) + (p.octavas ?
+            ' → ' + nombreDe(p.visualMidi) + ' · ' + Math.abs(p.octavas) +
+            (Math.abs(p.octavas) === 1 ? ' octava' : ' octavas') +
+            (p.octavas > 0 ? ' arriba' : ' abajo') : '');
+          if (p.octavas) {
+            d.classList.add('ins-octava');
+            d.dataset.octavas = (p.octavas > 0 ? '+' : '−') +
+              (Math.abs(p.octavas) === 1 ? '8ª' : Math.abs(p.octavas) * 8 + 'ª');
+          }
           d.style.left = xDedo(p.traste);
           d.style.top = 'calc(var(--ins-borde) + ' + p.cuerda + ' * var(--ins-alto-cuerda) + var(--ins-alto-cuerda) / 2)';
           caja.appendChild(d);
           dedos.push(d);
+          cuerdas[p.cuerda].classList.add('sonando');
         });
+        if (posiciones.length && cont.scrollWidth > cont.clientWidth) {
+          const centro = dedos.reduce((s, d) => s + d.offsetLeft, 0) / dedos.length;
+          const meta = Math.max(0, Math.min(cont.scrollWidth - cont.clientWidth,
+            centro - cont.clientWidth * .48));
+          if (Math.abs(meta - cont.scrollLeft) > 16)
+            cont.scrollTo({ left: meta, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        }
       },
-      reset() { anterior = []; mano = 5; this.encender([]); },
-      fuera: (m) => !posicionesEnMastil(m).length
+      reset() { this.encender([]); anterior = []; mano = 5; },
+      fuera: (m) => !posicionesEnMastil(m).length,
+      adaptada: (m) => !!homologarGuitarra(m)?.octavas
     };
   }
 
@@ -225,8 +272,13 @@ const Instrumentos = (function () {
     return (midis || []).filter(activo.fuera).length;
   }
 
+  function adaptadas(midis) {
+    if (!activo || !activo.adaptada) return 0;
+    return (midis || []).filter(activo.adaptada).length;
+  }
+
   return { catalogo: CATALOGO, montar, configurarPiano, encender, reiniciar,
-    fuera, posicionEnMastil, digitacionGuitarra, nombreDe };
+    fuera, adaptadas, homologarGuitarra, posicionEnMastil, digitacionGuitarra, nombreDe };
 })();
 
 if (typeof module !== 'undefined') module.exports = Instrumentos;
