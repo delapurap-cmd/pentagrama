@@ -1024,7 +1024,7 @@
     let data=null;try{data=JSON.parse(localStorage.getItem(practiceKey())||'null');}catch(_){}
     rep.regiones=Array.isArray(data?.loops)?data.loops.filter(x=>Number.isInteger(x.a)&&Number.isInteger(x.b)&&x.a>0&&x.b>=x.a).slice(0,16):[];
     rep.cuenta=[0,1,2].includes(data?.countIn)?data.countIn:0;
-    $('#ppCount').value=String(rep.cuenta);refrescarBucles();
+    refrescarBucles();
   }
   function guardarPractica(){
     try{localStorage.setItem(practiceKey(),JSON.stringify({version:1,countIn:rep.cuenta,loops:rep.regiones}));}
@@ -1077,13 +1077,13 @@
     $('#ppStop').disabled = rep.cursorTick === 0 && !rep.playing;
     $('#ppPrev').disabled = actual <= 1;
     $('#ppNext').disabled = actual >= nCompases();
-    const playShape = rep.playing ? '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" stroke="none"/>' : '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>';
+    const playShape = rep.playing ? '<rect x="7" y="7" width="10" height="10" rx="1.2" fill="currentColor" stroke="none"/>' : '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>';
     const playButton=$('#ppPlay');
     if(playButton.dataset.icon!==String(rep.playing)){
       playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
       playButton.dataset.icon=String(rep.playing);
     }
-    $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
+    $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Detener' : 'Reproducir');
     $('#btnPlay').setAttribute('aria-label',rep.playing?'Reproduciendo':'Reproductor');
     $('#btnPlay').title=rep.playing?'Reproduciendo':'Reproductor';
     $('#btnPlay').classList.toggle('on', $('#panelPlay').classList.contains('open'));
@@ -1095,8 +1095,6 @@
     $('#ppRegion').textContent = `${rep.b - rep.a + 1} ${rep.b === rep.a ? 'compás' : 'compases'}`;
     $('#ppBucle').classList.toggle('on', rep.bucle);
     $('#ppBucle').setAttribute('aria-pressed', String(rep.bucle));
-    $('#ppMetro').classList.toggle('on', rep.metronomo);
-    $('#ppMetro').setAttribute('aria-pressed', String(rep.metronomo));
     $('#btnMetroAlways').setAttribute('aria-pressed',String(rep.metronomo));
     $('#btnMetroAlways').classList.toggle('on',rep.metronomo);
     $('#btnMetroAlways').title = rep.metronomo ? 'Metrónomo armado: comenzará con Play' : 'Activar metrónomo para el próximo Play';
@@ -1105,7 +1103,6 @@
     $('#btnCountAlways').setAttribute('aria-pressed',String(rep.cuenta>0));
     $('#btnCountAlways').setAttribute('aria-label',rep.cuenta?`Precuenta armada: ${rep.cuenta} compás${rep.cuenta===1?'':'es'}`:'Armar precuenta de un compás');
     $('#btnCountAlways').title=rep.cuenta?`Precuenta de ${rep.cuenta} compás${rep.cuenta===1?'':'es'} al próximo Play`:'Activar precuenta de un compás';
-    if(document.activeElement!==$('#ppCount'))$('#ppCount').value=String(rep.cuenta);
     $('#metroTempo').textContent=String(Math.round(Model.tempoEn(Model.mapaTempo(state.score),rep.cursorTick)));
     if(rep.metronomo&&rep.playing){
       const mi=Math.max(0,compasDelTick(rep.cursorTick)-1),beat=Model.beatTicks(Model.timeAt(state.score,mi));
@@ -1277,7 +1274,6 @@
     $('#ppPrev').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) - 1));
     $('#ppNext').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) + 1));
     $('#ppClose').addEventListener('click', () => togglePlayPanel(false));
-    $('#ppMetro').addEventListener('click',toggleMetro);
     $('#btnMetroAlways').addEventListener('click',toggleMetro);
     $('#btnCountAlways').addEventListener('click',()=>{
       rep.cuenta=rep.cuenta?0:1;
@@ -1310,10 +1306,6 @@
       refresca();
     };
     $('#ppAInput').addEventListener('change', (e) => campo('a', e.target.value));
-    $('#ppCount').addEventListener('change',e=>{
-      rep.cuenta=Math.max(0,Math.min(2,parseInt(e.target.value,10)||0));
-      guardarPractica();actualizarTransporte();
-    });
     $('#ppSaveLoop').addEventListener('click',()=>{
       const initial=`Compases ${rep.a}–${rep.b}`;
       const name=prompt('Nombre de esta región A–B:',initial);
@@ -1524,8 +1516,7 @@
       if (e.code==='Space' || e.key===' ') {
         e.preventDefault();
         if(e.repeat)return;
-        if(rep.playing){pararTodo();posicionar(rep.bucle?tickDeCompas(rep.a):0,false);}
-        else arrancar();
+        togglePlay();
         return;
       }
       if (e.target.tagName==='BUTTON') return;
