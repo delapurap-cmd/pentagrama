@@ -1103,16 +1103,18 @@
     $('#ppPrev').disabled = actual <= 1;
     $('#ppNext').disabled = actual >= nCompases();
     const playShape = rep.playing ? '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" stroke="none"/>' : '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>';
-    const playButton=$('#ppPlay');
-    if(playButton.dataset.icon!==String(rep.playing)){
-      playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
-      playButton.dataset.icon=String(rep.playing);
+    for(const playButton of [$('#ppPlay'),$('#btnQuickPlay')]){
+      if(playButton.dataset.icon!==String(rep.playing)){
+        playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
+        playButton.dataset.icon=String(rep.playing);
+      }
+      playButton.setAttribute('aria-label',rep.playing?'Pausar':'Reproducir');
+      playButton.title=rep.playing?'Pausar':'Reproducir';
+      playButton.classList.toggle('on',rep.playing);
     }
-    $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
-    $('#btnPlay').setAttribute('aria-label',rep.playing?'Reproduciendo':'Reproductor');
-    $('#btnPlay').title=rep.playing?'Reproduciendo':'Reproductor';
+    $('#btnPlay').setAttribute('aria-label','Controles de reproducción');
+    $('#btnPlay').title='Controles de reproducción';
     $('#btnPlay').classList.toggle('on', $('#panelPlay').classList.contains('open'));
-    $('#ppPlay').classList.toggle('on', rep.playing);
     $('#ppAInput').max = String(nCompases());
     $('#ppBInput').max = String(nCompases());
     if (document.activeElement !== $('#ppAInput')) $('#ppAInput').value = rep.a;
@@ -1294,6 +1296,7 @@
     const refresca = () => actualizarTransporte();
     const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(true); } };
     $('#ppPlay').addEventListener('click', togglePlay);
+    $('#btnQuickPlay').addEventListener('click', togglePlay);
     $('#ppRangeButton').addEventListener('click',()=>{
       const controls=$('#ppLoopControls');controls.hidden=!controls.hidden;
       $('#ppRangeButton').setAttribute('aria-expanded',String(!controls.hidden));
