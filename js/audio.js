@@ -325,7 +325,7 @@ const Sound = (() => {
        se va programando por delante, en ventanas de dos segundos, y al parar
        se cortan las que estén sonando. */
     const VENTANA = 2.0;        // cuánto se adelanta el motor
-    const PASO = 120;           // cada cuánto vuelve a mirar
+    const PASO = 30;            // cursor/count-in follow the same audio clock without a visible 120 ms stumble
 
     /* Región: se toca de un compás a otro, y con `bucle` se vuelve al
        principio de la región al llegar al final en vez de parar. */
