@@ -264,9 +264,7 @@ const Instrumentos = (function () {
     else encender([]);
   }
 
-  /** Cuántas de estas notas no caben en el instrumento montado. Con música de
-      piano en una guitarra son bastantes, y decirlo es más honesto que
-      dibujar sólo la mitad sin avisar. */
+  /** Cuántas notas siguen fuera del instrumento después de adaptar el registro. */
   function fuera(midis) {
     if (!activo || !activo.fuera) return 0;
     return (midis || []).filter(activo.fuera).length;
