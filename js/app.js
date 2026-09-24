@@ -59,7 +59,7 @@
       onRecorded:insertRecorded
     });
     bindPlayPanel();
-    if(!EMBED)togglePlayPanel(true);
+    if(!EMBED)togglePlayPanel(false);
     bindKeys();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
@@ -108,6 +108,7 @@
       $('#btnUndo').disabled = state.undo.length === 0;
       $('#btnRedo').disabled = state.redo.length === 0;
       actualizarTransporte();
+      if(dispositivosAbiertos)actualizarAvisoAyuda();
       save();
     });
   }
@@ -890,6 +891,10 @@
       {label:'Añadir sistema',fn:()=>{snapshot();Model.addSystem(state.score,1);render();}},
       {label:'Añadir página',fn:()=>{snapshot();Model.addPage(state.score);render();}}
     ],e.currentTarget));
+    $('#btnCatalogo').addEventListener('click', () => {
+      closeMenus();
+      Catalogo.abrir();
+    });
     // Do not mix file import/export with mutation commands.
     $('#btnFile').addEventListener('click', (e) => {
       const lib = readLib();
@@ -904,7 +909,6 @@
         { label: 'Versiones anteriores', fn: versionesAnteriores },
         { sep: true },
         { head: 'Importar' },
-        { label: 'Del catálogo', hint: '226.401 partituras libres', fn: () => Catalogo.abrir() },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
         { label: 'Importar MIDI', hint: '.mid, .midi', fn: () => importScore('midi') },
         { sep: true },
@@ -942,18 +946,24 @@
     $('#btnRedo').addEventListener('click', redo);
     $('#btnTempoMenu').addEventListener('click', () => togglePanel());
     $('#btnPlay').addEventListener('click',()=>togglePlayPanel());
-    $('#btnPiano').addEventListener('click',()=>{
-      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();}
-      else {dispositivosAbiertos=true;ayuda=$('#deviceSelect').value||'piano';if(ayuda==='ninguno')ayuda='piano';
-        if($('#syncDock')&&!$('#syncDock').hidden)$('#syncClose').click();}
-      montaAyuda();
-    });
+    $('#btnPiano').addEventListener('click',()=>setInstrumentMenu(!menuInstrumentosAbierto));
     $('#btnAudioSync').addEventListener('click',()=>{
-      if(dispositivosAbiertos){dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();}
+      setInstrumentMenu(false);
     });
-    $('#deviceSelect').addEventListener('change',e=>{
-      ayuda=e.target.value;Sound.liveAllOff();montaAyuda();
+    $('#deviceSelect').addEventListener('change',()=>{
+      $('#deviceShow').textContent=$('#deviceSelect').value==='ninguno'?'Ocultar':'Mostrar';
     });
+    $('#deviceShow').addEventListener('click',()=>{
+      ayuda=$('#deviceSelect').value;dispositivosAbiertos=ayuda!=='ninguno';
+      Sound.liveAllOff();montaAyuda();setInstrumentMenu(false);
+    });
+    document.addEventListener('pointerdown',e=>{
+      if(menuInstrumentosAbierto&&!e.target.closest('#instrumentMenu,#btnPiano'))setInstrumentMenu(false);
+    });
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&menuInstrumentosAbierto){setInstrumentMenu(false);$('#btnPiano').focus();}
+    });
+    window.addEventListener('resize',()=>{if(menuInstrumentosAbierto)placeInstrumentMenu();});
     $('#soundSelect').addEventListener('change',e=>{
       if(rep.playing)pararTodo();Sound.liveAllOff();
       snapshot();state.score.soundId=e.target.value;render();
@@ -988,6 +998,7 @@
     $('#deviceWritten').value=state.score.instrumentId||'concert';
     $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
     $('#deviceSelect').value=ayuda;
+    $('#deviceShow').textContent=ayuda==='ninguno'?'Ocultar':'Mostrar';
 
     $('#btnPianoClose').addEventListener('click',()=>{
       dispositivosAbiertos=false;Sound.liveAllOff();montaAyuda();
@@ -1039,8 +1050,22 @@
     rep.esperando=false;
   }
   let dispositivosAbiertos=false;
+  let menuInstrumentosAbierto=false;
   let ayuda = 'ninguno';
   try { ayuda = localStorage.getItem('reper.ayuda') || 'ninguno'; } catch (e) { }
+
+  function placeInstrumentMenu(){
+    const rect=$('#btnPiano').getBoundingClientRect(),menu=$('#instrumentMenu');
+    menu.style.top=Math.round(rect.bottom+5)+'px';
+    menu.style.left=Math.round(Math.max(6,Math.min(rect.left,innerWidth-menu.offsetWidth-6)))+'px';
+  }
+  function setInstrumentMenu(open){
+    menuInstrumentosAbierto=!!open;
+    const menu=$('#instrumentMenu');menu.hidden=!open;
+    $('#btnPiano').setAttribute('aria-expanded',String(!!open));
+    $('#btnPiano').classList.toggle('on',!!open);
+    if(open)placeInstrumentMenu();
+  }
 
   function nCompases() { return Math.max(1, state.score.measures.length); }
   const tickDeCompas = n => Model.inicios(state.score)[Math.max(0, Math.min(nCompases() - 1, n - 1))] || 0;
@@ -1078,16 +1103,18 @@
     $('#ppPrev').disabled = actual <= 1;
     $('#ppNext').disabled = actual >= nCompases();
     const playShape = rep.playing ? '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" stroke="none"/>' : '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>';
-    const playButton=$('#ppPlay');
-    if(playButton.dataset.icon!==String(rep.playing)){
-      playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
-      playButton.dataset.icon=String(rep.playing);
+    for(const playButton of [$('#ppPlay'),$('#btnQuickPlay')]){
+      if(playButton.dataset.icon!==String(rep.playing)){
+        playButton.innerHTML=`<svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false">${playShape}</svg>`;
+        playButton.dataset.icon=String(rep.playing);
+      }
+      playButton.setAttribute('aria-label',rep.playing?'Pausar':'Reproducir');
+      playButton.title=rep.playing?'Pausar':'Reproducir';
+      playButton.classList.toggle('on',rep.playing);
     }
-    $('#ppPlay').setAttribute('aria-label', rep.playing ? 'Pausar' : 'Reproducir');
-    $('#btnPlay').setAttribute('aria-label',rep.playing?'Reproduciendo':'Reproductor');
-    $('#btnPlay').title=rep.playing?'Reproduciendo':'Reproductor';
+    $('#btnPlay').setAttribute('aria-label','Controles de reproducción');
+    $('#btnPlay').title='Controles de reproducción';
     $('#btnPlay').classList.toggle('on', $('#panelPlay').classList.contains('open'));
-    $('#ppPlay').classList.toggle('on', rep.playing);
     $('#ppAInput').max = String(nCompases());
     $('#ppBInput').max = String(nCompases());
     if (document.activeElement !== $('#ppAInput')) $('#ppAInput').value = rep.a;
@@ -1191,26 +1218,27 @@
   function montaAyuda() {
     try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
     const panel = $('#panelAyuda');
-    const puesto = Instrumentos.montar(ayuda, $('#insCaja'));
+    Instrumentos.montar(dispositivosAbiertos?ayuda:'ninguno', $('#insCaja'));
     panel.hidden = !dispositivosAbiertos;
-    $('#pianoDeviceTitle').textContent='Instrumentos';
-    $('#btnPiano').classList.toggle('on',dispositivosAbiertos);
+    $('#pianoDeviceTitle').textContent=Instrumentos.catalogo.find(i=>i.id===ayuda)?.nombre||'Instrumento';
     $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
     $('#deviceInfo').textContent='Conserva el sonido al convertir.';
     $('#deviceApply').disabled=true;
-    $('#btnPiano').setAttribute('aria-expanded',String(dispositivosAbiertos));
     document.body.classList.toggle('device-open',dispositivosAbiertos);
     document.body.classList.toggle('con-ayuda',dispositivosAbiertos);
     $('#deviceSelect').value=ayuda;
     $('#deviceWritten').value=state.score.instrumentId||'concert';
     $('#soundSelect').value=ScoreInstrument.toneOf(state.score);
+    actualizarAvisoAyuda();
+  }
+
+  function actualizarAvisoAyuda() {
     const aviso = $('#insAviso');
     aviso.textContent = '';
-    if (!puesto) return;
+    if (!dispositivosAbiertos || ayuda === 'ninguno') return;
 
-    /* Cuántas notas de esta obra no caben en el instrumento elegido. Con
-       música de piano en una guitarra son muchas, y vale más decirlo que
-       dibujar la mitad y dejar que parezca que falla. */
+    /* Una partitura de piano puede superar el registro de una guitarra.
+       Indicamos cuántas alturas se trasladaron visualmente de octava. */
     const todas = [];
     state.score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
       const clef = Model.clefAt(state.score, mi, v.pent);
@@ -1220,8 +1248,11 @@
       });
     }));
     const fuera = Instrumentos.fuera(todas);
+    const adaptadas = Instrumentos.adaptadas(todas);
     if (fuera) {
       aviso.textContent = `${fuera} de ${todas.length} notas quedan fuera de este instrumento y no se dibujan.`;
+    } else if (adaptadas) {
+      aviso.textContent = `${adaptadas} de ${todas.length} notas se muestran en el registro tocable de la guitarra; su sonido original se conserva.`;
     }
   }
 
@@ -1229,7 +1260,7 @@
     limpiarCuenta();rep.sesion++;
     rep.playing = false;
     Sound.stop(); Sound.metroStop();
-    Instrumentos.encender([]);
+    Instrumentos.reiniciar();
     Engrave.resaltar([]);
     Engrave.moverCursor(state.score, null);
     state.playingId = null;
@@ -1265,6 +1296,7 @@
     const refresca = () => actualizarTransporte();
     const reinicia = () => { if (rep.playing) { pararTodo(); arrancar(true); } };
     $('#ppPlay').addEventListener('click', togglePlay);
+    $('#btnQuickPlay').addEventListener('click', togglePlay);
     $('#ppRangeButton').addEventListener('click',()=>{
       const controls=$('#ppLoopControls');controls.hidden=!controls.hidden;
       $('#ppRangeButton').setAttribute('aria-expanded',String(!controls.hidden));
@@ -1356,7 +1388,7 @@
 
   function togglePlayPanel(force){
     const panel=$('#panelPlay');
-    const open=!EMBED?true:(force!=null?force:!panel.classList.contains('open'));
+    const open=force!=null?force:!panel.classList.contains('open');
     if(!EMBED)document.documentElement.style.setProperty('--player-top',
       Math.ceil($('header.bar').getBoundingClientRect().bottom+6)+'px');
     panel.classList.toggle('open',open);

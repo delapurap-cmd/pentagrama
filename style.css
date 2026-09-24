@@ -405,7 +405,7 @@ body.embed .sheet-head { display: none; }
 :root{
   --ins-alto-cuerda: 26px;
   --ins-borde: 10px;
-  --ins-cabecera: 38px;
+  --ins-cabecera: 74px;
 }
 
 /* La ayuda NO es una de las hojas de `.panel`: ésas comparten sitio al pie y
@@ -451,36 +451,76 @@ body.con-ayuda .panel.open{
 .ins-blanca.on{ background: linear-gradient(#f2e6b4, var(--gold)); }
 .ins-negra.on{ background: linear-gradient(var(--gold), #7a6520); }
 
-/* El mástil. Palo de rosa, cejilla clara y los puntos donde los lleva. */
+/* Mástil de palo de rosa: vetas finas, trastes metálicos y cuerdas de
+   calibres distintos. Cada cuerda vibra sólo mientras suena. */
 .ins-mastil{
-  position: relative; min-width: 620px; padding: var(--ins-borde) 0;
-  background: linear-gradient(#57381f, #3a2414);
-  border: 1px solid #1b1108; border-radius: 4px;
-  box-shadow: inset 0 2px 0 rgba(255,220,180,.15);
+  position: relative; min-width: 900px; padding: var(--ins-borde) 0;
+  isolation: isolate; overflow: hidden;
+  background:
+    linear-gradient(90deg,#171313 0,#171313 var(--ins-cabecera),transparent var(--ins-cabecera)),
+    repeating-linear-gradient(1deg,transparent 0 3px,#f1bd7720 4px,
+      transparent 5px 9px,#130b0a55 10px,transparent 11px 19px),
+    repeating-linear-gradient(178deg,transparent 0 17px,#130a0a55 18px,
+      transparent 20px 37px),
+    linear-gradient(170deg,#6b4430 0%,#4a2a20 32%,#34201b 72%,#201716 100%);
+  border: 1px solid #97744b; border-radius: 8px;
+  box-shadow: inset 0 3px 5px #f7d09f35,inset 0 -9px 15px #110908c9,
+    inset 0 0 32px #0a060772,0 5px 15px #0008;
 }
-.ins-cuerda{ position: relative; height: var(--ins-alto-cuerda); display: flex; align-items: center; }
+.ins-cuerda{ position: relative; z-index: 2; height: var(--ins-alto-cuerda);
+  display: flex; align-items: center; }
 .ins-cuerda::after{
-  content: ''; position: absolute; left: var(--ins-cabecera); right: 8px; height: 1px;
-  background: linear-gradient(90deg, #dacdb2, #998d75); opacity: .8;
+  content: ''; position: absolute; left: calc(var(--ins-cabecera) - 1px);
+  right: 8px; top: 50%; height: var(--ins-calibre); border-radius: 5px;
+  background: linear-gradient(180deg,#f6ead3 0%,#bea989 35%,#847262 65%,#ddd1b6 100%);
+  box-shadow: 0 1px 1px #100b0a,0 -1px 1px #fff5;
+  transform: translateY(-50%); transform-origin: left center;
+}
+.ins-cuerda.entorchada::after{
+  background: repeating-linear-gradient(90deg,#e4be7b 0 2px,#937454 2px 3px,#d9b37b 3px 4px);
+  box-shadow: 0 1px 2px #0b0707,0 -1px 1px #f1d5a578;
+}
+.ins-cuerda.sonando::after{
+  filter: brightness(1.12);box-shadow: 0 0 3px #e4bd7799,0 1px 1px #100b0a;
+  animation: ins-vibracion var(--ins-vib) ease-in-out infinite alternate;
+}
+@keyframes ins-vibracion{
+  from{transform:translateY(calc(-50% - .35px))}
+  to{transform:translateY(calc(-50% + .35px))}
 }
 .ins-nombre{
-  width: var(--ins-cabecera); flex: 0 0 var(--ins-cabecera); text-align: center;
-  font-size: 10px; font-weight: 700; color: #e7d9b8; letter-spacing: .4px;
+  width: 32px; flex: 0 0 32px; text-align: center;
+  font-size: 10px; font-weight: 700; color: #f1dfbb; letter-spacing: .4px;
+  text-shadow: 0 1px 2px #000;
 }
-.ins-traste{ position: absolute; top: 6px; bottom: 6px; width: 2px; background: rgba(238,226,196,.45); }
-.ins-traste.cejilla{ width: 5px; background: #e9e0c6; }
+.ins-traste{ position: absolute; z-index: 1; top: 5px; bottom: 5px;
+  width: 3px; border-radius: 2px;
+  background: linear-gradient(90deg,#514338,#eee4cc,#927d68);
+  box-shadow: 2px 0 4px #0c0809a8,-1px 0 2px #fff3;
+}
+.ins-traste.cejilla{ width: 7px; background: linear-gradient(90deg,#9b8d79,#fff5dd,#b6a68e);
+  box-shadow: 2px 0 5px #0b0808; }
 .ins-marca{
-  position: absolute; width: 9px; height: 9px; border-radius: 50%;
-  background: rgba(255,242,214,.28); transform: translate(-50%,-50%);
+  position: absolute; z-index: 0; width: 11px; height: 11px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%,#f7dfbd,#b5967299 64%,#433023);
+  box-shadow: inset 0 1px 2px #fff7,0 1px 3px #120a09;
+  transform: translate(-50%,-50%);
 }
 .ins-dedo{
-  position: absolute; width: 22px; height: 22px; border-radius: 50%;
-  transform: translate(-50%,-50%); z-index: 3;
+  position: absolute; width: 25px; height: 25px; border-radius: 50%;
+  transform: translate(-50%,-50%); z-index: 4;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800; color: #1b1507;
-  background: radial-gradient(circle at 35% 30%, #f2e6b4, var(--gold));
-  border: 1px solid #6e5f17; box-shadow: 0 0 12px rgba(201,168,76,.6);
+  font-size: 11px; font-weight: 800; color: #241707;
+  background: radial-gradient(circle at 33% 28%,#fff5cc,#e8ba57 55%,#a26d27);
+  border: 1px solid #f5d88b; box-shadow: 0 1px 4px #000b,0 0 13px #eabc7199;
+  animation: ins-ataque .18s ease-out both;
 }
+.ins-dedo.ins-octava{border-color:#d8eddc;background:radial-gradient(circle at 30% 25%,#f1f6dd,#b7cfad 58%,#708d72)}
+.ins-dedo.ins-octava::after{content:attr(data-octavas);position:absolute;
+  left:18px;bottom:17px;padding:1px 3px;border-radius:3px;
+  background:#183027;color:#e9f5dc;font:700 8px/1.2 system-ui,sans-serif;
+  white-space:nowrap;box-shadow:0 1px 3px #0008}
+@keyframes ins-ataque{from{scale:.85}to{scale:1}}
 
 .panel.play .sel{
   font: inherit; font-size: 13px; color: var(--txt);
@@ -490,4 +530,5 @@ body.con-ayuda .panel.open{
 
 @media (prefers-reduced-motion: reduce){
   .ins-blanca, .ins-negra{ transition: none; }
+  .ins-dedo,.ins-cuerda.sonando::after{animation:none}
 }

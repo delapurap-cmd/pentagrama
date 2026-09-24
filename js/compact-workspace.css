@@ -1,0 +1,168 @@
+/* Compact workspace: the score keeps its height, the transport opens from the
+   header, and the instrument occupies a complete strip below the canvas. */
+body:not(.embed) {
+  grid-template-rows: auto minmax(0,1fr) auto;
+}
+body:not(.embed) > .bar { gap: 4px; padding: 4px 8px; }
+body:not(.embed) > .bar > #btnQuickPlay { display: inline-flex!important;
+  order: 1; flex: 0 0 34px; width: 34px; height: 30px; min-height: 30px;
+  align-items: center; justify-content: center; padding: 0; }
+body:not(.embed) > .bar > #btnPlay { display: inline-flex!important;
+  order: 1; flex: 0 0 auto; height: 30px; min-height: 30px;
+  padding: 0 8px; font-size: 11px; }
+body:not(.embed) > .bar > .header-separator { height: 20px; margin: 0 2px; }
+body:not(.embed) > .bar > .section-tab,
+body:not(.embed) > .bar > .audio-sync-link {
+  height: 30px; padding: 0 8px; font-size: 11px;
+}
+body:not(.embed) > .bar #barTools {
+  order: 0; flex: 1 1 450px; width: auto; max-width: none;
+  min-height: 30px; padding: 0; margin: 0; border: 0;
+  justify-content: flex-end; gap: 2px;
+}
+body:not(.embed) > .bar #barTools .tool-label { display: none; }
+body:not(.embed) > .bar #barTools > .btn {
+  height: 28px; min-height: 28px; padding: 0 6px;
+}
+body:not(.embed) > .bar #barTools .zoom > .btn { height: 28px; min-height: 28px; }
+body:not(.embed) > .bar #barTools #btnClef,
+body:not(.embed) > .bar #barTools #btnKey,
+body:not(.embed) > .bar #barTools #btnTime { background: #1d1c1c; }
+body:not(.embed) > .bar #barTools .zoom,
+body:not(.embed) > .bar #barTools #btnUndo { margin-left: 5px; }
+
+/* The selector is a true dropdown. Its choices are independent of the visual
+   instrument, which remains mounted in the bottom strip after selection. */
+body .instrument-menu[hidden] { display: none!important; }
+body .instrument-menu {
+  position: fixed; z-index: 125; width: min(306px,calc(100vw - 12px));
+  max-height: min(470px,calc(100dvh - 55px)); overflow-y: auto;
+  display: grid; gap: 8px; padding: 11px;
+  background: #1a191b; border: 1px solid #685336; border-radius: 10px;
+  box-shadow: 0 16px 36px #000a;
+}
+.instrument-menu-title { color: #edce88; font-size: 12px; font-weight: 700; }
+.instrument-menu .device-controls { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.instrument-menu .instrument-choice { display: grid; grid-template-columns: minmax(0,1fr) 78px;
+  align-items: end; gap: 7px; }
+.instrument-menu #deviceShow { height: 31px; min-height: 31px; padding: 0 6px;
+  justify-content: center; font-size: 11px; }
+.instrument-menu .device-field { display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  color: #cdbb99; font-size: 10px; font-weight: 600; }
+.instrument-menu select { width: 100%; min-width: 0; height: 31px; padding: 0 5px;
+  border: 1px solid #615134; border-radius: 6px; background: #252428;
+  color: #f7ecd3; font: 11px system-ui,sans-serif; }
+.instrument-menu .device-fold { min-width: 0; border: 1px solid #3d362c;
+  border-radius: 7px; background: #1e1d1f; }
+.instrument-menu .device-fold > summary { display: flex; align-items: center;
+  min-height: 31px; padding: 6px 9px; cursor: pointer; color: #dfd2b7;
+  font-size: 11px; font-weight: 600; }
+.instrument-menu .device-fold > summary span { margin-left: auto; color: #ad9f86;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 400; }
+.instrument-menu .device-fold-body { display: grid; gap: 6px; padding: 8px;
+  border-top: 1px solid #373128; font-size: 11px; }
+.instrument-menu .device-fold-body .btn { height: 30px; justify-content: center; }
+.instrument-menu .device-info { margin: 0; color: #afa18c; font-size: 10px; }
+.instrument-menu .tab-device-controls { margin: 0; padding: 8px;
+  border: 0; border-top: 1px solid #373128; }
+.instrument-menu .tab-fields { display: grid; grid-template-columns: 1fr 65px; gap: 7px; }
+.instrument-menu .tab-fields label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.instrument-menu .tab-fields label:first-child { grid-column: 1/-1; }
+.instrument-menu .tab-fields input { width: 100%; height: 30px; background: #252428;
+  color: #f7ecd3; border: 1px solid #615134; border-radius: 6px; }
+
+/* El transporte se abre como popover compacto bajo su botón superior. */
+body:not(.embed) > .editor-rail { grid-row: 2/4; }
+body:not(.embed) > #syncDock:not([hidden]) { grid-row: 2/4; }
+body:not(.embed) > #panelPlay,
+body:not(.embed) > #panelPlay.open,
+body:not(.embed) > #panelPlay:not(.open) {
+  position: fixed!important; grid-column: auto; grid-row: auto;
+  justify-self: auto; right: max(8px,env(safe-area-inset-right,0px));
+  top: var(--player-top,55px); bottom: auto; left: auto;
+  width: min(390px,calc(100vw - 16px)); height: auto; min-width: 0; max-width: none;
+  max-height: calc(100dvh - var(--player-top,55px) - 9px);
+  margin: 0; padding: 9px; overflow-y: auto;
+  transform: none!important; z-index: 110;
+  border: 1px solid rgba(201,168,76,.5); border-radius: 12px;
+  box-shadow: 0 13px 35px #000a; background: #1a1919;
+}
+body:not(.embed) > #panelPlay:not(.open) { display: none!important; }
+body:not(.embed) > #panelPlay.open { display: block!important; }
+body:not(.embed) #panelPlay .transport-main { display: flex; flex-wrap: wrap;
+  justify-content: center; align-items: center; gap: 2px;
+  min-height: 28px; overflow: visible; padding: 0; }
+body:not(.embed) #panelPlay #ppClose { display: inline-flex!important; }
+body:not(.embed) #panelPlay .transport-main > .btn { flex: 0 0 auto;
+  height: 27px; min-height: 27px; }
+body:not(.embed) #panelPlay #ppPlay { width: 33px; height: 30px; min-height: 30px; }
+body:not(.embed) #panelPlay #ppPos { min-width: 70px; font-size: 10px; }
+body:not(.embed) #panelPlay .transport-main > .tempo-cluster {
+  margin-inline: 1px; padding-inline: 2px; gap: 1px;
+}
+body:not(.embed) #panelPlay .tempo-cluster .btn { width: 25px; min-width: 25px;
+  height: 27px; min-height: 27px; }
+body:not(.embed) #panelPlay #ppBucle { width: 29px; min-width: 29px;
+  padding: 0; font-size: 0; justify-content: center; }
+body:not(.embed) #panelPlay #ppBucle svg { width: 19px; height: 19px; }
+body:not(.embed) #panelPlay #ppRangeButton { padding: 0 4px; font-size: 10px; }
+body:not(.embed) #panelPlay .transport-timeline { width: 100%; }
+body:not(.embed) #panelPlay #ppBarra { height: 9px; margin: 1px 0 0; }
+body:not(.embed) #panelPlay #ppLoopControls { max-height: min(180px,30dvh);
+  overflow-y: auto; padding: 5px 0 1px; }
+
+body:not(.embed) > #panelAyuda:not([hidden]),
+body:not(.embed).device-open > #panelAyuda:not([hidden]) {
+  position: relative; grid-column: 2; grid-row: 3; order: initial;
+  display: flex; flex-direction: column; gap: 3px;
+  width: 100%; height: auto; min-height: 0; max-height: min(280px,38dvh);
+  padding: 6px 10px 8px; overflow: hidden;
+  left: auto; right: auto; top: auto; bottom: auto;
+  align-self: stretch; transform: none!important;
+  border: 0; border-top: 1px solid #574729; border-radius: 0;
+  background: #151518; box-shadow: none;
+}
+body:not(.embed) > #panelAyuda .piano-device-head {
+  min-height: 24px; padding: 0; border: 0; font-size: 11px;
+}
+body:not(.embed) > #panelAyuda .piano-device-head .btn { width: 23px;
+  height: 23px; min-height: 23px; }
+body:not(.embed) > #panelAyuda #insCaja { flex: 0 1 auto;
+  min-height: 0; overflow: visible; }
+body:not(.embed) > #panelAyuda .ins-scroll { overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #a48753 #2c2420; }
+body:not(.embed) > #panelAyuda .mtm-midi-controls { display: flex; gap: 5px;
+  align-items: center; flex-wrap: nowrap; margin: 0 0 3px; }
+body:not(.embed) > #panelAyuda .mtm-midi-controls > * { width: auto; min-width: 0; }
+body:not(.embed) > #panelAyuda .midi-advanced { margin-top: 3px; }
+body:not(.embed) > #panelAyuda .midi-advanced > summary { min-height: 25px; padding: 3px 7px; }
+
+@media (max-width: 780px) {
+  body:not(.embed), body:not(.embed).device-open {
+    grid-template-rows: auto minmax(0,1fr) auto!important;
+    grid-template-columns: minmax(0,1fr);
+  }
+  body:not(.embed) > .bar { gap: 3px; padding: 3px 5px; }
+  body:not(.embed) > .bar > #btnPlay { width: 32px; flex-basis: 32px;
+    padding: 0; font-size: 0; justify-content: center; }
+  body:not(.embed) #btnSideTools { width: 31px; max-width: 31px;
+    height: 30px; justify-content: center; padding: 0; font-size: 18px; }
+  body:not(.embed) > .bar #barTools { order: 5; flex: 1 0 100%;
+    width: 100%; justify-content: flex-start; padding: 1px 0;
+    border-top: 1px solid #36312a; }
+  body:not(.embed) > .stage,
+  body:not(.embed).device-open > .stage { grid-column: 1; grid-row: 2;
+    display: block; height: 100%; }
+  body:not(.embed) #panelPlay .transport-main { flex-wrap: wrap;
+    row-gap: 1px; }
+  body:not(.embed) #panelPlay #ppPos { min-width: 64px; }
+  body:not(.embed) > #panelAyuda:not([hidden]),
+  body:not(.embed).device-open > #panelAyuda:not([hidden]) {
+    grid-column: 1; grid-row: 3; max-height: min(250px,38dvh);
+    padding: 5px 7px; }
+  body:not(.embed).device-open > .editor-rail.expanded { display: flex; }
+  body:not(.embed).device-open > #syncDock:not([hidden]) { display: flex!important; }
+}
+@media print { body:not(.embed) > #panelPlay,
+  body:not(.embed) > #panelAyuda { display: none!important; } }

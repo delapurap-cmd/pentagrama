@@ -40,6 +40,18 @@ servidas desde el propio repositorio: no hace falta conexión.
   acordes, 143 ligaduras, 75 digitaciones, 15 notas de adorno, 8 adornos, 7
   pedales, 32 reguladores, 3 cambios de compás y una anacrusa, y el MusicXML
   que se vuelve a exportar no pierde ni uno.
+- **Catálogo**: el botón «Catálogo» de la barra principal abre la búsqueda de
+  partituras. «Archivo» reúne crear, guardar, importar y exportar; «Edición»
+  reúne los cambios de compases. Los ajustes de partitura y vista comparten la
+  barra compacta. Play está siempre visible y los controles de reproducción se
+  abren en un panel compacto; «Instrumentos» despliega la selección y el
+  instrumento elegido aparece debajo de la partitura. El catálogo incluye
+  favoritos guardados en este navegador, un ranking de aperturas personales y
+  una lista de autores ordenada por la cantidad de partituras del catálogo.
+  Lee el índice depurado publicado por `partituras-catalogo` desde la rama
+  `claude/migracion-pdmx` (depuración `2a8772e`, 55.775 fichas navegables).
+  Las fichas que pierden título o autor al normalizarse tampoco se muestran;
+  los favoritos antiguos sin esos datos quedan ocultos, sin borrar su copia local.
 - **Tiempos automáticos**: cada compás se completa solo con silencios y lo que
   no cabe pasa al compás siguiente.
 - **Escribir tiempos (tap)**: pon el tempo, enciende el metrónomo si quieres y
