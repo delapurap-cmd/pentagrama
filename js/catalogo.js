@@ -55,7 +55,8 @@ const Catalogo = (() => {
   let fondo, caja, entrada, pestanas, valores, lista, pie, cuerpo, volver;
   let facetas = null;
   let pestana = 'destacadas';
-  let destacadas = null;    // la lista de obras conocidas, se baja una vez
+  let destacadas = null;    // los compositores destacados, se bajan una vez
+  let compositor = null;    // el que se está mirando dentro de Destacadas
   let valor = null;         // qué valor de la pestaña se está viendo
   let busqueda = '';        // lo que se ha tecleado
   let pagina = 0, cargando = false, fin = false;
@@ -152,7 +153,7 @@ const Catalogo = (() => {
       b.type = 'button';
       b.textContent = p.nombre;
       b.addEventListener('click', () => {
-        pestana = p.id; valor = null;
+        pestana = p.id; valor = null; compositor = null;
         entrada.value = ''; busqueda = '';
         cuerpo.classList.remove('en-lista');
         pintarPestanas(); pintarValores(); arrancarLista();
@@ -313,7 +314,7 @@ const Catalogo = (() => {
   /** La portada: el apellido grande, el título y cinco líneas de pauta.
       Se dibuja aquí mismo, sin imágenes que bajar. */
   function portada(f, mini) {
-    const ap = apellido(f.autor) || limpiar(f.titulo).slice(0, 12);
+    const ap = f.corto || apellido(f.autor) || limpiar(f.titulo).slice(0, 12);
     const d = document.createElement('div');
     d.className = 'cat-portada' + (mini ? ' mini' : '');
     d.style.setProperty('--h', tono(ap));
@@ -327,6 +328,9 @@ const Catalogo = (() => {
     return d;
   }
 
+  /** Cómo se busca a alguien en el catálogo entero: por su apellido. */
+  const apellidoDe = (c) => limpiar(c.nombre.split(' ').pop()).replace(/[^a-z0-9]/g, '');
+
   async function pintarDestacadas() {
     const actual = revision;
     if (!destacadas) {
@@ -336,29 +340,69 @@ const Catalogo = (() => {
       if (actual !== revision) return;
       pie.der.textContent = '';
     }
-    const q = limpiar(busqueda);
-    const obras = destacadas.filter((f) => fichaValida(f) &&
-      (!q || limpiar(`${f.titulo} ${f.autor}`).includes(q)));
-    encabezado('Obras conocidas', 'Lo mejor del catálogo, según su fama y su valor musical');
-    if (!obras.length) { aviso('Todavía no hay obras destacadas.'); return; }
+    // un catálogo de antes daba obras sueltas; ahora son compositores
+    const comps = destacadas.filter((c) => c && Array.isArray(c.obras));
+    if (compositor) { pintarCompositor(compositor); return; }
+
+    encabezado('Compositores', 'Los que más obras conocidas tienen en el catálogo. Toca uno para ver las suyas.');
+    if (!comps.length) { aviso('Todavía no hay compositores destacados.'); return; }
     const rejilla = document.createElement('div');
     rejilla.className = 'cat-rejilla';
-    obras.forEach((f) => {
+    comps.forEach((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cat-tarjeta';
+      b.title = c.nombre;
+      b.appendChild(portada({ autor: c.nombre, corto: c.corto,
+        titulo: `${c.total.toLocaleString('es-ES')} ${c.total === 1 ? 'partitura' : 'partituras'}` }, false));
+      const pie2 = document.createElement('span');
+      pie2.className = 'cat-tarjeta-pie';
+      pie2.innerHTML = `<b>${escapar(c.nombre)}</b><small>${c.conocidas} obras conocidas</small>`;
+      b.appendChild(pie2);
+      b.addEventListener('click', () => { compositor = c; arrancarLista(); });
+      rejilla.appendChild(b);
+    });
+    lista.appendChild(rejilla);
+    pie.izq.textContent = `${comps.length} compositores`;
+  }
+
+  /** Las obras de un compositor, lo mejor primero, cada una con su portada. */
+  function pintarCompositor(c) {
+    const atras = document.createElement('button');
+    atras.type = 'button';
+    atras.className = 'cat-atras';
+    atras.textContent = '← Compositores';
+    atras.addEventListener('click', () => { compositor = null; arrancarLista(); });
+    lista.appendChild(atras);
+    encabezado(c.nombre, `Sus ${c.obras.length} mejores obras`);
+    const rejilla = document.createElement('div');
+    rejilla.className = 'cat-rejilla';
+    c.obras.filter(fichaValida).forEach((f) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'cat-tarjeta';
       b.title = `${f.titulo} — ${f.autor}`;
-      b.appendChild(portada(f, false));
+      b.appendChild(portada({ ...f, corto: c.corto }, false));
       const pie2 = document.createElement('span');
       pie2.className = 'cat-tarjeta-pie';
-      // el título ya va en la portada: debajo, quién y para qué
-      pie2.innerHTML = `<b>${escapar(f.autor)}</b><small>${escapar(f.instrumentos || f.genero || '')}</small>`;
+      pie2.innerHTML = `<b>${escapar(f.titulo)}</b><small>${escapar(f.instrumentos || f.genero || '')}</small>`;
       b.appendChild(pie2);
       b.addEventListener('click', () => abrirFicha(f, b));
       rejilla.appendChild(b);
     });
     lista.appendChild(rejilla);
-    pie.izq.textContent = `${obras.length} obras destacadas`;
+    if (c.total > c.obras.length) {
+      const todas = document.createElement('button');
+      todas.type = 'button';
+      todas.className = 'cat-todas';
+      todas.textContent = `Ver todas sus partituras (${c.total.toLocaleString('es-ES')})`;
+      todas.addEventListener('click', () => {
+        entrada.value = c.corto; busqueda = apellidoDe(c);
+        arrancarLista();
+      });
+      lista.appendChild(todas);
+    }
+    pie.izq.textContent = `${c.nombre} · ${c.total.toLocaleString('es-ES')} partituras`;
   }
 
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
