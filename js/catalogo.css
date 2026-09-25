@@ -179,3 +179,74 @@
   color: var(--txt-dim, #8e8b85);
   border: 1px dashed rgba(255, 255, 255, .14);
 }
+
+/* ---------------- Destacadas: portadas de las obras conocidas -------------
+   Se dibujan con CSS: el apellido grande, el título y una pauta. Un color
+   por autor, siempre el mismo, para que Chopin se reconozca de lejos. */
+.cat-rejilla {
+  display: grid; gap: 14px 12px; padding: 6px 4px 10px;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+}
+.cat-tarjeta {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  padding: 0; text-align: left; border-radius: 10px;
+}
+.cat-tarjeta:hover .cat-portada, .cat-tarjeta:focus-visible .cat-portada {
+  transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,.45);
+}
+.cat-tarjeta:focus-visible { outline: 2px solid var(--gold, #c9a84c); outline-offset: 3px; }
+.cat-tarjeta.cargando { opacity: .5; pointer-events: none; }
+.cat-tarjeta-pie { display: block; min-width: 0; padding: 0 2px; }
+.cat-tarjeta-pie b {
+  display: block; font-size: 12.5px; font-weight: 600; color: var(--txt, #ece9e2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cat-tarjeta-pie small {
+  display: block; margin-top: 2px; font-size: 11px; color: var(--txt-dim, #8e8b85);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.cat-portada {
+  --h: 40;
+  position: relative; overflow: hidden; flex: 0 0 auto;
+  aspect-ratio: 3 / 4; width: 100%;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 12px 11px; border-radius: 9px;
+  background:
+    radial-gradient(120% 80% at 100% 0%, hsla(var(--h), 70%, 62%, .45), transparent 60%),
+    linear-gradient(160deg, hsl(var(--h), 38%, 24%), hsl(calc(var(--h) + 30), 30%, 11%));
+  border: 1px solid hsla(var(--h), 60%, 70%, .22);
+  color: #f4efe4;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.cat-portada .pauta {
+  position: absolute; left: 0; right: 0; top: 22%;
+  display: flex; flex-direction: column; gap: 5px; opacity: .22;
+}
+.cat-portada .pauta i { display: block; height: 1px; background: #f4efe4; }
+.cat-portada .ap {
+  position: relative;
+  font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+  font-size: var(--ap, 19px); font-weight: 700; letter-spacing: 1.4px; line-height: 1.05;
+  text-transform: uppercase; white-space: nowrap;
+  color: hsl(var(--h), 70%, 86%);
+  text-shadow: 0 1px 8px rgba(0,0,0,.35);
+}
+.cat-portada .ti {
+  position: relative; margin-top: 6px;
+  font-size: 11.5px; line-height: 1.3; color: rgba(244,239,228,.82);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* la misma portada, en pequeño, al lado de la ficha de una obra conocida */
+.cat-portada.mini {
+  width: 38px; padding: 5px 4px; border-radius: 6px; margin: 0 4px 0 2px;
+  justify-content: center;
+}
+.cat-portada.mini .pauta { top: 20%; gap: 3px; }
+.cat-portada.mini .ap { font-size: 17px; letter-spacing: 0; text-align: center; }
+@media (max-width: 760px) {
+  .cat-rejilla { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px 8px; }
+  .cat-portada { padding: 9px 8px; }
+  .cat-portada .ap { font-size: calc(var(--ap, 19px) * .8); letter-spacing: .8px; }
+  .cat-portada .ti { font-size: 10.5px; }
+}

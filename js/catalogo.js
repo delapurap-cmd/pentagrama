@@ -26,6 +26,7 @@ const Catalogo = (() => {
   }, window.CATALOGO_CONFIG || {});
 
   const PESTANAS = [
+    { id: 'destacadas', nombre: 'Destacadas' },
     { id: 'nombre', nombre: 'Nombre' },
     { id: 'artista', nombre: 'Artista' },
     { id: 'genero', nombre: 'Género' },
@@ -47,11 +48,14 @@ const Catalogo = (() => {
   }
   let favoritos = leerGuardado(CLAVE_FAVORITOS);
   let aperturas = leerGuardado(CLAVE_APERTURAS);
-  const especial = () => pestana === 'ranking' || pestana === 'favoritos';
+  // Destacadas es una portada, no un índice: al teclear se busca en todo.
+  const especial = () => pestana === 'ranking' || pestana === 'favoritos' ||
+    (pestana === 'destacadas' && busqueda.length < ((facetas && facetas.letras) || 2));
 
   let fondo, caja, entrada, pestanas, valores, lista, pie, cuerpo, volver;
   let facetas = null;
-  let pestana = 'nombre';
+  let pestana = 'destacadas';
+  let destacadas = null;    // la lista de obras conocidas, se baja una vez
   let valor = null;         // qué valor de la pestaña se está viendo
   let busqueda = '';        // lo que se ha tecleado
   let pagina = 0, cargando = false, fin = false;
@@ -173,6 +177,7 @@ const Catalogo = (() => {
   function pintarPestanas() {
     [...pestanas.children].forEach((b, i) => {
       b.classList.toggle('on', PESTANAS[i].id === pestana);
+      if (PESTANAS[i].id === 'destacadas') b.hidden = !!facetas && !facetas.destacadas;
       if (PESTANAS[i].id === 'favoritos') b.textContent =
         `Favoritos (${Object.values(favoritos).filter(fichaValida).length})`;
       b.setAttribute('aria-current', PESTANAS[i].id === pestana ? 'page' : 'false');
@@ -210,7 +215,7 @@ const Catalogo = (() => {
     lista.appendChild(volver);
     pagina = 0; fin = false; cargando = false; contador = 0;
     lista.scrollTop = 0;
-    cuerpo.classList.toggle('en-especial', especial());
+    cuerpo.classList.toggle('en-especial', especial() || pestana === 'destacadas');
     if (especial()) { pintarEspecial(); return; }
     siguientePagina();
   }
@@ -235,6 +240,7 @@ const Catalogo = (() => {
   }
 
   function pintarEspecial() {
+    if (pestana === 'destacadas') { pintarDestacadas(); return; }
     if (pestana === 'favoritos') {
       const fichas = Object.values(favoritos).filter(f => fichaValida(f) && coincide(f))
         .sort((a, b) => (b.guardada || 0) - (a.guardada || 0));
@@ -283,6 +289,78 @@ const Catalogo = (() => {
     pie.der.textContent = '';
   }
 
+  /* ---------------- portadas ---------------- */
+
+  /** Obra conocida: la que Jev puntuó alto. Esas llevan portada. */
+  const conocida = (f) => facetas && facetas.destacada != null && (+f.nota || 0) >= facetas.destacada;
+
+  /** Del autor manda el apellido: «J. S. Bach» y «Johann Sebastian Bach»
+      tienen la misma portada. */
+  function apellido(autor) {
+    const p = limpiar(autor).replace(/\(.*?\)/g, ' ').match(/[a-z]+/g) || [];
+    const quitar = ['arr', 'by', 'von', 'van', 'de', 'la', 'op', 'no'];
+    const utiles = p.filter((x) => x.length > 1 && quitar.indexOf(x) < 0);
+    return utiles.length ? utiles[utiles.length - 1] : '';
+  }
+
+  /** Un color por autor, siempre el mismo: Chopin es siempre Chopin. */
+  function tono(texto) {
+    let h = 0;
+    for (let i = 0; i < texto.length; i++) h = (h * 31 + texto.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+
+  /** La portada: el apellido grande, el título y cinco líneas de pauta.
+      Se dibuja aquí mismo, sin imágenes que bajar. */
+  function portada(f, mini) {
+    const ap = apellido(f.autor) || limpiar(f.titulo).slice(0, 12);
+    const d = document.createElement('div');
+    d.className = 'cat-portada' + (mini ? ' mini' : '');
+    d.style.setProperty('--h', tono(ap));
+    d.setAttribute('aria-hidden', 'true');
+    // los apellidos largos, más pequeños: BEETHOVEN no se parte en dos
+    if (!mini) d.style.setProperty('--ap', Math.min(19, Math.max(12, 150 / Math.max(ap.length, 1))) + 'px');
+    d.innerHTML =
+      '<span class="pauta"><i></i><i></i><i></i><i></i><i></i></span>' +
+      (mini ? `<span class="ap">${escapar(ap.charAt(0))}</span>`
+            : `<span class="ap">${escapar(ap)}</span><span class="ti">${escapar(f.titulo)}</span>`);
+    return d;
+  }
+
+  async function pintarDestacadas() {
+    const actual = revision;
+    if (!destacadas) {
+      pie.der.textContent = 'cargando…';
+      try { destacadas = await (await traer('destacadas.json')).json(); }
+      catch (err) { destacadas = []; }
+      if (actual !== revision) return;
+      pie.der.textContent = '';
+    }
+    const q = limpiar(busqueda);
+    const obras = destacadas.filter((f) => fichaValida(f) &&
+      (!q || limpiar(`${f.titulo} ${f.autor}`).includes(q)));
+    encabezado('Obras conocidas', 'Lo mejor del catálogo, según su fama y su valor musical');
+    if (!obras.length) { aviso('Todavía no hay obras destacadas.'); return; }
+    const rejilla = document.createElement('div');
+    rejilla.className = 'cat-rejilla';
+    obras.forEach((f) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cat-tarjeta';
+      b.title = `${f.titulo} — ${f.autor}`;
+      b.appendChild(portada(f, false));
+      const pie2 = document.createElement('span');
+      pie2.className = 'cat-tarjeta-pie';
+      // el título ya va en la portada: debajo, quién y para qué
+      pie2.innerHTML = `<b>${escapar(f.autor)}</b><small>${escapar(f.instrumentos || f.genero || '')}</small>`;
+      b.appendChild(pie2);
+      b.addEventListener('click', () => abrirFicha(f, b));
+      rejilla.appendChild(b);
+    });
+    lista.appendChild(rejilla);
+    pie.izq.textContent = `${obras.length} obras destacadas`;
+  }
+
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
   function rutaPagina() {
     if (busqueda.length >= (facetas.letras || 2)) {
@@ -311,11 +389,11 @@ const Catalogo = (() => {
       let puestas = 0;
       crudo.split('\n').forEach((linea) => {
         if (!linea) return;
-        const [titulo, autor, genero, instrumentos, partes, ref] = linea.split('\t');
+        const [titulo, autor, genero, instrumentos, partes, ref, nota] = linea.split('\t');
         if (!fichaValida({ titulo, autor, ref })) return;
         // dentro del cajón de dos letras aún hay que afinar
         if (filtro && !(limpiar(titulo).includes(filtro) || limpiar(autor).includes(filtro))) return;
-        lista.appendChild(ficha({ titulo, autor, genero, instrumentos, partes, ref }));
+        lista.appendChild(ficha({ titulo, autor, genero, instrumentos, partes, ref, nota: +nota || 0 }));
         puestas++;
       });
       contador += puestas;
@@ -384,6 +462,7 @@ const Catalogo = (() => {
       `<div class="a">${escapar(f.autor || 'Autor desconocido')}</div>` +
       (marcas.length ? `<div class="m">${marcas.join('')}</div>` : '');
     if (!hay(f)) fila.classList.add('lejos');
+    if (conocida(f)) fila.prepend(portada(f, true));
     b.addEventListener('click', () => abrirFicha(f, fila));
     const estrella = document.createElement('button');
     estrella.type = 'button'; estrella.className = 'cat-favorito';
@@ -493,6 +572,8 @@ const Catalogo = (() => {
                           `${escapar(err.message)}</p>`;
         return;
       }
+      // un catálogo viejo, sin destacadas: se entra por el nombre como antes
+      if (!facetas.destacadas && pestana === 'destacadas') pestana = 'nombre';
       pintarPestanas();
       pintarValores();
       arrancarLista();
