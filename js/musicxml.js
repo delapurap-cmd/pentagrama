@@ -174,6 +174,15 @@ const MusicXML = (() => {
    * Convierte MusicXML en una partitura de Reper.
    * Devuelve { score, report } donde report cuenta lo que quedó fuera.
    */
+  /** Guarda la cuerda que trae la nota (<technical><string>), si la trae. */
+  let hayCuerdasGlobal = null;
+  function cuerdaDe(ev, di, node) {
+    const c = parseInt(node.querySelector('notations > technical > string')?.textContent, 10);
+    if (!c) return;
+    (ev._cuerdas || (ev._cuerdas = {}))[di] = c;
+    if (hayCuerdasGlobal) hayCuerdasGlobal();
+  }
+
   function parse(xml) {
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('El archivo XML está dañado.');
@@ -214,6 +223,14 @@ const MusicXML = (() => {
     let tempo = null;
     let nPent = 1;                      // <staves> de la parte
     const clavesVistas = {};            // pentagrama -> última clave puesta
+    /* Guitarra de MuseScore o Guitar Pro: suele venir con dos pautas, la
+       normal y una de tablatura (clave TAB) con las MISMAS notas. La de
+       tablatura no se importa como pentagrama —saldrían todas repetidas—:
+       se enciende la tablatura del editor y se guarda la cuerda de cada nota. */
+    const pentTab = new Set();
+    let afinacion = null;               // MIDI de cada cuerda, de la 1 a la 6
+    let hayCuerdas = false;
+    hayCuerdasGlobal = () => { hayCuerdas = true; };
     /* MusicXML escribe cada voz seguida y rebobina el reloj con <backup>.
        Aquí se agrupa por (pentagrama, voz) en el orden en que aparecen: esa
        es la lista de voces de nuestro modelo. El número de voz de MuseScore
@@ -282,6 +299,7 @@ const MusicXML = (() => {
           const line = parseInt(clefEl.querySelector('line')?.textContent, 10) || 0;
           const oct = parseInt(clefEl.querySelector('clef-octave-change')?.textContent, 10) || 0;
           const pent = Math.max(0, (parseInt(clefEl.getAttribute('number'), 10) || 1) - 1);
+          if (sign === 'TAB') { pentTab.add(pent); return; }
           const id = sign === 'F' ? 'bass'
             : sign === 'C' ? (line === 4 ? 'tenor' : 'alto')
             : (oct === -1 ? 'treble-8v' : 'treble');
@@ -293,7 +311,18 @@ const MusicXML = (() => {
             Model.ponerClaveEn(measure, pent, id);
             clavesVistas[pent] = id;
           }
-          if (sign === 'percussion' || sign === 'TAB') drop('claves de percusión y tablatura');
+          if (sign === 'percussion') drop('claves de percusión');
+        });
+        // la afinación viene en <staff-details>: línea 1 es la cuerda más grave
+        attrs.querySelectorAll(':scope > staff-details').forEach((sd) => {
+          const cuerdas = [...sd.querySelectorAll('staff-tuning')].map((st) => {
+            const paso = (st.querySelector('tuning-step')?.textContent || 'E').trim().toUpperCase();
+            const oc = parseInt(st.querySelector('tuning-octave')?.textContent, 10) || 2;
+            const al = parseInt(st.querySelector('tuning-alter')?.textContent, 10) || 0;
+            return { linea: parseInt(st.getAttribute('line'), 10) || 0,
+                     midi: (oc + 1) * 12 + { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[paso] + al };
+          }).sort((a, b) => b.linea - a.linea).map((x) => x.midi);
+          if (cuerdas.length >= 4) afinacion = cuerdas;
         });
       }
 
@@ -391,6 +420,9 @@ const MusicXML = (() => {
           return;
         }
 
+        // Las notas de la pauta de tablatura repiten las de arriba: fuera.
+        if (pentTab.has((parseInt(text(node, 'staff'), 10) || 1) - 1)) return;
+
         // Un <chord/> no es una nota nueva: es otra cabeza de la anterior.
         if (node.querySelector(':scope > chord')) {
           const base = aqui && aqui.events[aqui.events.length - 1];
@@ -404,6 +436,7 @@ const MusicXML = (() => {
             const porArmadura = Model.keyAlter(score.key, Model.diLetter(d2));
             const acc = esc || (al !== porArmadura ? (al === 1 ? '#' : al === -1 ? 'b' : 'n') : null);
             Model.anadirAltura(base, d2, acc);
+            cuerdaDe(base, d2, node);
           }
           return;
         }
@@ -464,6 +497,7 @@ const MusicXML = (() => {
         if (lig.includes('start')) ev.lig = 'inicio';
         else if (lig.includes('stop')) ev.lig = 'fin';
 
+        cuerdaDe(ev, di, node);
         const dedo = node.querySelector('notations > technical > fingering');
         if (dedo) ev.dedo = (dedo.textContent || '').trim().slice(0, 3);
 
@@ -499,6 +533,21 @@ const MusicXML = (() => {
       report.voces = Math.max(report.voces || 0, listos.length);
       score.measures.push(measure);
     });
+
+    /* La cuerda de cada cabeza, en el orden de `alturas` (grave → aguda). */
+    if (hayCuerdas || pentTab.size) {
+      const AF = typeof Tablatura !== 'undefined' ? Tablatura.AFINACIONES : {};
+      const afin = Object.keys(AF).find((id) => afinacion && AF[id].cuerdas.join() === afinacion.join()) || 'estandar';
+      score.tab = { afin };
+      score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+        if (!ev._cuerdas) return;
+        const lista = Model.alturas(ev).map((n) => (ev._cuerdas[n.di] != null ? ev._cuerdas[n.di] : null));
+        if (lista.some((c) => c != null)) ev.cuerdas = lista;
+        delete ev._cuerdas;
+      })));
+      // la pauta de tablatura no cuenta como pentagrama
+      nPent = Math.max(1, nPent - [...pentTab].filter((p) => p < nPent).length);
+    }
 
     if (mEmpty(score)) throw new Error('El archivo no trae notas que Reper pueda leer.');
     if (tempo) score.tempo = Math.max(30, Math.min(300, tempo));

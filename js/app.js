@@ -1173,6 +1173,45 @@
   };
 
   const edicion = {
+    /* Tablatura: se enciende con una afinación y se apaga con null. Va en la
+       obra (score.tab), así que se guarda y se abre con ella. */
+    tablatura(afin) {
+      snapshot();
+      if (afin) state.score.tab = { afin };
+      else delete state.score.tab;
+      render();
+      if (afin) {
+        const fuera = Tablatura.fuera(Tablatura.digitar(state.score));
+        toast(fuera ? fuera + ' notas no caben en el mástil y quedan fuera de la tablatura'
+                    : 'Tablatura · Alt+Mayús+↑↓ cambia la cuerda de la nota');
+      }
+    },
+    /* Pasar la nota elegida a la cuerda de al lado sin cambiar lo que suena,
+       como Ctrl+↑↓ en Guitar Pro. Se guarda en ev.cuerdas (1 = la aguda). */
+    cuerda(d) {
+      const found = currentEvent();
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      if (!found || found.ev.kind !== 'note') return;
+      const ev = found.ev;
+      const mapa = Tablatura.digitar(state.score);
+      const dg = mapa.get(ev.id);
+      if (!dg) return;
+      const k = cabezaSel(ev);
+      const cuerdas = Tablatura.afinacionDe(state.score).cuerdas;
+      const midi = Model.midisOf(ev, state.score.key, Model.clefAt(state.score, found.mi, found.pent | 0))[k];
+      const actual = dg.pos[k] ? dg.pos[k].str : -1;
+      const ocupadas = new Set(dg.pos.filter((p, i) => p && i !== k).map((p) => p.str));
+      const libres = Tablatura.sitios(midi, cuerdas).map((p) => p.str).filter((c) => !ocupadas.has(c));
+      // d > 0 es hacia la cuerda aguda (número menor)
+      const cand = libres.filter((c) => (d > 0 ? c < actual : c > actual)).sort((a, b) => (d > 0 ? b - a : a - b))[0];
+      if (cand == null) { toast('Esa nota no cabe en otra cuerda por ese lado'); return; }
+      snapshot();
+      const lista = dg.pos.map((p) => (p ? p.str + 1 : null));
+      lista[k] = cand + 1;
+      ev.cuerdas = lista;
+      render();
+      toast('Cuerda ' + (cand + 1) + ' · traste ' + (midi - cuerdas[cand]));
+    },
     seleccionarTodo() {
       const found = currentEvent();
       const ref = found || { vi: 0, pent: 0 };
@@ -1383,6 +1422,17 @@
         { label: 'Insertar compás después', fn: () => edicion.insertarCompas(true) },
         { label: 'Quitar este compás', fn: edicion.borrarCompas },
         { sep: true },
+        { label: state.score.tab ? 'Tablatura ✓' : 'Tablatura de guitarra', hint: 'bajo el pentagrama',
+          fn: () => menu([{ head: 'Tablatura' }].concat(
+            Object.keys(Tablatura.AFINACIONES).map((id) => ({
+              label: Tablatura.AFINACIONES[id].nombre,
+              sel: !!state.score.tab && state.score.tab.afin === id,
+              fn: () => edicion.tablatura(id)
+            })),
+            [{ sep: true }, { label: 'Quitar la tablatura', sel: !state.score.tab, fn: () => edicion.tablatura(null) }]
+          ), btn) },
+        { label: 'Cambiar de cuerda', hint: 'Alt+Mayús+↑↓', fn: () => edicion.cuerda(1) },
+        { sep: true },
         { head: 'Teclado' },
         { label: 'A–G escribe la nota', hint: 'Mayús: al acorde' },
         { label: '1–7 figura · . puntillo', hint: 'R silencio' }
@@ -1445,7 +1495,8 @@
       if (state.selectedId && /^Arrow(Up|Down|Left|Right)$/.test(e.key) && (conMod || !Radial.isOpen())) {
         e.preventDefault();
         const arriba = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
-        if (arriba && e.altKey) handlers.cabeza(arriba);
+        if (arriba && e.altKey && e.shiftKey) { e.stopImmediatePropagation(); edicion.cuerda(arriba); }
+        else if (arriba && e.altKey) handlers.cabeza(arriba);
         else if (arriba) handlers.step(arriba * ((e.ctrlKey || e.metaKey) ? 7 : 1));
         else handlers[e.key === 'ArrowRight' ? 'next' : 'prev']();
       }
@@ -1473,6 +1524,12 @@
   const ligXML = (l) => (l === 'inicio' ? '<slur type="start" number="1"/>'
                        : l === 'fin' ? '<slur type="stop" number="1"/>' : '');
   const dedoXML = (d) => (d ? `<technical><fingering>${xmlEsc(d)}</fingering></technical>` : '');
+  /** Digitación y, con tablatura, cuerda (1 = la aguda) y traste. */
+  const tecnicaXML = (dedo, pos) => {
+    const dentro = (dedo ? `<fingering>${xmlEsc(dedo)}</fingering>` : '') +
+      (pos ? `<string>${pos.str + 1}</string><fret>${pos.fret}</fret>` : '');
+    return dentro ? '<technical>' + dentro + '</technical>' : '';
+  };
 
   /** Notas de adorno: van delante y sin duración, que es lo que las define. */
   function adornosXML(ev, s, marca) {
@@ -1663,6 +1720,8 @@
 
   function exportMusicXML() {
     const s = state.score;
+    // con tablatura, cada nota lleva su cuerda y su traste, como en MuseScore
+    const digi = s.tab && typeof Tablatura !== 'undefined' ? Tablatura.digitar(s) : null;
     const div = Model.Q;
     const ALT = { '#': 1, b: -1, n: 0, '##': 2, bb: -2 };
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -1674,7 +1733,13 @@
       '  <part id="P1">\n';
 
     const nPent = Model.nPent(s);
-    s.measures.forEach((m, i) => {
+    /* Los compases vacíos del final son relleno para completar la última
+       línea en pantalla, no música: exportarlos hacía que cada ida y vuelta
+       sumara compases (33 → 34 en la escala, 79 → 81 en Satie). */
+    const vacio = (m) => !m.repite && !m.barra && !m.volta && Model.voces(m).every((v) => !v.events.length);
+    let hasta = s.measures.length;
+    while (hasta > 1 && vacio(s.measures[hasta - 1])) hasta--;
+    s.measures.slice(0, hasta).forEach((m, i) => {
       const cap = Model.capacityAt(s, i);
       xml += `    <measure number="${i + 1}"${m.parcial ? ' implicit="yes"' : ''}>\n`;
       if (m.repite === 'inicio') xml += '      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>\n';
@@ -1732,7 +1797,7 @@
               (base && ev.lig ? ligXML(ev.lig) : '') +
               (base && ev.orn ? ornXML(ev.orn) : '') +
               (base && ev.art ? artXML(ev.art) : '') +
-              (base && ev.dedo ? dedoXML(ev.dedo) : '');
+              tecnicaXML(base ? ev.dedo : null, digi && digi.get(ev.id) && digi.get(ev.id).pos[iN]);
             xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
               `<step>${letter.toUpperCase()}</step>` +
               (alter ? `<alter>${alter}</alter>` : '') +

@@ -495,3 +495,9 @@ body.con-ayuda .panel.open{
 /* El atributo hidden tiene que mandar: el dock de la ayuda declara su
    propio display y se quedaba como una barra vacía al pie de la pantalla. */
 .ayuda-dock[hidden]{display:none!important}
+
+/* Tablatura: el hueco tras cada traste es del color de la hoja, también
+   al sonar (si no, se pintaría de verde el rectángulo entero). */
+.sheet-svg .tab-nota rect,
+.sheet-svg .sonando.tab-nota rect { fill: var(--paper) !important; stroke: none !important; }
+@media print { .sheet-svg .tab-nota rect { fill: #fff !important; } }

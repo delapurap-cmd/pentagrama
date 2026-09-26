@@ -106,9 +106,27 @@ Los iconos (una corchea dorada) se generan del propio glifo de Bravura con
 
 ## Lo que aún no hace
 
-Una sola voz en clave de sol. Varias voces, pentagramas, tresillos,
-articulaciones, matices y letra se leen del archivo pero no se escriben
-todavía: al importar, el aviso dice exactamente qué se ha quedado fuera.
+- **Letra de canción**: se descarta al importar.
+- **Varios instrumentos**: de un archivo con varias partes se toma sólo una.
+- **Escribir en la segunda voz** a mano (se leen y se tocan, pero se escribe
+  en la primera).
+- **Repeticiones y casillas**: se leen y se dibujan, pero no se crean desde
+  el editor.
+- **Exportar audio** (WAV/MP3).
+- **Tablatura**: la digitación es automática y la cuerda se cambia con
+  Alt+Mayús+↑↓; todavía no se escribe tecleando el número del traste.
+
+Al importar, el aviso dice exactamente qué se ha quedado fuera.
+
+## Tablatura
+
+Menú **Editar → Tablatura de guitarra**, con seis afinaciones (estándar,
+Drop D, medio tono, DADGAD, Open G y bajo). Va bajo el pentagrama como en
+Guitar Pro: la digitación la elige `js/tablatura.js` buscando la posición
+que menos abre la mano y menos salta, se resalta al sonar, tocar un traste
+elige su nota y Alt+Mayús+↑↓ la pasa a otra cuerda. El MusicXML lleva cuerda
+y traste (`<technical>`), y una guitarra de MuseScore con pauta TAB se abre
+con su afinación y sin notas repetidas.
 
 ## El editor que va dentro del cuaderno es otra copia
 
