@@ -365,6 +365,43 @@ const Model = (() => {
 
   const esAcorde = (ev) => !!(ev && ev.mas && ev.mas.length);
 
+  /** Reescribe las alturas de un evento a partir de una lista, dejándolo
+      como se guarda siempre: la más grave en `di`/`acc` y el resto en `mas`. */
+  function ponerAlturas(ev, lista) {
+    const orden = lista.slice().sort((x, y) => x.di - y.di);
+    ev.di = orden[0].di;
+    ev.acc = orden[0].acc == null ? null : orden[0].acc;
+    const resto = orden.slice(1).map((n) => ({ di: n.di, acc: n.acc == null ? null : n.acc }));
+    if (resto.length) ev.mas = resto; else delete ev.mas;
+    return orden;
+  }
+
+  /** Cambia UNA cabeza del acorde —la de índice `idx` en `alturas()`, de
+      grave a aguda— con `fn(cabeza)`, y devuelve dónde ha quedado esa cabeza
+      después de reordenar. Si al moverla cae encima de otra del mismo acorde,
+      sigue un grado más en la misma dirección: un acorde no lleva la misma
+      nota dos veces. */
+  function editarCabeza(ev, idx, fn) {
+    if (!ev || ev.kind !== 'note') return 0;
+    const lista = alturas(ev);
+    const i = Math.max(0, Math.min(lista.length - 1, idx | 0));
+    const cab = lista[i];
+    const antes = cab.di;
+    fn(cab);
+    const dir = Math.sign(cab.di - antes);
+    while (dir && lista.some((n) => n !== cab && n.di === cab.di) && cab.di > 20 && cab.di < 48) cab.di += dir;
+    if (lista.some((n) => n !== cab && n.di === cab.di)) cab.di = antes;
+    return ponerAlturas(ev, lista).indexOf(cab);
+  }
+
+  /** La cabeza del acorde más cercana a una altura: la que se ha tocado. */
+  function cabezaCercana(ev, di) {
+    const lista = alturas(ev);
+    let mejor = 0;
+    lista.forEach((n, i) => { if (Math.abs(n.di - di) < Math.abs(lista[mejor].di - di)) mejor = i; });
+    return mejor;
+  }
+
   /** MIDI de una altura suelta, teniendo en cuenta armadura y clave. */
   function midiDe(n, keySpec, clef) {
     const letter = diLetter(n.di);
@@ -627,7 +664,7 @@ const Model = (() => {
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
     timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
-    alturas, anadirAltura, quitarAltura, esAcorde, midiDe, midisOf,
+    alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,

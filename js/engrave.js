@@ -385,6 +385,7 @@ const Engrave = (() => {
           systemHeight,
           isFirstSystemOfScore: pageIndex === 0 && sysIndex === 0,
           selectedId: opts.selectedId,
+          selectedHead: opts.selectedHead,
           playingId: opts.playingId,
           lastSystem: pageIndex === pages.length - 1 && sysIndex === systems.length - 1
         });
@@ -620,7 +621,15 @@ const Engrave = (() => {
           });
         }
         all.forEach((ev, idx) => {
-          if (ev.id === o.selectedId) notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
+          if (ev.id === o.selectedId) {
+            // En un acorde sólo se enciende la cabeza que se está editando:
+            // si se pintara entero no se sabría qué nota cambia al subirla.
+            const nCab = ev.kind === 'note' ? Model.alturas(ev).length : 0;
+            if (nCab > 1 && notes[idx].setKeyStyle) {
+              const k = Math.max(0, Math.min(nCab - 1, o.selectedHead | 0));
+              notes[idx].setKeyStyle(k, { fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
+            } else notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
+          }
           else if (ev.id === o.playingId) notes[idx].setStyle({ fillStyle: COLORS.playing, strokeStyle: COLORS.playing });
         });
         const voice = new Voice({ numBeats: compasDelCompas.num, beatValue: compasDelCompas.den })

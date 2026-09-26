@@ -21,6 +21,8 @@
   const state = {
     score: null,
     selectedId: null,
+    // En un acorde, qué cabeza se está editando (índice de grave a aguda).
+    selectedHead: 0,
     playingId: null,
     pending: { dur: 'q', dots: 0 },   // última figura usada
     undo: [],
@@ -55,6 +57,7 @@
     renderRaf = requestAnimationFrame(() => {
       Engrave.render(state.score, $('#stage'), {
         selectedId: state.selectedId,
+        selectedHead: state.selectedHead,
         playingId: state.playingId,
         compact: EMBED,
         measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
@@ -201,13 +204,20 @@
     else if (p.y < techo) scroller.scrollTop -= techo - p.y;
   }
 
+  /** La cabeza del acorde que se está editando, ya acotada. */
+  function cabezaSel(ev) {
+    const n = Model.alturas(ev).length;
+    return n ? Math.max(0, Math.min(n - 1, state.selectedHead | 0)) : 0;
+  }
+
   function radialState(ev) {
     const alturas = Model.alturas(ev);
+    const cab = alturas[cabezaSel(ev)] || { di: ev.di, acc: ev.acc };
     return {
       kind: ev.kind,
       dur: ev.dur,
       dots: ev.dots || 0,
-      acc: ev.acc,
+      acc: cab.acc,
       tie: !!ev.tie,
       // grados que ya están sonando por encima de la base, para marcar los
       // intervalos que el acorde ya tiene
@@ -216,7 +226,7 @@
       cifrado: ev.cifrado || '',
       art: ev.art || [],
       tup: ev.tup || null,
-      pitch: ev.kind === 'note' ? pitchName(ev) : ''
+      pitch: ev.kind === 'note' ? pitchName(cab) + (alturas.length > 1 ? ' · ' + (cabezaSel(ev) + 1) + '/' + alturas.length : '') : ''
     };
   }
 
@@ -259,19 +269,46 @@
     step(d) {
       mutate((ev) => {
         if (ev.kind === 'rest') return;
-        ev.di = Math.max(20, Math.min(48, ev.di + d));
+        // en un acorde se mueve la cabeza que se tocó, no siempre la más grave
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
+          n.di = Math.max(20, Math.min(48, n.di + d));
+        });
       });
+    },
+    /** Pasa a la cabeza de encima (+1) o de debajo (−1) del acorde. */
+    cabeza(d) {
+      const found = currentEvent();
+      if (!found || found.ev.kind !== 'note') return;
+      const n = Model.alturas(found.ev).length;
+      if (n < 2) return;
+      state.selectedHead = (cabezaSel(found.ev) + d + n) % n;
+      render();
+      requestAnimationFrame(() => { const f2 = currentEvent(); if (f2) Radial.update(radialState(f2.ev)); });
     },
     dot() {
       // se cicla 0 → 1 → 2 → 0: el doble puntillo se pide repitiendo el botón
       mutate((ev) => { ev.dots = ((ev.dots || 0) + 1) % 3; });
     },
     acc(a) {
-      mutate((ev) => { if (ev.kind === 'note') ev.acc = ev.acc === a ? null : a; });
+      mutate((ev) => {
+        if (ev.kind !== 'note') return;
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => { n.acc = n.acc === a ? null : a; });
+      });
     },
     delete() {
       const found = currentEvent();
       if (!found) return;
+      // En un acorde se borra la nota elegida y el acorde sigue (como en
+      // MuseScore); con una sola nota se borra el evento.
+      const alt = Model.alturas(found.ev);
+      if (alt.length > 1) {
+        mutate((ev) => {
+          const i = cabezaSel(ev);
+          Model.quitarAltura(ev, alt[i].di);
+          state.selectedHead = Math.min(i, alt.length - 2);
+        });
+        return;
+      }
       snapshot();
       Model.removeEvent(state.score, found.mi, found.vi, found.index);
       state.selectedId = null;
@@ -295,7 +332,10 @@
         const base = Model.alturas(ev)[0].di;
         const di = base + grados;
         if (di > 48 || di < 20) { toast('Esa nota se sale del pentagrama'); return; }
-        if (!Model.quitarAltura(ev, di)) Model.anadirAltura(ev, di);
+        if (!Model.quitarAltura(ev, di)) {
+          Model.anadirAltura(ev, di);
+          state.selectedHead = Model.alturas(ev).findIndex((n) => n.di === di);
+        } else state.selectedHead = 0;
       });
     },
     acordeQuitar() {
@@ -379,6 +419,7 @@
     const target = flat[at + dir];
     if (target) {
       state.selectedId = target.ev.id;
+      state.selectedHead = 0;
       render();
       requestAnimationFrame(() => {
         Radial.update(radialState(target.ev));
@@ -449,11 +490,17 @@
       // arrastrar una nota existente hacia arriba o abajo cambia su altura
       if (cand.hit.hitEvent && cand.hit.hitEvent.ev.kind === 'note' &&
           (cand.dragging || (Math.abs(dy) > 8 && Math.abs(dy) > dx))) {
-        if (!cand.dragging) { cand.dragging = true; snapshot(); state.selectedId = cand.hit.hitEvent.ev.id; }
+        if (!cand.dragging) {
+          cand.dragging = true; snapshot();
+          state.selectedId = cand.hit.hitEvent.ev.id;
+          // se arrastra la cabeza que se agarró, no la más grave del acorde
+          state.selectedHead = Model.cabezaCercana(cand.hit.hitEvent.ev, cand.hit.di);
+        }
         const found = Model.findEvent(state.score, cand.hit.hitEvent.ev.id);
         const probe = Engrave.hitTest(cand.x, e.clientY);
-        if (found && probe && probe.di !== found.ev.di) {
-          found.ev.di = probe.di;
+        const actual = found && Model.alturas(found.ev)[cabezaSel(found.ev)];
+        if (found && probe && actual && probe.di !== actual.di) {
+          state.selectedHead = Model.editarCabeza(found.ev, cabezaSel(found.ev), (n) => { n.di = probe.di; });
           render();
         }
         return;
@@ -496,6 +543,8 @@
   function writeAt(hit) {
     if (hit.hitEvent) {
       state.selectedId = hit.hitEvent.ev.id;
+      // en un acorde, la cabeza que está más cerca de donde se tocó
+      state.selectedHead = Model.cabezaCercana(hit.hitEvent.ev, hit.di);
       render();
       requestAnimationFrame(() => openRadialFor(state.selectedId));
       return;
@@ -504,6 +553,7 @@
     const ev = Model.note(hit.di, state.pending.dur, 0);
     Model.insertEvent(state.score, hit.mi, vozDelToque(hit), hit.insertIndex, ev);
     state.selectedId = ev.id;
+    state.selectedHead = 0;
     render();
     requestAnimationFrame(() => openRadialFor(ev.id));
   }
@@ -1058,6 +1108,19 @@
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
       if (!Radial.isOpen() && (e.key === 'Backspace' || e.key === 'Delete') && state.selectedId) {
         e.preventDefault(); handlers.delete();
+      }
+      /* Flechas, como en MuseScore: ↑/↓ suben o bajan la nota elegida un
+         grado (con Ctrl, una octava); Alt+↑/↓ pasan a la nota de encima o de
+         debajo del acorde; ←/→ van a la nota anterior o siguiente. */
+      // Con el círculo abierto él ya atiende ↑↓←→ sin modificadores; aquí
+      // sólo lo que él no hace (Alt y Ctrl).
+      const conMod = e.altKey || e.ctrlKey || e.metaKey;
+      if (state.selectedId && /^Arrow(Up|Down|Left|Right)$/.test(e.key) && (conMod || !Radial.isOpen())) {
+        e.preventDefault();
+        const arriba = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
+        if (arriba && e.altKey) handlers.cabeza(arriba);
+        else if (arriba) handlers.step(arriba * ((e.ctrlKey || e.metaKey) ? 7 : 1));
+        else handlers[e.key === 'ArrowRight' ? 'next' : 'prev']();
       }
     });
   }
