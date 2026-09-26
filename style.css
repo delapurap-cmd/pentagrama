@@ -491,3 +491,7 @@ body.con-ayuda .panel.open{
 @media (prefers-reduced-motion: reduce){
   .ins-blanca, .ins-negra{ transition: none; }
 }
+
+/* El atributo hidden tiene que mandar: el dock de la ayuda declara su
+   propio display y se quedaba como una barra vacía al pie de la pantalla. */
+.ayuda-dock[hidden]{display:none!important}

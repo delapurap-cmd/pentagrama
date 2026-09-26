@@ -23,6 +23,9 @@
     selectedId: null,
     // En un acorde, qué cabeza se está editando (índice de grave a aguda).
     selectedHead: 0,
+    // Tramo elegido: desde `ancla` hasta la nota elegida, por la misma voz.
+    rango: null,
+    portapapeles: null,
     playingId: null,
     pending: { dur: 'q', dots: 0 },   // última figura usada
     undo: [],
@@ -37,14 +40,19 @@
     const saved = EMBED ? null : load();
     state.score = saved || Model.newScore({ systems: EMBED ? 1 : 4 });
     Model.reflow(state.score);
+    const zoomGuardado = parseFloat(localStorage.getItem(LS_ZOOM));
     state.zoom = EMBED ? Math.max(0.43, Math.min(1.05, (innerWidth - 12) / 820))
-      : (parseFloat(localStorage.getItem(LS_ZOOM)) || 0.75);
+      : (zoomGuardado || 0.75);
+    // En el teléfono, la primera vez la hoja entra entera de lado a lado:
+    // a 75 % se salía por la derecha y había que adivinar que existe «⤢».
+    if (!EMBED && !zoomGuardado && innerWidth < 780) requestAnimationFrame(() => encuadrar(true));
     applyZoom();
     bindBar();
     bindStage();
     bindPanel();
     bindPlayPanel();
     bindKeys();
+    bindEditar();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
     else if (!saved) setTimeout(() => toast('Toca el pentagrama para escribir tu primera nota'), 700);
@@ -58,6 +66,7 @@
       Engrave.render(state.score, $('#stage'), {
         selectedId: state.selectedId,
         selectedHead: state.selectedHead,
+        rango: state.rango ? new Set(seleccion().map((f) => f.ev.id)) : null,
         playingId: state.playingId,
         compact: EMBED,
         measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
@@ -97,7 +106,7 @@
   }
 
   /** Encuadra la hoja: el sistema entero de izquierda a derecha, centrado. */
-  function encuadrar() {
+  function encuadrar(silencioso) {
     const scroller = $('#scroller');
     // el aire de los lados se lee del propio relleno, que cambia con la
     // pantalla; medir la hoja no valdría porque su ancho es lo que se calcula
@@ -108,7 +117,7 @@
     Radial.close();
     // al encuadrar, se vuelve al principio: ya se ve todo el ancho
     scroller.scrollLeft = 0;
-    toast('Hoja ajustada a la pantalla');
+    if (!silencioso) toast('Hoja ajustada a la pantalla');
   }
 
   function bindHeadFields() {
@@ -516,7 +525,7 @@
       const c = cand;
       cand = null;
       if (c.dragging) { e.preventDefault(); render(); return; }   // se arrastró la altura
-      if (write && pts.size === 0) { e.preventDefault(); writeAt(c.hit); }
+      if (write && pts.size === 0) { e.preventDefault(); writeAt(c.hit, e.shiftKey); }
     };
     scroller.addEventListener('pointerup', (e) => finish(e, true));
     scroller.addEventListener('pointercancel', (e) => finish(e, false));
@@ -540,7 +549,15 @@
   }
 
   /** Selecciona la nota tocada o escribe una nueva en esa altura. */
-  function writeAt(hit) {
+  function writeAt(hit, mayus) {
+    // Mayús + clic sobre otra figura alarga la selección hasta ella
+    if (mayus && hit.hitEvent && state.selectedId) {
+      extenderHasta(hit.hitEvent.ev.id);
+      render();
+      avisoTramo();
+      return;
+    }
+    state.rango = null;
     if (hit.hitEvent) {
       state.selectedId = hit.hitEvent.ev.id;
       // en un acorde, la cabeza que está más cerca de donde se tocó
@@ -697,7 +714,7 @@
 
     $('#btnZoomIn').addEventListener('click', () => stepZoom(1));
     $('#btnZoomOut').addEventListener('click', () => stepZoom(-1));
-    $('#btnZoomFit').addEventListener('click', encuadrar);
+    $('#btnZoomFit').addEventListener('click', () => encuadrar());
     let rt = 0;
     window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
       if (EMBED) state.zoom = Math.max(0.43, Math.min(1.05, (innerWidth - 12) / SHEET_BASE));
@@ -1097,15 +1114,325 @@
   }
 
   /* ---------------- Teclado ---------------- */
+
+  /* ---------------- Edición por tramos (como MuseScore) ----------------
+     Hasta aquí se editaba nota a nota. Esto añade lo que separa un visor
+     editable de un editor: elegir un tramo (Mayús + clic, Mayús + ←/→,
+     Ctrl+A), copiar, cortar, pegar y borrar, transportar, escribir con las
+     letras del teclado y poner o quitar compases. El tramo va siempre por
+     una misma voz, que es como lo recorre la escritura. */
+
+  /** Los eventos de la voz de `ref`, en orden, con su sitio. */
+  function lineaDe(ref) {
+    const flat = [];
+    state.score.measures.forEach((m, mi) => {
+      const v = Model.mismaVoz(m, ref);
+      if (v) v.events.forEach((ev, index) => flat.push({ ev, mi, vi: v.vi, pent: v.pent, index }));
+    });
+    return flat;
+  }
+
+  /** Lo seleccionado: el tramo si lo hay, si no la nota elegida. */
+  function seleccion() {
+    const found = currentEvent();
+    if (!found) return [];
+    if (!state.rango) return [found];
+    const flat = lineaDe(found);
+    const a = flat.findIndex((f) => f.ev.id === state.rango.ancla);
+    const b = flat.findIndex((f) => f.ev.id === state.selectedId);
+    if (a < 0 || b < 0) { state.rango = null; return [found]; }
+    return flat.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+
+  /** Amplía (o empieza) el tramo hasta `id`. */
+  function extenderHasta(id) {
+    if (!state.selectedId) { state.selectedId = id; state.rango = null; return; }
+    if (!state.rango) state.rango = { ancla: state.selectedId };
+    state.selectedId = id;
+    state.selectedHead = 0;
+  }
+
+  function avisoTramo() {
+    const n = seleccion().length;
+    if (n > 1) toast(n + ' figuras seleccionadas · Ctrl+C copiar · Supr borrar · ↑↓ transportar');
+  }
+
+  function aplicarATramo(fn) {
+    const sel = seleccion();
+    if (!sel.length) return;
+    snapshot();
+    sel.forEach((f) => fn(f.ev));
+    Model.reflow(state.score);
+    render();
+  }
+
+  const copiaSinIds = (ev) => {
+    const c = JSON.parse(JSON.stringify(ev));
+    delete c.id; delete c.auto;
+    return c;
+  };
+
+  const edicion = {
+    seleccionarTodo() {
+      const found = currentEvent();
+      const ref = found || { vi: 0, pent: 0 };
+      const flat = lineaDe(ref).filter((f) => !f.ev.auto);
+      if (!flat.length) return;
+      state.rango = { ancla: flat[0].ev.id };
+      state.selectedId = flat[flat.length - 1].ev.id;
+      render();
+      avisoTramo();
+    },
+    copiar() {
+      const sel = seleccion();
+      if (!sel.length) { toast('Elige primero una nota o un tramo'); return false; }
+      state.portapapeles = sel.map((f) => copiaSinIds(f.ev));
+      toast(sel.length === 1 ? 'Copiada 1 figura' : 'Copiadas ' + sel.length + ' figuras');
+      return true;
+    },
+    cortar() {
+      if (edicion.copiar()) edicion.borrar();
+    },
+    borrar() {
+      const sel = seleccion();
+      if (!sel.length) return;
+      if (sel.length === 1 && !state.rango) { handlers.delete(); return; }
+      snapshot();
+      // de atrás adelante, para que los índices sigan valiendo
+      sel.slice().reverse().forEach((f) => {
+        const v = Model.vozDe(state.score.measures[f.mi], f.vi);
+        const i = v ? v.events.findIndex((e) => e.id === f.ev.id) : -1;
+        if (i >= 0) v.events.splice(i, 1);
+      });
+      state.score.measures.forEach((m) => Model.podarVoces(m));
+      Model.reflow(state.score);
+      state.selectedId = null; state.rango = null;
+      Radial.close();
+      render();
+    },
+    /** Pega detrás de la selección. Las figuras entran nuevas: otros ids, y
+        los grupos (tresillos…) con su propio id para no juntarse con otros. */
+    pegar() {
+      const clip = state.portapapeles;
+      if (!clip || !clip.length) { toast('No hay nada copiado'); return; }
+      const sel = seleccion();
+      const ult = sel[sel.length - 1];
+      if (!ult) { toast('Elige dónde pegar: toca una nota'); return; }
+      snapshot();
+      const grupos = {};
+      const nuevos = clip.map((c) => {
+        const ev = JSON.parse(JSON.stringify(c));
+        ev.id = Model.uid();
+        if (ev.tup) ev.tup = Object.assign({}, ev.tup, { id: grupos[ev.tup.id] || (grupos[ev.tup.id] = Model.uid()) });
+        return ev;
+      });
+      const v = Model.vozDe(state.score.measures[ult.mi], ult.vi);
+      const i = v.events.findIndex((e) => e.id === ult.ev.id);
+      v.events.splice(i + 1, 0, ...nuevos);
+      Model.reflow(state.score);
+      state.rango = nuevos.length > 1 ? { ancla: nuevos[0].id } : null;
+      state.selectedId = nuevos[nuevos.length - 1].id;
+      state.selectedHead = 0;
+      render();
+      toast('Pegado');
+    },
+    /** Sube o baja el tramo `grados` grados (7 = octava). */
+    mover(grados) {
+      aplicarATramo((ev) => {
+        if (ev.kind !== 'note') return;
+        Model.ponerAlturas(ev, Model.alturas(ev).map((n) => ({ di: Math.max(13, Math.min(55, n.di + grados)), acc: n.acc })));
+      });
+    },
+    /** Cambia la grafía de la nota elegida sin cambiar lo que suena
+        (Do♯ ↔ Re♭), como la J de MuseScore. */
+    enarmonia() {
+      mutate((ev) => {
+        if (ev.kind !== 'note') return;
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
+          const midi = Model.midiDe(n, state.score.key);
+          const opciones = [-1, 1, -2, 2].map((d) => n.di + d).map((di) => {
+            const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
+            return { di, alt: midi - nat };
+          }).filter((o) => Math.abs(o.alt) <= 2);
+          const o = opciones.find((x) => Math.abs(x.alt) <= 1) || opciones[0];
+          if (!o) return;
+          n.di = o.di;
+          n.acc = o.alt === Model.keyAlter(state.score.key, Model.diLetter(o.di)) ? null : ALT_ACC[o.alt];
+        });
+      });
+    },
+    /** Lleva la obra entera a otra tonalidad, reescribiendo cada nota y los
+        cifrados con la grafía de la armadura nueva. */
+    transportarA(spec) {
+      const de = state.score.key;
+      if (spec === de) return;
+      const tonica = (k) => ({ l: k[0].toLowerCase(), pc: (Model.SEMIS[k[0].toLowerCase()] + (k[1] === '#' ? 1 : k[1] === 'b' ? -1 : 0) + 12) % 12 });
+      const a = tonica(de), b = tonica(spec);
+      let semis = (b.pc - a.pc + 12) % 12;
+      if (semis > 6) semis -= 12;
+      let grados = (Model.LETTERS.indexOf(b.l) - Model.LETTERS.indexOf(a.l) + 7) % 7;
+      if (semis < 0 && grados > 0) grados -= 7;
+      if (semis > 0 && grados === 0) grados = 7;
+      snapshot();
+      state.score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+        if (ev.cifrado) ev.cifrado = transportarCifrado(ev.cifrado, semis, spec);
+        if (ev.kind !== 'note') return;
+        Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
+          const midi = Model.midiDe(n, de) + semis;
+          const di = n.di + grados;
+          const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
+          const alt = midi - nat;
+          return { di, acc: alt === Model.keyAlter(spec, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
+        }));
+      })));
+      state.score.key = spec;
+      Model.reflow(state.score);
+      render();
+      toast('Transportada a ' + Model.keyBySpec(spec).label);
+    },
+    /** Escribe detrás de la nota elegida la letra pulsada, en la octava más
+        cercana a la anterior; con Mayús la añade al acorde. */
+    letra(l, alAcorde) {
+      const found = currentEvent();
+      if (!found) return;
+      const ref = found.ev.kind === 'note' ? Model.alturas(found.ev)[cabezaSel(found.ev)].di : Model.MIDDLE_LINE_DI;
+      let di = ref, mejor = Infinity;
+      for (let d = ref - 6; d <= ref + 6; d++) {
+        if (Model.diLetter(d) === l && Math.abs(d - ref) < mejor) { mejor = Math.abs(d - ref); di = d; }
+      }
+      if (alAcorde) {
+        if (found.ev.kind !== 'note') return;
+        // con Mayús va por encima de la nota elegida, como en MuseScore
+        if (di <= ref) di += 7;
+        mutate((ev) => { Model.anadirAltura(ev, di); state.selectedHead = Model.alturas(ev).findIndex((n) => n.di === di); });
+        return;
+      }
+      snapshot();
+      const ev = Model.note(di, state.pending.dur, 0);
+      const v = Model.vozDe(state.score.measures[found.mi], found.vi);
+      const i = v.events.findIndex((e) => e.id === found.ev.id);
+      // si la elegida es un silencio, la letra lo sustituye
+      if (found.ev.kind === 'rest') { ev.dur = found.ev.dur; ev.dots = found.ev.dots || 0; v.events.splice(i, 1, ev); }
+      else v.events.splice(i + 1, 0, ev);
+      Model.reflow(state.score);
+      state.selectedId = ev.id; state.selectedHead = 0; state.rango = null;
+      render();
+      requestAnimationFrame(() => { if (Radial.isOpen()) Radial.update(radialState(ev)); aLaVista(ev.id); });
+    },
+    insertarCompas(despues) {
+      const found = currentEvent();
+      const mi = found ? found.mi : state.score.measures.length - 1;
+      snapshot();
+      state.score.measures.splice(mi + (despues ? 1 : 0), 0, Model.emptyMeasure());
+      Model.reflow(state.score);
+      render();
+      toast('Compás añadido');
+    },
+    borrarCompas() {
+      const found = currentEvent();
+      if (!found) { toast('Toca una nota del compás que quieres quitar'); return; }
+      if (state.score.measures.length <= 1) return;
+      snapshot();
+      state.score.measures.splice(found.mi, 1);
+      state.selectedId = null; state.rango = null;
+      Radial.close();
+      Model.reflow(state.score);
+      render();
+      toast('Compás ' + (found.mi + 1) + ' quitado');
+    }
+  };
+
+  const ALT_ACC = { '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' };
+  const NOTAS_S = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const NOTAS_B = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  /** Transporta las raíces de un cifrado («F#m7/C#» → «Abm7/Eb»). */
+  function transportarCifrado(txt, semis, spec) {
+    const bemoles = Model.keyBySpec(spec).fifths < 0;
+    return txt.replace(/([A-G])([#b♯♭]?)/g, (m, l, a) => {
+      const pc = (PC[l] + (a === '#' || a === '♯' ? 1 : a === 'b' || a === '♭' ? -1 : 0) + semis + 24) % 12;
+      return (bemoles ? NOTAS_B : NOTAS_S)[pc];
+    });
+  }
+
+  function bindEditar() {
+    const btn = $('#btnEdit');
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      const hay = !!currentEvent();
+      const tramo = seleccion().length;
+      menu([
+        { head: hay ? (tramo > 1 ? tramo + ' figuras elegidas' : 'Lo elegido') : 'Toca una nota para empezar' },
+        { label: 'Seleccionar todo', hint: 'Ctrl+A', fn: edicion.seleccionarTodo },
+        { label: 'Copiar', hint: 'Ctrl+C', fn: edicion.copiar },
+        { label: 'Cortar', hint: 'Ctrl+X', fn: edicion.cortar },
+        { label: 'Pegar detrás', hint: 'Ctrl+V', fn: edicion.pegar },
+        { label: 'Borrar', hint: 'Supr', fn: edicion.borrar },
+        { sep: true },
+        { label: 'Subir un grado', hint: '↑', fn: () => edicion.mover(1) },
+        { label: 'Bajar un grado', hint: '↓', fn: () => edicion.mover(-1) },
+        { label: 'Subir una octava', hint: 'Ctrl+↑', fn: () => edicion.mover(7) },
+        { label: 'Bajar una octava', hint: 'Ctrl+↓', fn: () => edicion.mover(-7) },
+        { label: 'Enarmonía', hint: 'J · Do♯ ↔ Re♭', fn: edicion.enarmonia },
+        { label: 'Transportar la obra…', hint: 'a otra tonalidad', fn: () => menu(Model.KEYS.map((k) => ({
+          label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === state.score.key,
+          fn: () => edicion.transportarA(k.spec)
+        })), btn) },
+        { sep: true },
+        { label: 'Insertar compás antes', fn: () => edicion.insertarCompas(false) },
+        { label: 'Insertar compás después', fn: () => edicion.insertarCompas(true) },
+        { label: 'Quitar este compás', fn: edicion.borrarCompas },
+        { sep: true },
+        { head: 'Teclado' },
+        { label: 'A–G escribe la nota', hint: 'Mayús: al acorde' },
+        { label: '1–7 figura · . puntillo', hint: 'R silencio' }
+      ], e.currentTarget);
+    });
+  }
+
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
-      if (e.target.isContentEditable || e.target.tagName === 'INPUT') return;
+      if (e.target.isContentEditable || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === ' ') {
         e.preventDefault();
         if ($('#panel').classList.contains('open')) doTap(); else togglePlay();
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
+      const ctrl = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (ctrl && !e.altKey && ['a', 'c', 'x', 'v'].includes(k)) {
+        e.preventDefault();
+        ({ a: edicion.seleccionarTodo, c: edicion.copiar, x: edicion.cortar, v: edicion.pegar })[k]();
+        return;
+      }
+      if (e.key === 'Escape' && state.rango) { state.rango = null; render(); }
+      // Mayús + ←/→ alarga el tramo nota a nota
+      if (e.shiftKey && !ctrl && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && state.selectedId) {
+        e.preventDefault();
+        const flat = lineaDe(currentEvent());
+        const i = flat.findIndex((f) => f.ev.id === state.selectedId);
+        const t = flat[i + (e.key === 'ArrowRight' ? 1 : -1)];
+        e.stopImmediatePropagation();
+        if (t) { extenderHasta(t.ev.id); render(); avisoTramo(); }
+        return;
+      }
+      // con un tramo, ↑/↓ lo transportan entero
+      if (state.rango && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        edicion.mover((e.key === 'ArrowUp' ? 1 : -1) * (ctrl ? 7 : 1));
+        return;
+      }
+      if (state.rango && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.borrar(); return;
+      }
+      // A–G escriben la nota (Mayús la añade al acorde); J, enarmonía
+      if (!ctrl && !e.altKey && state.selectedId && /^[a-g]$/.test(k) && !e.target.closest('.pt-search')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        edicion.letra(k, e.shiftKey);
+        return;
+      }
+      if (!ctrl && !e.altKey && k === 'j' && state.selectedId) { e.preventDefault(); edicion.enarmonia(); return; }
       if (!Radial.isOpen() && (e.key === 'Backspace' || e.key === 'Delete') && state.selectedId) {
         e.preventDefault(); handlers.delete();
       }

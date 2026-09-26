@@ -138,3 +138,11 @@ body.embed .editor-rail{display:none!important}
   }
 }
 @media print{body:not(.embed){display:block!important}body:not(.embed)>.editor-rail,body:not(.embed)>#syncDock{display:none!important}}
+
+/* Guía del lateral cuando no hay nada elegido. */
+.editor-rail .rail-guia{font-size:12px;line-height:1.5;color:#bdb7ab;padding:4px 2px}
+.editor-rail .rail-guia p{margin:0 0 8px}
+.editor-rail .rail-guia .rail-titulo{color:#c9a84c;font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;margin-top:6px}
+.editor-rail .rail-guia ul{margin:0;padding-left:14px;display:grid;gap:5px}
+.editor-rail .rail-guia kbd{font:600 10.5px system-ui;background:#26262b;border:1px solid #444;border-bottom-width:2px;border-radius:4px;padding:0 4px;color:#eee}
+.editor-rail:has(.pt-wrap.open) .rail-guia{display:none}

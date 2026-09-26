@@ -39,6 +39,7 @@
     <button class="btn ghost icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↺</button>
     <button class="btn ghost icon" id="btnRedo" title="Rehacer">↻</button>
     <button class="btn ghost icon" id="btnPrint" title="Imprimir o PDF">⎙</button>
+    <button class="btn" id="btnEdit" title="Copiar, pegar, transportar, compases…">Editar</button>
     <button class="btn" id="btnFile">Archivo</button>
   </div>
   <span class="sp"></span>
@@ -46,7 +47,23 @@
 </header>
 
 <!-- El lateral contiene los botones reales; no es una réplica del editor. -->
-<aside class="editor-rail standalone-only" id="editorRail" aria-label="Herramientas de partitura"></aside>
+<aside class="editor-rail standalone-only" id="editorRail" aria-label="Herramientas de partitura">
+  <!-- Mientras no hay nada elegido el lateral estaba vacío y parecía roto:
+       aquí va lo mínimo para empezar. Se oculta en cuanto se abre la edición. -->
+  <div class="rail-guia">
+    <p class="rail-titulo">Para empezar</p>
+    <p>Toca una línea o un espacio del pentagrama para escribir una nota. Toca una nota para editarla.</p>
+    <p class="rail-titulo">Teclado</p>
+    <ul>
+      <li><kbd>A</kbd>–<kbd>G</kbd> escribe la nota · <kbd>Mayús</kbd> la suma al acorde</li>
+      <li><kbd>1</kbd>–<kbd>7</kbd> figura · <kbd>.</kbd> puntillo · <kbd>R</kbd> silencio</li>
+      <li><kbd>↑</kbd><kbd>↓</kbd> altura · <kbd>Ctrl</kbd> octava · <kbd>Alt</kbd> otra nota del acorde</li>
+      <li><kbd>Mayús</kbd>+clic o <kbd>Mayús</kbd>+<kbd>←</kbd><kbd>→</kbd> elige un tramo</li>
+      <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> copiar, cortar, pegar · <kbd>Supr</kbd> borrar</li>
+      <li><kbd>J</kbd> enarmonía · <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer · <kbd>Espacio</kbd> escuchar</li>
+    </ul>
+  </div>
+</aside>
 <main class="stage" id="scroller">
   <div class="sheets" id="stage"></div>
 </main>

@@ -27,6 +27,8 @@ const Engrave = (() => {
     ink: '#12100c',
     ghost: 'rgba(18,16,12,0.34)',
     selected: '#b0801f',
+    // el resto de un tramo elegido: más claro que la nota en la que se está
+    rango: '#2f6fb3',
     playing: '#1c7a57'
   };
 
@@ -386,6 +388,7 @@ const Engrave = (() => {
           isFirstSystemOfScore: pageIndex === 0 && sysIndex === 0,
           selectedId: opts.selectedId,
           selectedHead: opts.selectedHead,
+          rango: opts.rango,
           playingId: opts.playingId,
           lastSystem: pageIndex === pages.length - 1 && sysIndex === systems.length - 1
         });
@@ -630,6 +633,7 @@ const Engrave = (() => {
               notes[idx].setKeyStyle(k, { fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
             } else notes[idx].setStyle({ fillStyle: COLORS.selected, strokeStyle: COLORS.selected });
           }
+          else if (o.rango && o.rango.has(ev.id)) notes[idx].setStyle({ fillStyle: COLORS.rango, strokeStyle: COLORS.rango });
           else if (ev.id === o.playingId) notes[idx].setStyle({ fillStyle: COLORS.playing, strokeStyle: COLORS.playing });
         });
         const voice = new Voice({ numBeats: compasDelCompas.num, beatValue: compasDelCompas.den })
