@@ -159,6 +159,65 @@ const Model = (() => {
     return score;
   }
 
+  /* ---------- Instrumentos ----------
+     Varias partes (voz, guitarra, bajo, batería…) son pentagramas seguidos
+     de la misma partitura, repartidos en `score.partes = [{nombre, n,
+     sonido}]`: la primera se queda los `n` de arriba, la siguiente los
+     siguientes. Sin `partes`, la obra es un solo instrumento con todos. */
+  function partes(score) {
+    const total = nPent(score);
+    if (!score.partes || !score.partes.length) return [{ nombre: '', n: total, desde: 0 }];
+    let desde = 0;
+    const out = [];
+    score.partes.forEach((p) => {
+      if (desde >= total) return;
+      const n = Math.max(1, Math.min(p.n | 0 || 1, total - desde));
+      out.push(Object.assign({}, p, { n, desde }));
+      desde += n;
+    });
+    if (desde < total) out[out.length - 1].n += total - desde;   // lo que sobre, al último
+    return out;
+  }
+  const parteDe = (score, pent) => partes(score).find((p) => pent >= p.desde && pent < p.desde + p.n) || partes(score)[0];
+
+  /* Los instrumentos que se pueden añadir, con sus pautas y su sonido. */
+  const INSTRUMENTOS = {
+    voz:      { nombre: 'Voz', claves: ['treble'], sonido: 'piano' },
+    piano:    { nombre: 'Piano', claves: ['treble', 'bass'], sonido: 'piano' },
+    guitarra: { nombre: 'Guitarra', claves: ['treble-8v'], sonido: 'guitarra' },
+    bajo:     { nombre: 'Bajo', claves: ['bass'], sonido: 'bajo' },
+    bateria:  { nombre: 'Batería', claves: ['percussion'], sonido: 'bateria' }
+  };
+
+  /** Añade un instrumento debajo de los que hay. Devuelve false si no cabe
+      (el sistema admite cuatro pautas). */
+  function anadirInstrumento(score, tipo) {
+    const ins = INSTRUMENTOS[tipo];
+    if (!ins) return false;
+    const antes = nPent(score);
+    if (antes + ins.claves.length > 4) return false;
+    if (!score.partes || !score.partes.length) score.partes = [{ nombre: score.instrumento || 'Instrumento', n: antes }];
+    const claves = pentagramas(score).map((p) => p.clef).concat(ins.claves);
+    ponerPentagramas(score, claves.length, claves);
+    score.partes.push({ nombre: ins.nombre, n: ins.claves.length, sonido: ins.sonido });
+    return true;
+  }
+
+  /** Quita el último instrumento, con todo lo que tenía escrito. */
+  function quitarUltimoInstrumento(score) {
+    const ps = partes(score);
+    if (ps.length < 2) return false;
+    const ultimo = ps[ps.length - 1];
+    score.measures.forEach((m) => {
+      if (m.voces) m.voces = m.voces.filter((v) => v.pent < ultimo.desde);
+      if (m.claves) for (let p = ultimo.desde; p < ultimo.desde + ultimo.n; p++) delete m.claves[p];
+    });
+    ponerPentagramas(score, ultimo.desde, pentagramas(score).map((p) => p.clef).slice(0, ultimo.desde));
+    score.partes = score.partes.slice(0, ps.length - 1);
+    if (score.partes.length < 2) delete score.partes;
+    return true;
+  }
+
   /** La clave vigente en un compás para un pentagrama. */
   function clefAt(score, mi, pent = 0) {
     for (let i = mi; i >= 0; i--) {
@@ -692,7 +751,7 @@ const Model = (() => {
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
     timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
-    keyAt, PERCUSION, percusionDe, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
+    keyAt, PERCUSION, percusionDe, partes, parteDe, INSTRUMENTOS, anadirInstrumento, quitarUltimoInstrumento, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,

@@ -50,6 +50,19 @@ const Tablatura = (function () {
     return afinacionDe(score).cuerdas.map((c) => c + capo);
   };
 
+  /* Qué pautas van a la tablatura. Con varios instrumentos, sólo las de
+     la guitarra o el bajo (si no hay ninguno, las de la primera parte); con
+     uno solo, todas. */
+  function pentsDe(score) {
+    const n = typeof Model !== 'undefined' ? Model.nPent(score) : 1;
+    const todas = [...Array(n).keys()];
+    if (!score || !score.partes || score.partes.length < 2 || typeof Model === 'undefined') return todas;
+    if (score.tab && Array.isArray(score.tab.pents)) return score.tab.pents;
+    const ps = Model.partes(score);
+    const cuerda = ps.find((p) => p.sonido === 'guitarra' || p.sonido === 'bajo') || ps[0];
+    return [...Array(cuerda.n).keys()].map((k) => cuerda.desde + k);
+  }
+
   /** Los nombres de las cuerdas, de la aguda a la grave (E B G D A E). */
   const NOMBRES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
   const nombresDe = (score) => afinacionDe(score).cuerdas.map((m) => NOMBRES[((m % 12) + 12) % 12]);
@@ -125,12 +138,14 @@ const Tablatura = (function () {
    */
   function digitar(score) {
     const cuerdas = cuerdasDe(score);
+    const pents = pentsDe(score);
     const out = new Map();
     const manos = {};
     const ligadas = {};
     score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
       const clef = Model.clefAt(score, mi, v.pent);
       if (clef.percusion) return;   // la batería no va a la tablatura
+      if (!pents.includes(v.pent)) return;   // ni los otros instrumentos
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') { return; }
         const midis = Model.midisOf(ev, Model.keyAt(score, mi), clef);
@@ -157,7 +172,7 @@ const Tablatura = (function () {
     return n;
   }
 
-  return { AFINACIONES, afinacionDe, capoDe, cuerdasDe, nombresDe, sitios, digitarAcorde, digitar, fuera, TRASTES };
+  return { AFINACIONES, afinacionDe, capoDe, cuerdasDe, nombresDe, pentsDe, sitios, digitarAcorde, digitar, fuera, TRASTES };
 })();
 
 if (typeof module !== 'undefined') module.exports = Tablatura;

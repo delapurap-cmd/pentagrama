@@ -779,10 +779,35 @@ const Engrave = (() => {
          abajo. */
       if (nPent > 1 && StaveConnector) {
         const arriba = pentagramas[0].stave, abajo = pentagramas[nPent - 1].stave;
-        const une = (tipo) => oculto(() => {
-          try { new StaveConnector(arriba, abajo).setType(tipo).setContext(o.ctx).draw(); } catch (e) { }
+        const une = (tipo, a = arriba, b = abajo) => oculto(() => {
+          try { new StaveConnector(a, b).setType(tipo).setContext(o.ctx).draw(); } catch (e) { }
         });
-        if (primero) { une(StaveConnector.type.BRACE); une(StaveConnector.type.SINGLE_LEFT); }
+        const ps = Model.partes(score);
+        if (primero) {
+          if (ps.length > 1) {
+            /* Varios instrumentos: un corchete que los agrupa a todos y la
+               llave sólo para el que tiene dos pautas (el piano). */
+            une(StaveConnector.type.BRACKET);
+            ps.forEach((P) => {
+              if (P.n > 1) une(StaveConnector.type.BRACE, pentagramas[P.desde].stave, pentagramas[P.desde + P.n - 1].stave);
+            });
+          } else une(StaveConnector.type.BRACE);
+          une(StaveConnector.type.SINGLE_LEFT);
+          // el nombre de cada instrumento, a la izquierda de la primera línea
+          if (ps.length > 1 && o.isFirstSystemOfScore) {
+            oculto(() => ps.forEach((P) => {
+              if (!P.nombre) return;
+              const yA = pentagramas[P.desde].stave.getYForLine(0);
+              const yB = pentagramas[P.desde + P.n - 1].stave.getYForLine(4);
+              o.ctx.save();
+              o.ctx.setFont(SERIF, 12);
+              o.ctx.setFillStyle(COLORS.ink);
+              const w = o.ctx.measureText(P.nombre).width;
+              o.ctx.fillText(P.nombre, x - w - (P.n > 1 ? 18 : 10), (yA + yB) / 2 + 4);
+              o.ctx.restore();
+            }));
+          }
+        }
         une(ultimo && o.lastSystem ? StaveConnector.type.BOLD_DOUBLE_RIGHT : StaveConnector.type.SINGLE_RIGHT);
       }
 

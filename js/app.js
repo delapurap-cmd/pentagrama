@@ -1602,6 +1602,26 @@
               toast('Escribe cifrados (Signos → cifrado) y saldrá su diagrama encima');
             }
           } },
+        { label: 'Instrumentos…', hint: 'voz · piano · guitarra · bajo · batería', fn: () => {
+          const sc = state.score;
+          const ps = Model.partes(sc);
+          const libres = 4 - Model.nPent(sc);
+          const anadir = (tipo) => {
+            snapshot();
+            if (!Model.anadirInstrumento(sc, tipo)) { toast('No cabe: el sistema admite cuatro pautas'); return; }
+            Model.reflow(sc); render();
+            toast(Model.INSTRUMENTOS[tipo].nombre + ' añadido debajo');
+          };
+          menu([{ head: ps.length > 1 ? 'Instrumentos: ' + ps.map((p) => p.nombre).join(', ') : 'Añadir un instrumento' }]
+            .concat(Object.keys(Model.INSTRUMENTOS).map((t) => {
+              const ins = Model.INSTRUMENTOS[t];
+              const cabe = ins.claves.length <= libres;
+              return { label: 'Añadir ' + ins.nombre.toLowerCase(), hint: cabe ? ins.claves.length + (ins.claves.length > 1 ? ' pautas' : ' pauta') : 'no cabe',
+                       fn: () => anadir(t) };
+            }))
+            .concat(ps.length > 1 ? [{ sep: true }, { label: 'Quitar ' + ps[ps.length - 1].nombre.toLowerCase(), hint: 'con lo que tenga escrito',
+              fn: () => { snapshot(); Model.quitarUltimoInstrumento(sc); Model.reflow(sc); render(); } }] : []), btn);
+        } },
         { label: 'Sonido…', hint: 'piano · guitarra · bajo', fn: () => {
           const sc = state.score;
           const auto = Sound.instrumentoDe(Object.assign({}, sc, { sonido: null }));
@@ -1979,6 +1999,8 @@
     const s = state.score;
     // con tablatura, cada nota lleva su cuerda y su traste, como en MuseScore
     const digi = s.tab && typeof Tablatura !== 'undefined' ? Tablatura.digitar(s) : null;
+    // la parte que lleva la tablatura (la cejilla va sólo en ella)
+    const digiDe = (P) => !!digi && [...Array(P.n).keys()].some((k) => Tablatura.pentsDe(s).includes(P.desde + k));
     const div = Model.Q;
     const ALT = { '#': 1, b: -1, n: 0, '##': 2, bb: -2 };
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -1986,10 +2008,16 @@
       '<score-partwise version="3.1">\n' +
       `  <work><work-title>${xmlEsc(s.title)}</work-title></work>\n` +
       (s.composer ? `  <identification><creator type="composer">${xmlEsc(s.composer)}</creator></identification>\n` : '') +
-      '  <part-list><score-part id="P1"><part-name>Música</part-name></score-part></part-list>\n' +
-      '  <part id="P1">\n';
+      '  <part-list>' + Model.partes(s).map((P, k) =>
+        `<score-part id="P${k + 1}"><part-name>${xmlEsc(P.nombre || 'Música')}</part-name></score-part>`).join('') + '</part-list>\n';
 
-    const nPent = Model.nPent(s);
+    /* Cada instrumento es una <part> con sus pautas numeradas desde 1. Las
+       de los demás no se tocan: cada parte lleva sólo sus voces. */
+    Model.partes(s).forEach((P, kParte) => {
+    xml += `  <part id="P${kParte + 1}">\n`;
+    const nPent = P.n;
+    const suya = (pent) => pent >= P.desde && pent < P.desde + P.n;
+    const pentasP = Model.pentagramas(s).slice(P.desde, P.desde + P.n);
     /* Los compases vacíos del final son relleno para completar la última
        línea en pantalla, no música: exportarlos hacía que cada ida y vuelta
        sumara compases (33 → 34 en la escala, 79 → 81 en Satie). */
@@ -2006,14 +2034,15 @@
           `        <key><fifths>${Model.keyBySpec(s.key).fifths}</fifths></key>\n` +
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
           (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
-          Model.pentagramas(s).map((_, p) => claveXML(Model.clefAt(s, 0, p), nPent > 1 ? p + 1 : 0)).join('') +
-          (s.tab && s.tab.capo ? `        <staff-details><capo>${s.tab.capo | 0}</capo></staff-details>\n` : '') +
+          pentasP.map((_, p) => claveXML(Model.clefAt(s, 0, p + P.desde), nPent > 1 ? p + 1 : 0)).join('') +
+          (s.tab && s.tab.capo && digiDe(P) ? `        <staff-details><capo>${s.tab.capo | 0}</capo></staff-details>\n` : '') +
           '      </attributes>\n' +
-          `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
+          (kParte === 0 ? `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n` : '');
       } else {
         // cambios de clave a mitad de obra, uno por pentagrama
-        const cambios = Model.pentagramas(s).map((_, p) => {
-          const aqui = p === 0 ? m.clef : (m.claves && m.claves[p]);
+        const cambios = pentasP.map((_, p) => {
+          const g = p + P.desde;
+          const aqui = g === 0 ? m.clef : (m.claves && m.claves[g]);
           return aqui ? claveXML(Model.clefById(aqui), nPent > 1 ? p + 1 : 0) : '';
         }).join('');
         const tc = m.time
@@ -2026,14 +2055,14 @@
 
       /* Cada voz se escribe entera y luego se rebobina el reloj con
          <backup>, que es como MusicXML representa lo simultáneo. */
-      Model.voces(m).forEach((vz, iv) => {
+      Model.voces(m).filter((vz) => suya(vz.pent)).forEach((vz, iv) => {
         let tiedFrom = false;
         let unionAntes = null;
         const guionAntes = [];   // por estrofa: la sílaba anterior seguía en esta
         const evs = vz.events.concat(Model.autoRests(m, s.time, vz.vi, cap));
         if (!evs.length) return;
         if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
-        const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent + 1}</staff>` : '');
+        const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent - P.desde + 1}</staff>` : '');
         // en la pauta de batería las notas no tienen altura: sólo sitio
         const perc = !!Model.clefAt(s, i, vz.pent).percusion;
       evs.forEach((ev) => {
@@ -2050,7 +2079,7 @@
           unionAntes = unionDe(ev);
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
-          xml += direccionesXML(ev, nPent > 1 ? vz.pent : null);
+          xml += direccionesXML(ev, nPent > 1 ? vz.pent - P.desde : null);
           xml += adornosXML(ev, Model.keyAt(s, i), marca);
           // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
           // adelante llevan <chord/> y comparten la duración de la primera.
@@ -2095,7 +2124,9 @@
       }
       xml += '    </measure>\n';
     });
-    xml += '  </part>\n</score-partwise>\n';
+    xml += '  </part>\n';
+    });
+    xml += '</score-partwise>\n';
     download(slug(s.title) + '.musicxml', xml, 'application/vnd.recordare.musicxml+xml');
     toast('MusicXML exportado (MuseScore, Sibelius…)');
   }

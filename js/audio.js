@@ -205,6 +205,18 @@ const Sound = (() => {
     return 'piano';
   }
 
+  /** El sonido de una pauta: con varios instrumentos, el de su parte (la
+      voz y el piano, a piano; la guitarra y el bajo, a cuerda). */
+  function instrumentoPent(score, pent) {
+    if (!score || !score.partes || score.partes.length < 2) return instrumentoDe(score);
+    const P = Model.parteDe(score, pent | 0);
+    if (P && (P.sonido === 'piano' || CUERDA[P.sonido])) return P.sonido;
+    if (score.tab && typeof Tablatura !== 'undefined' && Tablatura.pentsDe(score).includes(pent | 0)) {
+      return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
+    }
+    return 'piano';
+  }
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur, vol = 0.9) {
     if (instrumento !== 'piano') { playCuerda(at, midi, dur, vol); return; }
@@ -299,15 +311,24 @@ const Sound = (() => {
     // media melodía con oscilador y la otra media con piano
     try {
       const midis = [];
+      const deCuerda = [];
       score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
         // la batería se sintetiza: sus notas no piden muestras
         if (ev.kind === 'note' && !Model.clefAt(score, mi, v.pent).percusion) {
-          Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
+          const inst = instrumentoPent(score, v.pent);
+          Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent))
+            .forEach((x) => { if (x == null) return; if (inst === 'piano') midis.push(x); else deCuerda.push([inst, Math.round(x)]); });
         }
       })));
       // la guitarra y el bajo no bajan nada: se calcula cada cuerda antes de empezar
-      if (midis.length && instrumento === 'piano') await preload(midis);
-      else [...new Set(midis.filter((x) => x != null).map(Math.round))].forEach(bufferDeCuerda);
+      const vistas = new Set();
+      deCuerda.forEach(([inst, x]) => {
+        if (vistas.has(inst + x)) return;
+        vistas.add(inst + x);
+        instrumento = inst; bufferDeCuerda(x);
+      });
+      instrumento = instrumentoDe(score);
+      if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
 
     /* El tiempo no es lineal: el mapa de tempo dice a qué segundo cae cada
@@ -399,6 +420,7 @@ const Sound = (() => {
         Model.alturas(it.ev).forEach((n) => tambor(cuando, Model.percusionDe(n.di).son, cfg.vol));
         return;
       }
+      instrumento = instrumentoPent(score, it.pent);
       // con el pedal pisado la nota no se corta al soltar la tecla
       const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
       const adornos = it.ev.adornos || [];
@@ -668,6 +690,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, tambor, preload, instrumentoDe, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+  return { ac, click, tone, tambor, preload, instrumentoDe, instrumentoPent, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

@@ -187,7 +187,66 @@ const MusicXML = (() => {
      alteraciones escritas se deciden contra la que toca en ese compás. */
   let claveLectura = null;
 
+  /* Varios instrumentos: cada <part> se lee por separado con el mismo
+     lector de siempre y luego se apilan sus pautas en una sola partitura,
+     hasta cuatro. Lo que no cabe se dice en el informe. */
   function parse(xml) {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const todas = doc.querySelector('parsererror') ? [] : [...doc.querySelectorAll('score-partwise > part')];
+    const conNotas = todas.filter((p) => p.querySelector('note pitch, note unpitched'));
+    if (conNotas.length < 2) return parseUna(xml);
+
+    const nombres = new Map();
+    doc.querySelectorAll('part-list > score-part').forEach((sp) => {
+      nombres.set(sp.getAttribute('id'), (sp.querySelector('part-name')?.textContent || '').trim());
+    });
+    const sueltas = conNotas.map((part) => {
+      const id = part.getAttribute('id');
+      const d2 = doc.cloneNode(true);
+      d2.querySelectorAll('score-partwise > part').forEach((p) => { if (p.getAttribute('id') !== id) p.remove(); });
+      d2.querySelectorAll('part-list > score-part').forEach((p) => { if (p.getAttribute('id') !== id) p.remove(); });
+      return { nombre: nombres.get(id) || id, r: parseUna(new XMLSerializer().serializeToString(d2)) };
+    });
+
+    const suena = (x) => {
+      const clave = Model.pentagramas(x.r.score)[0].clef;
+      if (clave === 'percussion' || /bater|drum|perc/i.test(x.nombre)) return 'bateria';
+      if (/bajo|bass/i.test(x.nombre) && !/contra|double/i.test(x.nombre)) return 'bajo';
+      if (x.r.score.tab || /guit/i.test(x.nombre)) return 'guitarra';
+      return 'piano';
+    };
+    const base = sueltas[0].r.score;
+    const report = sueltas[0].r.report;
+    report.partName = sueltas.map((x) => x.nombre).join(', ');
+    let total = Model.nPent(base);
+    let claves = Model.pentagramas(base).map((p) => p.clef);
+    base.partes = [{ nombre: sueltas[0].nombre, n: total, sonido: suena(sueltas[0]) }];
+    if (base.tab) base.tab.pents = [...Array(total).keys()];
+    sueltas.slice(1).forEach((x) => {
+      const sc = x.r.score;
+      const n = Model.nPent(sc);
+      if (total + n > 4) { report.dropped['instrumento sin sitio: ' + x.nombre] = 1; return; }
+      while (base.measures.length < sc.measures.length) base.measures.push(Model.emptyMeasure());
+      sc.measures.forEach((m2, mi) => {
+        const m = base.measures[mi];
+        Model.voces(m2).forEach((v) => {
+          if (!v.events.length) return;
+          (m.voces || (m.voces = [])).push({ pent: total + v.pent, events: v.events });
+        });
+        if (m2.clef) Model.ponerClaveEn(m, total, m2.clef);
+        Object.keys(m2.claves || {}).forEach((p) => Model.ponerClaveEn(m, total + (+p), m2.claves[p]));
+      });
+      if (sc.tab && !base.tab) base.tab = Object.assign({}, sc.tab, { pents: [...Array(n).keys()].map((k) => total + k) });
+      claves = claves.concat(Model.pentagramas(sc).map((p) => p.clef));
+      base.partes.push({ nombre: x.nombre, n, sonido: suena(x) });
+      report.notes += x.r.report.notes;
+      total += n;
+    });
+    Model.ponerPentagramas(base, total, claves);
+    return { score: base, report };
+  }
+
+  function parseUna(xml) {
     claveLectura = null;
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('El archivo XML está dañado.');
