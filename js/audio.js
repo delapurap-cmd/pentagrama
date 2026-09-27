@@ -88,8 +88,69 @@ const Sound = (() => {
     return true;
   }
 
+  /* ---------- Guitarra y bajo: cuerda pulsada sintetizada ----------
+     Karplus-Strong: un golpe de ruido que recorre una línea de retardo del
+     largo de la cuerda y se va apagando al promediarse consigo mismo. Suena
+     a cuerda pulsada de verdad y no pesa nada: no hay muestras que bajar.
+     Cada altura se calcula una vez y se guarda. */
+  let instrumento = 'piano';
+  const cuerdas = new Map();                       // 'inst:midi' -> AudioBuffer
+  const CUERDA = {
+    guitarra: { seg: 2.6, apaga: 0.996, brillo: 0.5, corte: 4200, vol: 0.55 },
+    bajo:     { seg: 3.2, apaga: 0.998, brillo: 0.25, corte: 1400, vol: 0.8 }
+  };
+  function bufferDeCuerda(midi) {
+    const clave = instrumento + ':' + midi;
+    if (cuerdas.has(clave)) return cuerdas.get(clave);
+    const cfg = CUERDA[instrumento];
+    const c = ac(), sr = c.sampleRate;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const N = Math.max(2, Math.round(sr / f));
+    const largo = Math.round(sr * cfg.seg);
+    const buf = c.createBuffer(1, largo, sr);
+    const y = buf.getChannelData(0);
+    // el golpe: ruido suavizado (la púa no es un chasquido) y la cuerda que lo filtra
+    let prev = 0;
+    for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = prev + cfg.brillo * (r - prev); y[i] = prev; }
+    // las cuerdas agudas se apagan antes que las graves, como en el instrumento
+    const apaga = Math.pow(cfg.apaga, Math.max(0.6, f / 220));
+    for (let i = N; i < largo; i++) y[i] = apaga * 0.5 * (y[i - N] + y[i - N + 1]);
+    let pico = 0;
+    for (let i = 0; i < largo; i++) pico = Math.max(pico, Math.abs(y[i]));
+    if (pico > 0) for (let i = 0; i < largo; i++) y[i] /= pico;
+    cuerdas.set(clave, buf);
+    return buf;
+  }
+  function playCuerda(at, midi, dur, vol) {
+    const cfg = CUERDA[instrumento];
+    const c = ac();
+    const src = c.createBufferSource();
+    src.buffer = bufferDeCuerda(Math.round(midi));
+    const pb = c.createBiquadFilter();
+    pb.type = 'lowpass'; pb.frequency.value = cfg.corte;
+    const g = c.createGain();
+    const end = at + Math.max(0.15, dur);
+    const v = vol * cfg.vol;
+    g.gain.setValueAtTime(v, at);
+    g.gain.setValueAtTime(v, Math.max(at, end - 0.05));
+    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.12);   // se apaga con la mano
+    src.connect(pb).connect(g).connect(c.destination);
+    src.start(at);
+    src.stop(end + 0.2);
+    vivos.push(src);
+  }
+
+  /** Con qué suena la obra: lo que diga (score.sonido) o, si no, guitarra
+      —o bajo— cuando lleva tablatura, y piano en lo demás. */
+  function instrumentoDe(score) {
+    if (score && score.sonido && (score.sonido === 'piano' || CUERDA[score.sonido])) return score.sonido;
+    if (score && score.tab) return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
+    return 'piano';
+  }
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur, vol = 0.9) {
+    if (instrumento !== 'piano') { playCuerda(at, midi, dur, vol); return; }
     if (playSample(at, midi, dur, vol)) return;
     const c = ac();
     const f = 440 * Math.pow(2, (midi - 69) / 12);
@@ -176,6 +237,7 @@ const Sound = (() => {
     const { onNote, onEnd } = opts;
     stop();
     const c = ac();
+    instrumento = instrumentoDe(score);
     // las muestras del piano se piden antes de empezar, para que no entre
     // media melodía con oscilador y la otra media con piano
     try {
@@ -185,7 +247,9 @@ const Sound = (() => {
           Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
         }
       })));
-      if (midis.length) await preload(midis);
+      // la guitarra y el bajo no bajan nada: se calcula cada cuerda antes de empezar
+      if (midis.length && instrumento === 'piano') await preload(midis);
+      else [...new Set(midis.filter((x) => x != null).map(Math.round))].forEach(bufferDeCuerda);
     } catch (e) { /* se sigue con el oscilador */ }
 
     /* El tiempo no es lineal: el mapa de tempo dice a qué segundo cae cada
@@ -541,6 +605,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, preload, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+  return { ac, click, tone, preload, instrumentoDe, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

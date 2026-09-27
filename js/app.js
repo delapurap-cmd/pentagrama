@@ -1600,6 +1600,18 @@
               toast('Escribe cifrados (Signos → cifrado) y saldrá su diagrama encima');
             }
           } },
+        { label: 'Sonido…', hint: 'piano · guitarra · bajo', fn: () => {
+          const sc = state.score;
+          const auto = Sound.instrumentoDe(Object.assign({}, sc, { sonido: null }));
+          const nombre = { piano: 'piano', guitarra: 'guitarra', bajo: 'bajo' };
+          const elegir = (v) => { snapshot(); if (v) sc.sonido = v; else delete sc.sonido; toast('Suena a ' + nombre[Sound.instrumentoDe(sc)]); };
+          menu([{ head: 'Con qué suena' },
+            { label: 'Automático', hint: 'ahora: ' + nombre[auto] + (sc.tab ? ' (hay tablatura)' : ''), sel: !sc.sonido, fn: () => elegir(null) },
+            { label: 'Piano', sel: sc.sonido === 'piano', fn: () => elegir('piano') },
+            { label: 'Guitarra', sel: sc.sonido === 'guitarra', fn: () => elegir('guitarra') },
+            { label: 'Bajo', sel: sc.sonido === 'bajo', fn: () => elegir('bajo') }
+          ], btn);
+        } },
         { label: 'Letra…', hint: 'Ctrl+L · una sílaba por nota', fn: () => edicion.letraModo(0) },
         { label: 'Letra, segunda estrofa…', hint: 'debajo de la primera', fn: () => edicion.letraModo(1) },
         { sep: true },
