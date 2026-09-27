@@ -693,7 +693,7 @@
       const items = [
         { head: 'Partitura' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
-        { label: 'Abrir MusicXML o MIDI', hint: 'MuseScore, Sibelius…', fn: importScore },
+        { label: 'Abrir MusicXML o MIDI', hint: 'también Guitar Pro', fn: importScore },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
         { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
@@ -1934,11 +1934,14 @@
   }
 
   function importScore() {
-    pickFile('.musicxml,.xml,.mxl,.mid,.midi', async (file) => {
+    pickFile('.musicxml,.xml,.mxl,.mid,.midi,.gp,.gp3,.gp4,.gp5,.gpx', async (file) => {
       try {
         const isMidi = /\.midi?$/i.test(file.name);
+        const esGp = GuitarPro.esGuitarPro(file.name);
+        if (esGp) toast('Leyendo el archivo de Guitar Pro…');
         const result = isMidi
           ? Midi.read(await file.arrayBuffer())
+          : esGp ? await GuitarPro.leer(await file.arrayBuffer())
           : MusicXML.parse(await MusicXML.readAny(file));
         snapshot();
         state.score = result.score;
