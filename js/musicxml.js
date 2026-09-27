@@ -519,7 +519,18 @@ const MusicXML = (() => {
         if (dedo) ev.dedo = (dedo.textContent || '').trim().slice(0, 3);
 
         if (adornos.length) { ev.adornos = adornos; adornos = []; }
-        if (node.querySelector(':scope > lyric')) drop('letra');
+        // la letra: una sílaba por estrofa; begin/middle llevan guion a la siguiente
+        node.querySelectorAll(':scope > lyric').forEach((ly) => {
+          const txt = [...ly.querySelectorAll('text')].map((t) => t.textContent).join('').trim();
+          if (!txt) return;
+          const k = Math.max(0, (parseInt(ly.getAttribute('number'), 10) || 1) - 1);
+          if (k > 3) return;
+          const tipo = (ly.querySelector('syllabic')?.textContent || 'single').trim();
+          const lista = ev.letra || [];
+          while (lista.length < k) lista.push('');
+          lista[k] = txt + (tipo === 'begin' || tipo === 'middle' ? '-' : '');
+          ev.letra = lista;
+        });
         if (matizPendiente) { ev.matiz = matizPendiente; matizPendiente = null; }
         if (cifradoPendiente) { ev.cifrado = cifradoPendiente; cifradoPendiente = null; }
         if (pedalPendiente) { ev.pedal = pedalPendiente; pedalPendiente = null; }

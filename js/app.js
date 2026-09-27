@@ -1245,6 +1245,76 @@
       if (lista.length) ev.tec = lista; else delete ev.tec;
       render();
     },
+    /* Escribir la letra como en MuseScore: una cajita bajo la nota, Espacio
+       pasa a la siguiente, «-» parte la palabra y pasa, ← vuelve con la caja
+       vacía, Intro o Esc terminan. [verso] es la estrofa (0 = la primera). */
+    letraModo(verso) {
+      verso = verso | 0;
+      const inicio = currentEvent();
+      if (!inicio || inicio.ev.kind !== 'note') { toast('Elige la nota donde empieza la letra'); return; }
+      if (Radial.isOpen()) Radial.close();
+      state.selectedId = inicio.ev.id;
+      let caja = document.querySelector('.letra-caja');
+      if (!caja) {
+        caja = document.createElement('input');
+        caja.className = 'letra-caja';
+        caja.setAttribute('autocomplete', 'off');
+        caja.setAttribute('autocapitalize', 'off');
+        caja.setAttribute('spellcheck', 'false');
+        document.body.appendChild(caja);
+      }
+      const colocar = () => {
+        const p = Engrave.screenPosOf(state.selectedId);
+        if (!p) return;
+        caja.style.left = Math.round(p.x - 45) + 'px';
+        caja.style.top = Math.round(p.y + 56) + 'px';
+      };
+      const cargar = () => {
+        const f = currentEvent();
+        caja.value = f ? String(((f.ev.letra || [])[verso]) || '').replace(/-$/, '') : '';
+        caja.select();
+      };
+      const guardar = (guion) => {
+        const f = currentEvent();
+        if (!f || f.ev.kind !== 'note') return;
+        const t = caja.value.trim();
+        const antes = ((f.ev.letra || [])[verso]) || '';
+        const ahora = t ? t + (guion ? '-' : '') : '';
+        if (antes === ahora) return;
+        snapshot();
+        const lista = (f.ev.letra || []).slice();
+        lista[verso] = ahora;
+        while (lista.length && !lista[lista.length - 1]) lista.pop();
+        if (lista.length) f.ev.letra = lista; else delete f.ev.letra;
+      };
+      const mover = (d) => {
+        const flat = lineaDe(currentEvent());
+        let i = flat.findIndex((x) => x.ev.id === state.selectedId) + d;
+        while (i >= 0 && i < flat.length && flat[i].ev.kind !== 'note') i += d;
+        if (i < 0 || i >= flat.length) return false;
+        state.selectedId = flat[i].ev.id;
+        state.selectedHead = 0;
+        return true;
+      };
+      const cerrar = () => { caja.onkeydown = null; caja.onblur = null; caja.remove(); render(); };
+      caja.onkeydown = (e) => {
+        if (e.key === ' ' || e.key === '-' || e.key === 'Tab') {
+          e.preventDefault();
+          guardar(e.key === '-');
+          const hay = mover(1);
+          render(); colocar(); cargar();
+          if (!hay) toast('Última nota de la voz');
+        } else if (e.key === 'Enter' || e.key === 'Escape') {
+          e.preventDefault(); guardar(false); cerrar();
+        } else if (e.key === 'Backspace' && !caja.value) {
+          e.preventDefault();
+          if (mover(-1)) { render(); colocar(); cargar(); }
+        }
+      };
+      caja.onblur = () => { guardar(false); cerrar(); };
+      render(); colocar(); cargar(); caja.focus();
+      toast('Letra' + (verso ? ' (estrofa ' + (verso + 1) + ')' : '') + ' · Espacio: siguiente · «-»: parte la palabra · Intro: terminar');
+    },
     seleccionarTodo() {
       const found = currentEvent();
       const ref = found || { vi: 0, pent: 0 };
@@ -1464,6 +1534,9 @@
             })),
             [{ sep: true }, { label: 'Quitar la tablatura', sel: !state.score.tab, fn: () => edicion.tablatura(null) }]
           ), btn) },
+        { label: 'Letra…', hint: 'Ctrl+L · una sílaba por nota', fn: () => edicion.letraModo(0) },
+        { label: 'Letra, segunda estrofa…', hint: 'debajo de la primera', fn: () => edicion.letraModo(1) },
+        { sep: true },
         { label: 'Cambiar de cuerda', hint: 'Alt+Mayús+↑↓', fn: () => edicion.cuerda(1) },
         { label: 'Técnica de guitarra…', hint: 'H · P · bend · vibrato…', fn: () => {
           const found = currentEvent();
@@ -1508,6 +1581,9 @@
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'l' && state.selectedId) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.letraModo(0); return;
+      }
       const ctrl = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
       if (ctrl && !e.altKey && ['a', 'c', 'x', 'v'].includes(k)) {
@@ -1617,6 +1693,19 @@
     return { tecnico, notas, cabeza: tec.indexOf('X') >= 0 ? '<notehead>x</notehead>' : '' };
   }
   const unionDe = (ev) => (ev.kind === 'note' && ev.tec ? ['H', 'P', 'SL'].find((t) => ev.tec.indexOf(t) >= 0) || null : null);
+
+  /* La letra, una <lyric> por estrofa. <syllabic> dice cómo se une con la
+     sílaba de al lado: begin/middle/end dentro de una palabra, single sola. */
+  function letraXML(ev, guionAntes) {
+    return (ev.letra || []).map((sil, k) => {
+      if (!sil) { guionAntes[k] = false; return ''; }
+      const sigue = sil.endsWith('-');
+      const venia = !!guionAntes[k];
+      guionAntes[k] = sigue;
+      const tipo = venia ? (sigue ? 'middle' : 'end') : (sigue ? 'begin' : 'single');
+      return `<lyric number="${k + 1}"><syllabic>${tipo}</syllabic><text>${xmlEsc(sigue ? sil.slice(0, -1) : sil)}</text></lyric>`;
+    }).join('');
+  }
 
   /** Notas de adorno: van delante y sin duración, que es lo que las define. */
   function adornosXML(ev, s, marca) {
@@ -1856,6 +1945,7 @@
       Model.voces(m).forEach((vz, iv) => {
         let tiedFrom = false;
         let unionAntes = null;
+        const guionAntes = [];   // por estrofa: la sílaba anterior seguía en esta
         const evs = vz.events.concat(Model.autoRests(m, s.time, vz.vi, cap));
         if (!evs.length) return;
         if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
@@ -1904,6 +1994,7 @@
               tx.cabeza +
               (base && ev.barra ? `<beam number="1">${ev.barra}</beam>` : '') +
               (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
+              (base ? letraXML(ev, guionAntes) : '') +
               '</note>\n';
           });
         }

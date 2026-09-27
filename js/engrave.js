@@ -59,6 +59,7 @@ const Engrave = (() => {
   let paginas = [];            // { el, w, h } de cada hoja dibujada
   let resaltadas = [];         // elementos SVG que ahora mismo están marcados
   let digitacion = null;       // id -> { pos, ligada } cuando hay tablatura
+  let partituraActual = null;  // la que se está grabando
 
   const durStr = (ev) => ev.dur + (ev.kind === 'rest' ? 'r' : '');
 
@@ -204,6 +205,34 @@ const Engrave = (() => {
     return n;
   }
 
+  /* La letra: una sílaba por nota y una línea por estrofa, todas a la misma
+     altura bajo la pauta —una anotación de VexFlow sube o baja con cada
+     nota y la línea de texto salía ondulada—. Una sílaba que sigue en la
+     nota de al lado se guarda con guion al final («can-») y el guion se
+     escribe suelto, entre las dos. */
+  function dibujarLetra(ctx, all, notes, yBase) {
+    all.forEach((ev, i) => {
+      if (!ev.letra || ev.auto || !notes[i]) return;
+      const nota = notes[i];
+      let x;
+      try { x = nota.getAbsoluteX() + (nota.getGlyphWidth ? nota.getGlyphWidth() / 2 : 5); } catch (e) { return; }
+      ev.letra.forEach((sil, verso) => {
+        if (!sil) return;
+        const sigue = sil.endsWith('-');
+        const txt = sigue ? sil.slice(0, -1) : sil;
+        const y = yBase + verso * 18;
+        ctx.save();
+        ctx.setFont(SERIF, 13);
+        ctx.setFillStyle(COLORS.ink);
+        const w = ctx.measureText(txt).width;
+        ctx.fillText(txt, x - w / 2, y);
+        if (sigue) ctx.fillText('-', x + w / 2 + 6, y);
+        ctx.restore();
+      });
+    });
+  }
+
+
   /* Barrado: si los eventos traen `barra` —porque venían escritos así en el
      archivo— se respeta tal cual; si no, se agrupa por tiempo como siempre.
      Un 12/8 agrupado por tiempo une la nota grave del bajo con los acordes
@@ -270,8 +299,15 @@ const Engrave = (() => {
      página de música por debajo del papel. */
   function holguraDe(score, sys, nPentTotal) {
     let arriba = 0, abajo = 0;
-    // sin pentagrama no hay notas graves, cifrados ni matices que apartar
-    if (soloTab(score)) return { arriba, abajo };
+    // sin pentagrama no hay notas graves, cifrados ni matices que apartar:
+    // sólo la letra, que va debajo del ritmo
+    if (soloTab(score)) {
+      let versos = 0;
+      sys.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+        if (ev.letra) versos = Math.max(versos, ev.letra.filter(Boolean).length);
+      })));
+      return { arriba, abajo: versos ? 18 * versos + 8 : 0 };
+    }
     sys.measures.forEach((m, k) => {
       const mi = sys.from + k;
       Model.voces(m).forEach((v) => {
@@ -281,6 +317,11 @@ const Engrave = (() => {
           if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
           else if (ev.art && ev.art.length && v.pent === 0) arriba = Math.max(arriba, 12);
           if (ev.matiz) abajo = Math.max(abajo, 20);
+          // la letra va bajo la última pauta, una línea por estrofa
+          if (ev.letra && v.pent === nPentTotal - 1) {
+            const versos = ev.letra.filter(Boolean).length;
+            if (versos) abajo = Math.max(abajo, 18 * versos + (ev.matiz ? 24 : 6));
+          }
           /* Con tablatura, el matiz y el texto de la pauta de abajo caen en
              el hueco que la separa de ella: se les deja sitio de verdad. */
           if (conTab(score)) {
@@ -316,6 +357,7 @@ const Engrave = (() => {
     paginas = [];
     resaltadas = [];
     digitacion = conTab(score) ? Tablatura.digitar(score) : null;
+    partituraActual = score;
     const compact = !!opts.compact || document.body.classList.contains('embed');
     const visualPer = opts.measuresPerSystem || score.measuresPerSystem;
     const pageWidth = compact ? 760 : PAGE.w;
@@ -761,6 +803,15 @@ const Engrave = (() => {
               if (el) el.classList.add('ink-auto');
             });
           });
+          // la letra, bajo su pauta; sin pentagrama, bajo la tablatura y su ritmo
+          if (b.all.some((ev) => ev.letra)) {
+            if (solo && b.tab) {
+              const n = Tablatura.afinacionDe(score).cuerdas.length;
+              dibujarLetra(o.ctx, b.all, b.tab.notes, tab.getYForLine(n - 1) + RITMO_TAB + 16);
+            } else if (!solo) {
+              dibujarLetra(o.ctx, b.all, b.notes, b.pent.stave.getYForLine(4) + 30);
+            }
+          }
           b.all.forEach((ev, idx) => {
             if (!ev.auto) refs.set(ev.id, { note: b.notes[idx], tab: b.tab && b.tab.notes[idx].esTab ? b.tab.notes[idx] : null,
                                             system: o.systemKey, ctx: o.ctx });
