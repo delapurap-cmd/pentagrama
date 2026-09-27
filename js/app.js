@@ -243,6 +243,8 @@
   function pitchName(ev) {
     const letter = Model.diLetter(ev.di);
     const donde = Model.findEvent(state.score, ev.id);
+    // en la pauta de batería la nota se llama por su instrumento
+    if (donde && Model.clefAt(state.score, donde.mi, donde.pent | 0).percusion) return Model.percusionDe(ev.di).nombre;
     const alt = ev.acc == null ? Model.keyAlter(Model.keyAt(state.score, donde ? donde.mi : 0), letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
     const mark = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
     return ES[letter] + mark + Model.diOctave(ev.di);
@@ -1730,7 +1732,8 @@
     'treble-8v': '<sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change>',
     bass: '<sign>F</sign><line>4</line>',
     alto: '<sign>C</sign><line>3</line>',
-    tenor: '<sign>C</sign><line>4</line>'
+    tenor: '<sign>C</sign><line>4</line>',
+    percussion: '<sign>percussion</sign><line>2</line>'
   };
   /** `n` es el número de pentagrama (1, 2…); 0 significa que sólo hay uno. */
   const claveXML = (clef, n) =>
@@ -2031,6 +2034,8 @@
         if (!evs.length) return;
         if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
         const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent + 1}</staff>` : '');
+        // en la pauta de batería las notas no tienen altura: sólo sitio
+        const perc = !!Model.clefAt(s, i, vz.pent).percusion;
       evs.forEach((ev) => {
         const d = Model.evTicks(ev);
         const type = Model.durById(ev.dur).xml;
@@ -2061,10 +2066,12 @@
               (base && ev.art ? artXML(ev.art) : '') +
               (base ? tx.notas : '') +
               tecnicaXML(base ? ev.dedo : null, digi && digi.get(ev.id) && digi.get(ev.id).pos[iN], base ? tx.tecnico : '');
-            xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
-              `<step>${letter.toUpperCase()}</step>` +
-              (alter ? `<alter>${alter}</alter>` : '') +
-              `<octave>${Model.diOctave(n.di)}</octave></pitch>` +
+            xml += '      <note>' + (base ? '' : '<chord/>') +
+              (perc
+                ? `<unpitched><display-step>${letter.toUpperCase()}</display-step><display-octave>${Model.diOctave(n.di)}</display-octave></unpitched>`
+                : '<pitch>' + `<step>${letter.toUpperCase()}</step>` +
+                  (alter ? `<alter>${alter}</alter>` : '') +
+                  `<octave>${Model.diOctave(n.di)}</octave></pitch>`) +
               (base && prev ? '<tie type="stop"/>' : '') + (base && ev.tie ? '<tie type="start"/>' : '') +
               `<duration>${d}</duration>` + marca + `<type>${type}</type>${puntos}` +
               (base && ev.plica ? `<stem>${ev.plica}</stem>` : '') +
@@ -2072,7 +2079,7 @@
               (ev.tup && ev.tup.id
                 ? `<time-modification><actual-notes>${ev.tup.num}</actual-notes><normal-notes>${ev.tup.den}</normal-notes></time-modification>`
                 : '') +
-              tx.cabeza +
+              (perc && Model.percusionDe(n.di).x ? '<notehead>x</notehead>' : tx.cabeza) +
               (base && ev.barra ? `<beam number="1">${ev.barra}</beam>` : '') +
               (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
               (base ? letraXML(ev, guionAntes) : '') +

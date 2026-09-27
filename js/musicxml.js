@@ -308,6 +308,7 @@ const MusicXML = (() => {
           if (sign === 'TAB') { pentTab.add(pent); return; }
           const id = sign === 'F' ? 'bass'
             : sign === 'C' ? (line === 4 ? 'tenor' : 'alto')
+            : sign === 'percussion' ? 'percussion'
             : (oct === -1 ? 'treble-8v' : 'treble');
           if (pent >= MAX_PENT) return;
           nPent = Math.max(nPent, pent + 1);
@@ -317,7 +318,6 @@ const MusicXML = (() => {
             Model.ponerClaveEn(measure, pent, id);
             clavesVistas[pent] = id;
           }
-          if (sign === 'percussion') drop('claves de percusión');
         });
         // la afinación viene en <staff-details>: línea 1 es la cuerda más grave
         attrs.querySelectorAll(':scope > staff-details').forEach((sd) => {
@@ -434,10 +434,11 @@ const MusicXML = (() => {
         // Un <chord/> no es una nota nueva: es otra cabeza de la anterior.
         if (node.querySelector(':scope > chord')) {
           const base = aqui && aqui.events[aqui.events.length - 1];
-          const p = node.querySelector(':scope > pitch');
+          // la batería trae <unpitched> con la posición en la pauta
+          const p = node.querySelector(':scope > pitch') || node.querySelector(':scope > unpitched');
           if (base && base.kind === 'note' && p) {
-            const st = (p.querySelector('step')?.textContent || 'C').trim().toUpperCase();
-            const oc = parseInt(p.querySelector('octave')?.textContent, 10) || 4;
+            const st = (p.querySelector('step, display-step')?.textContent || 'C').trim().toUpperCase();
+            const oc = parseInt(p.querySelector('octave, display-octave')?.textContent, 10) || 4;
             const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
             const d2 = oc * 7 + (STEP_INDEX[st] ?? 0);
             const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
@@ -472,10 +473,10 @@ const MusicXML = (() => {
           return;
         }
 
-        const pitch = node.querySelector(':scope > pitch');
+        const pitch = node.querySelector(':scope > pitch') || node.querySelector(':scope > unpitched');
         if (!pitch) return;
-        const step = (pitch.querySelector('step')?.textContent || 'C').trim().toUpperCase();
-        const octave = parseInt(pitch.querySelector('octave')?.textContent, 10) || 4;
+        const step = (pitch.querySelector('step, display-step')?.textContent || 'C').trim().toUpperCase();
+        const octave = parseInt(pitch.querySelector('octave, display-octave')?.textContent, 10) || 4;
         const alter = parseInt(pitch.querySelector('alter')?.textContent, 10) || 0;
         const di = octave * 7 + (STEP_INDEX[step] ?? 0);
 

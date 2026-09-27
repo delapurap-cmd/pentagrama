@@ -114,7 +114,7 @@ const Engrave = (() => {
     const opts = {
       keys: isRest
         ? [Model.diToKeyStr(centro + (ev.measureRest ? 2 : 0))]
-        : notas.map((n) => Model.diToKeyStr(n.di)),
+        : notas.map((n) => Model.diToKeyStr(n.di) + (clef && clef.percusion && Model.percusionDe(n.di).x ? '/x2' : '')),
       duration: durStr(ev),
       clef: clef ? clef.vex : 'treble',
       autoStem: !isRest
@@ -124,7 +124,8 @@ const Engrave = (() => {
     if (ev.dots) Dot.buildAndAttach([n], { all: true });
     // Una alteración por cabeza, y en su índice: en un acorde no valen todas
     // pegadas a la primera.
-    if (!isRest) notas.forEach((alt, i) => { if (alt.acc) n.addModifier(new Accidental(alt.acc), i); });
+    // en la batería no hay alteraciones: cada posición es un instrumento
+    if (!isRest && !(clef && clef.percusion)) notas.forEach((alt, i) => { if (alt.acc) n.addModifier(new Accidental(alt.acc), i); });
 
     /* Las articulaciones que van pegadas a la cabeza se ponen en el lado
        contrario a la plica; el marcato y el calderón, siempre encima. Se

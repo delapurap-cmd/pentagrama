@@ -109,8 +109,27 @@ const Model = (() => {
     { id: 'treble-8v', vex: 'treble',    label: 'Sol 8ª baja', midLine: 34, octava: -12, ottava: 'bajo' },
     { id: 'bass',      vex: 'bass',      label: 'Fa',         midLine: 22, octava: 0 },
     { id: 'alto',      vex: 'alto',      label: 'Do en 3ª',   midLine: 28, octava: 0 },
-    { id: 'tenor',     vex: 'tenor',     label: 'Do en 4ª',   midLine: 26, octava: 0 }
+    { id: 'tenor',     vex: 'tenor',     label: 'Do en 4ª',   midLine: 26, octava: 0 },
+    { id: 'percussion', vex: 'percussion', label: 'Percusión', midLine: 34, octava: 0, percusion: true }
   ];
+
+  /* La batería en el pentagrama, como se escribe casi siempre: cada línea o
+     espacio es un instrumento, no una altura. Los platos van con la cabeza
+     en X. `gm` es su número en el canal 10 de General MIDI. */
+  const PERCUSION = {
+    30: { nombre: 'Charles con el pie', gm: 44, x: true, son: 'charlesPie' },   // Re4
+    31: { nombre: 'Bombo', gm: 36, son: 'bombo' },                               // Fa4
+    32: { nombre: 'Bombo', gm: 36, son: 'bombo' },                               // Sol4
+    33: { nombre: 'Tom de piso', gm: 43, son: 'tomPiso' },                        // La4
+    35: { nombre: 'Caja', gm: 38, son: 'caja' },                                  // Do5
+    36: { nombre: 'Tom medio', gm: 47, son: 'tomMedio' },                         // Re5
+    37: { nombre: 'Tom alto', gm: 50, son: 'tomAlto' },                           // Mi5
+    38: { nombre: 'Ride', gm: 51, x: true, son: 'ride' },                         // Fa5
+    39: { nombre: 'Charles', gm: 42, x: true, son: 'charles' },                   // Sol5
+    40: { nombre: 'Crash', gm: 49, x: true, son: 'crash' }                        // La5
+  };
+  /** El instrumento de batería de una posición; lo que no está, suena a caja. */
+  const percusionDe = (di) => PERCUSION[di] || { nombre: 'Caja', gm: 38, son: 'caja', otro: true };
   const clefById = (id) => CLEFS.find((c) => c.id === id) || CLEFS[0];
 
   /* ---------- Pentagramas ----------
@@ -673,7 +692,7 @@ const Model = (() => {
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
     timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
-    keyAt, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
+    keyAt, PERCUSION, percusionDe, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,

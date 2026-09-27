@@ -140,6 +140,63 @@ const Sound = (() => {
     vivos.push(src);
   }
 
+  /* ---------- Batería sintetizada ----------
+     Cada golpe se fabrica con osciladores y ruido, como en una caja de
+     ritmos: el bombo es un seno que cae de tono, la caja ruido con un poco de
+     cuerpo, los platos ruido agudo de más o menos cola. */
+  let ruidoBuf = null;
+  function ruido() {
+    const c = ac();
+    if (!ruidoBuf) {
+      ruidoBuf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+      const d = ruidoBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = c.createBufferSource();
+    src.buffer = ruidoBuf;
+    return src;
+  }
+  function golpeRuido(at, vol, filtro, frec, cola) {
+    const c = ac();
+    const src = ruido();
+    const f = c.createBiquadFilter();
+    f.type = filtro; f.frequency.value = frec;
+    const g = c.createGain();
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + cola);
+    src.connect(f).connect(g).connect(c.destination);
+    src.start(at); src.stop(at + cola + 0.05);
+    vivos.push(src);
+  }
+  function golpeTono(at, vol, desde, hasta, cola) {
+    const c = ac();
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(desde, at);
+    o.frequency.exponentialRampToValueAtTime(hasta, at + cola * 0.6);
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + cola);
+    o.connect(g).connect(c.destination);
+    o.start(at); o.stop(at + cola + 0.05);
+    vivos.push(o);
+  }
+  function tambor(at, son, vol = 0.9) {
+    const v = Math.max(0.05, vol);
+    switch (son) {
+      case 'bombo': golpeTono(at, v * 1.1, 150, 45, 0.45); break;
+      case 'caja': golpeTono(at, v * 0.45, 220, 160, 0.12); golpeRuido(at, v * 0.6, 'highpass', 1500, 0.2); break;
+      case 'tomAlto': golpeTono(at, v * 0.9, 260, 180, 0.35); break;
+      case 'tomMedio': golpeTono(at, v * 0.9, 200, 135, 0.4); break;
+      case 'tomPiso': golpeTono(at, v * 0.95, 140, 90, 0.5); break;
+      case 'charles': golpeRuido(at, v * 0.35, 'highpass', 7000, 0.06); break;
+      case 'charlesPie': golpeRuido(at, v * 0.3, 'highpass', 6000, 0.045); break;
+      case 'ride': golpeRuido(at, v * 0.25, 'bandpass', 5000, 0.9); golpeTono(at, v * 0.08, 900, 880, 0.6); break;
+      case 'crash': golpeRuido(at, v * 0.4, 'highpass', 3500, 1.6); break;
+      default: golpeRuido(at, v * 0.5, 'highpass', 1500, 0.2);
+    }
+  }
+
   /** Con qué suena la obra: lo que diga (score.sonido) o, si no, guitarra
       —o bajo— cuando lleva tablatura, y piano en lo demás. */
   function instrumentoDe(score) {
@@ -243,7 +300,8 @@ const Sound = (() => {
     try {
       const midis = [];
       score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
-        if (ev.kind === 'note') {
+        // la batería se sintetiza: sus notas no piden muestras
+        if (ev.kind === 'note' && !Model.clefAt(score, mi, v.pent).percusion) {
           Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
         }
       })));
@@ -336,6 +394,11 @@ const Sound = (() => {
 
     const sonar = (it, cfg, cuando) => {
       if (it.ev.kind !== 'note') return;
+      // en la pauta de batería cada nota es un golpe, no una altura
+      if (it.clef && it.clef.percusion) {
+        Model.alturas(it.ev).forEach((n) => tambor(cuando, Model.percusionDe(n.di).son, cfg.vol));
+        return;
+      }
       // con el pedal pisado la nota no se corta al soltar la tecla
       const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
       const adornos = it.ev.adornos || [];
@@ -605,6 +668,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, preload, instrumentoDe, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+  return { ac, click, tone, tambor, preload, instrumentoDe, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

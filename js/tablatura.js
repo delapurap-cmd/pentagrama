@@ -130,6 +130,7 @@ const Tablatura = (function () {
     const ligadas = {};
     score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => {
       const clef = Model.clefAt(score, mi, v.pent);
+      if (clef.percusion) return;   // la batería no va a la tablatura
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') { return; }
         const midis = Model.midisOf(ev, Model.keyAt(score, mi), clef);
