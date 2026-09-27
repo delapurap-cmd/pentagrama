@@ -205,6 +205,57 @@ const Engrave = (() => {
     return n;
   }
 
+  /* El diagrama de un acorde de guitarra, como en un cancionero: seis
+     cuerdas, cuatro trastes, un punto por dedo, x y o encima. Si el acorde
+     cabe desde la cejuela se dibuja la cejuela gruesa; si no, el número del
+     primer traste a la izquierda. */
+  const DIAG = { sep: 7.6, alto: 9.8, trastes: 4 };
+  const altoDiagrama = () => DIAG.trastes * DIAG.alto + 12;
+  function dibujarDiagrama(ctx, xc, yTop, cifrado, nombre) {
+    if (typeof Diagramas === 'undefined') return;
+    const d = Diagramas.digitacion(cifrado);
+    if (!d) return;
+    const ancho = DIAG.sep * 5, x0 = xc - ancho / 2;
+    const y0 = yTop + (nombre ? 14 : 0) + 7;
+    const pisados = d.trastes.filter((f) => f > 0);
+    const max = pisados.length ? Math.max.apply(null, pisados) : 0;
+    const min = pisados.length ? Math.min.apply(null, pisados) : 1;
+    const base = max <= DIAG.trastes ? 1 : min;
+    ctx.save();
+    ctx.setStrokeStyle(COLORS.ink); ctx.setFillStyle(COLORS.ink); ctx.setLineWidth(0.8);
+    if (nombre) {
+      ctx.setFont(SERIF, 12, 'bold');
+      const w = ctx.measureText(cifrado).width;
+      ctx.fillText(cifrado, xc - w / 2, yTop + 10);
+    }
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath(); ctx.moveTo(x0 + i * DIAG.sep, y0); ctx.lineTo(x0 + i * DIAG.sep, y0 + DIAG.trastes * DIAG.alto); ctx.stroke();
+    }
+    for (let j = 0; j <= DIAG.trastes; j++) {
+      ctx.beginPath(); ctx.moveTo(x0, y0 + j * DIAG.alto); ctx.lineTo(x0 + ancho, y0 + j * DIAG.alto); ctx.stroke();
+    }
+    if (base === 1) ctx.fillRect(x0 - 0.4, y0 - 2, ancho + 0.8, 2.2);   // la cejuela
+    else { ctx.setFont('Arial', 8); ctx.fillText(String(base), x0 - 9, y0 + DIAG.alto * 0.8); }
+    // la cejilla de dedo, si la forma la lleva
+    if (d.cejilla && d.cejilla >= base) {
+      const cuerdas = d.trastes.map((f, i) => (f === d.cejilla ? i : -1)).filter((i) => i >= 0);
+      if (cuerdas.length > 1) {
+        const y = y0 + (d.cejilla - base + 0.5) * DIAG.alto;
+        ctx.fillRect(x0 + cuerdas[0] * DIAG.sep, y - 1.8, (cuerdas[cuerdas.length - 1] - cuerdas[0]) * DIAG.sep, 3.6);
+      }
+    }
+    d.trastes.forEach((f, i) => {
+      const x = x0 + i * DIAG.sep;
+      if (f < 0 || f === 0) {
+        ctx.setFont('Arial', 7);
+        ctx.fillText(f < 0 ? '×' : 'o', x - 2.2, y0 - 3.5);
+        return;
+      }
+      ctx.beginPath(); ctx.arc(x, y0 + (f - base + 0.5) * DIAG.alto, 2.5, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+  }
+
   /* La letra: una sílaba por nota y una línea por estrofa, todas a la misma
      altura bajo la pauta —una anotación de VexFlow sube o baja con cada
      nota y la línea de texto salía ondulada—. Una sílaba que sigue en la
@@ -306,7 +357,8 @@ const Engrave = (() => {
       sys.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
         if (ev.letra) versos = Math.max(versos, ev.letra.filter(Boolean).length);
       })));
-      return { arriba, abajo: versos ? 18 * versos + 8 : 0 };
+      const conDiagrama = score.diagramas && sys.measures.some((m) => Model.voces(m).some((v) => v.events.some((ev) => ev.cifrado)));
+      return { arriba: conDiagrama ? altoDiagrama() + 30 : 0, abajo: versos ? 18 * versos + 8 : 0 };
     }
     sys.measures.forEach((m, k) => {
       const mi = sys.from + k;
@@ -314,7 +366,7 @@ const Engrave = (() => {
         const clef = Model.clefAt(score, mi, v.pent);
         v.events.forEach((ev) => {
           // el cifrado va sobre el primer pentagrama y el matiz bajo el último
-          if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, 24);
+          if (ev.cifrado && v.pent === 0) arriba = Math.max(arriba, score.diagramas ? 30 + altoDiagrama() : 24);
           else if (ev.art && ev.art.length && v.pent === 0) arriba = Math.max(arriba, 12);
           if (ev.matiz) abajo = Math.max(abajo, 20);
           // la letra va bajo la última pauta, una línea por estrofa
@@ -808,6 +860,20 @@ const Engrave = (() => {
               if (el) el.classList.add('ink-auto');
             });
           });
+          /* Los diagramas de acordes, encima del cifrado de la pauta de
+             arriba. Sin pentagrama no hay cifrado a la vista: el diagrama va
+             sobre la tablatura y lleva el nombre del acorde. */
+          if (score.diagramas && b.all.some((ev) => ev.cifrado)) {
+            b.all.forEach((ev, i) => {
+              if (!ev.cifrado || ev.kind !== 'note') return;
+              const nota = solo ? (b.tab && b.tab.notes[i]) : b.notes[i];
+              if (!nota) return;
+              let xc;
+              try { xc = nota.getAbsoluteX() + 5; } catch (e) { return; }
+              if (solo && b.tab) dibujarDiagrama(o.ctx, xc, tab.getYForLine(0) - CABEZA_TAB - altoDiagrama() - 16, ev.cifrado, true);
+              else if (!solo && b.pent.p === 0) dibujarDiagrama(o.ctx, xc, b.pent.stave.getYForLine(0) - 28 - altoDiagrama(), ev.cifrado, false);
+            });
+          }
           // la letra, bajo su pauta; sin pentagrama, bajo la tablatura y su ritmo
           if (b.all.some((ev) => ev.letra)) {
             if (solo && b.tab) {

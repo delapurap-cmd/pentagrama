@@ -1591,6 +1591,15 @@
             })),
             [{ sep: true }, { label: 'Quitar la tablatura', sel: !state.score.tab, fn: () => edicion.tablatura(null) }]
           ), btn) },
+        { label: state.score.diagramas ? 'Diagramas de acordes ✓' : 'Diagramas de acordes', hint: 'encima de cada cifrado',
+          fn: () => {
+            snapshot();
+            if (state.score.diagramas) delete state.score.diagramas; else state.score.diagramas = true;
+            render();
+            if (state.score.diagramas && !state.score.measures.some((m) => Model.voces(m).some((v) => v.events.some((e) => e.cifrado)))) {
+              toast('Escribe cifrados (Signos → cifrado) y saldrá su diagrama encima');
+            }
+          } },
         { label: 'Letra…', hint: 'Ctrl+L · una sílaba por nota', fn: () => edicion.letraModo(0) },
         { label: 'Letra, segunda estrofa…', hint: 'debajo de la primera', fn: () => edicion.letraModo(1) },
         { sep: true },
