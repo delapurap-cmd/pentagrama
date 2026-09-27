@@ -12,7 +12,8 @@ const Engrave = (() => {
   const { Renderer, Stave, StaveNote, Voice, Formatter, Beam, Accidental, Dot, StaveTie,
           Tuplet, ChordSymbol, Annotation, Articulation, StaveConnector, Stem,
           GraceNote, GraceNoteGroup, Ornament, Curve, StaveHairpin, PedalMarking,
-          TextBracket, Volta, Repetition, TabStave, TabNote, GhostNote } = VF;
+          TextBracket, Volta, Repetition, TabStave, TabNote, GhostNote,
+          Bend, Vibrato, TabTie, TabSlide } = VF;
 
   /* Página A4: pentagrama de 40 ≈ 3,5 % del ancho, como en una edición impresa */
   const PAGE = { w: 1150, h: 1626 };
@@ -25,11 +26,22 @@ const Engrave = (() => {
   const TAB_ESP = 15;             // entre líneas de la tablatura
   const TAB_AIRE = 30;            // del último pentagrama a la tablatura
   const conTab = (score) => !!(score && score.tab && TabStave && typeof Tablatura !== 'undefined');
+  /* Sólo la tablatura: el pentagrama se sigue calculando —es el que reparte
+     el ancho y alinea lo simultáneo— pero no se pinta ni ocupa sitio. */
+  const soloTab = (score) => conTab(score) && !!score.tab.solo;
+  /* El ritmo debajo de la tablatura (plicas y barras bajo los números), como
+     en Guitar Pro. Sin pentagrama es obligatorio: si no, no se sabe cuánto
+     dura cada número. */
+  const ritmoTab = (score) => conTab(score) && (!!score.tab.solo || !!score.tab.ritmo);
+  const RITMO_TAB = 32;           // lo que bajan las plicas bajo la última cuerda
+  const CABEZA_TAB = 34;          // sin pentagrama: aire encima para bends y P.M.
   const altoTab = (score) => conTab(score)
-    ? TAB_AIRE + (Tablatura.afinacionDe(score).cuerdas.length - 1) * TAB_ESP + 22 : 0;
+    ? TAB_AIRE + (Tablatura.afinacionDe(score).cuerdas.length - 1) * TAB_ESP + 22 + (ritmoTab(score) ? RITMO_TAB : 0) : 0;
 
   /** Alto que ocupa un sistema con todos sus pentagramas (y su tablatura). */
-  const altoSistema = (score, base) => (base || SYSTEM_H) + (Model.nPent(score) - 1) * PENT_H + altoTab(score);
+  const altoSistema = (score, base) => soloTab(score)
+    ? CABEZA_TAB + (Tablatura.afinacionDe(score).cuerdas.length - 1) * TAB_ESP + 30 + RITMO_TAB
+    : (base || SYSTEM_H) + (Model.nPent(score) - 1) * PENT_H + altoTab(score);
 
   const COLORS = {
     ink: '#12100c',
@@ -258,6 +270,8 @@ const Engrave = (() => {
      página de música por debajo del papel. */
   function holguraDe(score, sys, nPentTotal) {
     let arriba = 0, abajo = 0;
+    // sin pentagrama no hay notas graves, cifrados ni matices que apartar
+    if (soloTab(score)) return { arriba, abajo };
     sys.measures.forEach((m, k) => {
       const mi = sys.from + k;
       Model.voces(m).forEach((v) => {
@@ -418,8 +432,12 @@ const Engrave = (() => {
       console.warn('VexFlow no pudo dibujar; usando pentagrama compatible.', error);
       return renderBasic(score, root, opts, pages, pageWidth, marginLeft, marginRight, systemHeight);
     }
-    drawTies(score);
-    drawLargos(score);
+    // las ligaduras y los reguladores cuelgan del pentagrama: sin él, fuera
+    if (!soloTab(score)) {
+      drawTies(score);
+      drawLargos(score);
+    }
+    drawTecnicasTab(score);
     return hits;
   }
 
@@ -560,6 +578,16 @@ const Engrave = (() => {
     const measures = sys.measures;
     const lead = leadWidth(score, o.isFirstSystemOfScore);
     const nPent = Model.nPent(score);
+    const solo = soloTab(score);
+    const ritmo = ritmoTab(score);
+    /* Lo que es del pentagrama, con sólo la tablatura, se dibuja en un grupo
+       escondido: sigue midiendo y alineando, pero no se ve. */
+    const oculto = (fn) => {
+      if (!solo) return fn();
+      const g = o.ctx.openGroup('solo-tab-oculto');
+      try { fn(); } finally { o.ctx.closeGroup(); }
+      if (g && g.setAttribute) g.setAttribute('display', 'none');
+    };
 
     // reparto del ancho según la densidad del compás más apretado
     const weights = measures.map((m) => {
@@ -606,7 +634,7 @@ const Engrave = (() => {
         if (m.volta && p === 0 && Volta) {
           try { stave.setVoltaType(Volta.type.BEGIN, String(m.volta), 28); } catch (e) { }
         }
-        stave.setContext(o.ctx).draw();
+        oculto(() => stave.setContext(o.ctx).draw());
         pentagramas.push({ p, clef, stave });
       }
 
@@ -617,18 +645,26 @@ const Engrave = (() => {
       if (digitacion) {
         const cuerdas = Tablatura.afinacionDe(score).cuerdas;
         const ultimaL4 = o.y + (nPent - 1) * PENT_H + 80;
-        const quiero = ultimaL4 + TAB_AIRE + (o.abajo || 0);
+        const quiero = solo ? o.y + CABEZA_TAB : ultimaL4 + TAB_AIRE + (o.abajo || 0);
         tab = new TabStave(x, quiero, w, { numLines: cuerdas.length, spacingBetweenLinesPx: TAB_ESP });
         tab.setY(quiero - (tab.getYForLine(0) - quiero));
         if (primero) tab.addClef('tab');
+        // sin pentagrama, el compás se escribe en la propia tablatura
+        if (solo) {
+          const aqui = Model.timeAt(score, mi), antes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
+          if ((primero && o.isFirstSystemOfScore) || (antes && (antes.num !== aqui.num || antes.den !== aqui.den))) {
+            try { tab.addTimeSignature(Model.timeLabel(aqui)); } catch (e) { }
+          }
+        }
         if (m.repite === 'inicio') tab.setBegBarType(VF.Barline.type.REPEAT_BEGIN);
         if (m.repite === 'fin') tab.setEndBarType(VF.Barline.type.REPEAT_END);
         else if (m.barra === 'fin' || (ultimo && o.lastSystem)) tab.setEndBarType(VF.Barline.type.END);
         else if (m.barra === 'doble') tab.setEndBarType(VF.Barline.type.DOUBLE);
         tab.setContext(o.ctx).draw();
         // las notas empiezan donde las del pentagrama, que lleva armadura y compás
-        tab.setNoteStartX(pentagramas[0].stave.getNoteStartX());
-        if (StaveConnector) {
+        tab.setNoteStartX(Math.max(tab.getNoteStartX(), pentagramas[0].stave.getNoteStartX()));
+        if (primero && o.isFirstSystemOfScore) rotularCuerdas(score, tab, o.ctx);
+        if (StaveConnector && !solo) {
           const une = (tipo) => {
             try { new StaveConnector(pentagramas[0].stave, tab).setType(tipo).setContext(o.ctx).draw(); } catch (e) { }
           };
@@ -643,9 +679,9 @@ const Engrave = (() => {
          abajo. */
       if (nPent > 1 && StaveConnector) {
         const arriba = pentagramas[0].stave, abajo = pentagramas[nPent - 1].stave;
-        const une = (tipo) => {
+        const une = (tipo) => oculto(() => {
           try { new StaveConnector(arriba, abajo).setType(tipo).setContext(o.ctx).draw(); } catch (e) { }
-        };
+        });
         if (primero) { une(StaveConnector.type.BRACE); une(StaveConnector.type.SINGLE_LEFT); }
         une(ultimo && o.lastSystem ? StaveConnector.type.BOLD_DOUBLE_RIGHT : StaveConnector.type.SINGLE_RIGHT);
       }
@@ -688,7 +724,7 @@ const Engrave = (() => {
           .addTickables(notes);
         voice.setStave(pent.stave);
         const bloque = { v, pent, all, notes, voice, grupos: construirGrupos(all, notes) };
-        if (tab) bloque.tab = vozDeTab(all, compasDelCompas, tab, o);
+        if (tab) bloque.tab = vozDeTab(all, compasDelCompas, tab, o, ritmo);
         bloques.push(bloque);
       });
 
@@ -701,23 +737,30 @@ const Engrave = (() => {
         deTab.forEach((v) => fmt.joinVoices([v]));
         fmt.format(bloques.map((b) => b.voice).concat(deTab), Math.max(40, inner));
         bloques.forEach((b) => {
-          const beams = construirBarras(b.all, b.notes, compasDelCompas);
-          b.voice.draw(o.ctx, b.pent.stave);
-          beams.forEach((x) => x.setContext(o.ctx).draw());
-          b.grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
-          // los silencios automáticos se ven atenuados en pantalla (en papel, tinta normal)
-          b.all.forEach((ev, idx) => {
-            if (!ev.auto) return;
-            const el = b.notes[idx].getSVGElement && b.notes[idx].getSVGElement();
-            if (el) el.classList.add('ink-auto');
+          oculto(() => {
+            const beams = construirBarras(b.all, b.notes, compasDelCompas);
+            b.voice.draw(o.ctx, b.pent.stave);
+            beams.forEach((x) => x.setContext(o.ctx).draw());
+            b.grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
           });
           if (b.tab) {
+            // las barras antes de dibujar: así las notas no pintan su corchete suelto
+            const barrasTab = ritmo ? construirBarras(b.all, b.tab.notes, compasDelCompas) : [];
             b.tab.voice.draw(o.ctx, tab);
+            barrasTab.forEach((x) => { try { x.setContext(o.ctx).draw(); } catch (err) { } });
             b.tab.notes.forEach((tn, idx) => {
               const el = tn.getSVGElement && tn.getSVGElement();
               if (el && tn.esTab) el.classList.add('tab-nota');
             });
           }
+          // los silencios automáticos se ven atenuados en pantalla (en papel, tinta normal)
+          b.all.forEach((ev, idx) => {
+            if (!ev.auto) return;
+            [b.notes[idx], b.tab && b.tab.notes[idx]].forEach((n) => {
+              const el = n && n.getSVGElement && n.getSVGElement();
+              if (el) el.classList.add('ink-auto');
+            });
+          });
           b.all.forEach((ev, idx) => {
             if (!ev.auto) refs.set(ev.id, { note: b.notes[idx], tab: b.tab && b.tab.notes[idx].esTab ? b.tab.notes[idx] : null,
                                             system: o.systemKey, ctx: o.ctx });
@@ -727,7 +770,8 @@ const Engrave = (() => {
 
       // Un punto de impacto por pentagrama: al tocar se sabe en qué pauta se
       // escribe y con qué clave, que es lo que decide la altura.
-      pentagramas.forEach((pent) => {
+      // sin pentagrama a la vista, sólo se toca la tablatura
+      if (!solo) pentagramas.forEach((pent) => {
         const suyos = bloques.filter((b) => b.pent === pent);
         const notas = [];
         suyos.forEach((b) => b.all.forEach((ev, idx) => notas.push({
@@ -778,16 +822,37 @@ const Engrave = (() => {
      hueco invisible donde el pentagrama tiene un silencio, para que lo que
      suena a la vez caiga en la misma vertical. Los grupos (tresillos…) se
      copian para que las duraciones cuadren con las del pentagrama. */
-  function vozDeTab(all, compas, tab, o) {
+  function vozDeTab(all, compas, tab, o, ritmo) {
     const notes = all.map((ev) => {
       const dur = ev.dur + (ev.dots ? 'd'.repeat(ev.dots) : '');
       const d = ev.kind === 'note' && digitacion.get(ev.id);
-      const pos = d ? d.pos.map((p, k) => p && { str: p.str + 1, fret: d.ligada ? '(' + p.fret + ')' : String(p.fret), k })
+      const tec = ev.tec || [];
+      const traste = (f) => {
+        if (tec.indexOf('X') >= 0) return 'X';             // nota muerta
+        if (tec.indexOf('ARM') >= 0) return '<' + f + '>'; // armónico natural
+        return String(f);
+      };
+      const pos = d ? d.pos.map((p, k) => p && { str: p.str + 1, fret: d.ligada ? '(' + p.fret + ')' : traste(p.fret), k })
         .filter(Boolean) : [];
-      if (!pos.length) return new GhostNote({ duration: dur });
-      const tn = new TabNote({ positions: pos.map((p) => ({ str: p.str, fret: p.fret })), duration: dur }, false);
+      if (!pos.length) {
+        /* Un silencio: con el ritmo a la vista se escribe también en la
+           tablatura, como en Guitar Pro; sin él, un hueco invisible que sólo
+           guarda el sitio. */
+        if (ritmo && ev.kind === 'rest' && StaveNote) {
+          try {
+            const r = new StaveNote({ keys: ['b/4'], duration: ev.dur + 'r', clef: 'treble' });
+            for (let k = 0; k < (ev.dots || 0); k++) Dot.buildAndAttach([r], { all: true });
+            r.esSilencio = true;
+            return r;
+          } catch (e) { }
+        }
+        return new GhostNote({ duration: dur });
+      }
+      const tn = new TabNote({ positions: pos.map((p) => ({ str: p.str, fret: p.fret })), duration: dur }, !!ritmo);
       tn.esTab = true;
+      if (ritmo && Stem) { try { tn.setStemDirection(Stem.DOWN); } catch (e) { } }
       trasteLegible(tn);
+      tecnicasDeNota(tn, tec);
       if (ev.id === o.selectedId) {
         // en un acorde, sólo el traste de la cabeza que se está editando
         const k = Math.max(0, o.selectedHead | 0);
@@ -803,14 +868,88 @@ const Engrave = (() => {
     return { voice, notes };
   }
 
+  /* Lo que se hace con la mano sobre una sola nota: bend, vibrato y palm
+     mute. Los que unen dos notas —H, P, deslizar— van en drawTecnicasTab. */
+  function tecnicasDeNota(tn, tec) {
+    if (!tec.length) return;
+    try {
+      if (tec.indexOf('B') >= 0 && Bend) tn.addModifier(new Bend([{ type: Bend.UP, text: 'full' }]), 0);
+      if (tec.indexOf('V') >= 0 && Vibrato) tn.addModifier(new Vibrato(), 0);
+      if (tec.indexOf('PM') >= 0 && Annotation) {
+        const a = new Annotation('P.M.');
+        a.setFont('Arial', 10, 'bold');
+        a.setVerticalJustification(Annotation.VerticalJustify.TOP);
+        tn.addModifier(a, 0);
+      }
+    } catch (e) { }
+  }
+
+  /* Ligado ascendente (H), descendente (P) y deslizar (sl.): van de una nota
+     a la siguiente de la misma voz. Como las ligaduras, sólo si las dos caen
+     en el mismo sistema. */
+  function drawTecnicasTab(score) {
+    if (!digitacion || !TabTie) return;
+    score.measures.forEach((m) => Model.voces(m).forEach((vz) => vz.events.forEach((ev) => {
+      const tec = ev.tec;
+      if (!tec || ev.kind !== 'note') return;
+      const cual = ['H', 'P', 'SL'].find((t) => tec.indexOf(t) >= 0);
+      if (!cual) return;
+      const next = Model.nextEvent(score, ev.id);
+      if (!next || next.ev.kind !== 'note') return;
+      const a = refs.get(ev.id), b = refs.get(next.ev.id);
+      if (!a || !b || !a.tab || !b.tab || a.system !== b.system) return;
+      const notas = { firstNote: a.tab, lastNote: b.tab, firstIndexes: [0], lastIndexes: [0] };
+      try {
+        let t;
+        if (cual === 'H') t = TabTie.createHammeron(notas);
+        else if (cual === 'P') t = TabTie.createPulloff(notas);
+        else if (TabSlide) {
+          const f0 = parseInt(a.tab.getPositions()[0].fret, 10), f1 = parseInt(b.tab.getPositions()[0].fret, 10);
+          t = f1 < f0 ? TabSlide.createSlideDown(notas) : TabSlide.createSlideUp(notas);
+        }
+        if (t) t.setContext(a.ctx).draw();
+      } catch (e) { }
+    })));
+  }
+
+  /* Los nombres de las cuerdas a la izquierda de la tablatura, en la primera
+     línea de la obra, y la cejilla encima si la hay. Así se sabe de un
+     vistazo si la obra va en Drop D o con cejilla sin abrir ningún menú. */
+  function rotularCuerdas(score, tab, ctx) {
+    try {
+      const nombres = Tablatura.nombresDe(score);
+      const x = tab.getX() - 6;
+      ctx.save();
+      ctx.setFont('Arial', 10, 'bold');
+      ctx.setFillStyle(COLORS.ink);
+      nombres.forEach((nom, i) => {
+        const w = ctx.measureText(nom).width;
+        ctx.fillText(nom, x - w, tab.getYForLine(i) + 3.5);
+      });
+      const capo = Tablatura.capoDe(score);
+      if (capo) {
+        ctx.setFont('Arial', 11, 'bold');
+        ctx.fillText('Cejilla ' + capo, tab.getX(), tab.getYForLine(0) - 22);
+      }
+      ctx.restore();
+    } catch (e) { }
+  }
+
   /* El traste de VexFlow sale a 9 puntos y sobre un hueco blanco de 6 de
      alto: en la hoja A4 no se lee. Guitar Pro y MuseScore lo escriben casi
      del alto del espacio entre líneas, y el hueco del color del papel. */
   const TRASTE = { familia: 'Arial, "Helvetica Neue", sans-serif', tam: 11.5 };
   function trasteLegible(tn) {
     if (!tn.fretElement) return;
-    tn.fretElement.forEach((el) => {
-      try { el.setFont(TRASTE.familia, TRASTE.tam, 'bold'); el.setYShift(el.getHeight() / 2 - 1); } catch (e) { }
+    tn.fretElement.forEach((el, i) => {
+      try {
+        /* La nota muerta: VexFlow la escribe con un signo de la fuente
+           musical, que en la letra de los trastes sale como un cuadrito. Se
+           escribe una X de verdad, como en Guitar Pro. */
+        const f = String(tn.positions[i] && tn.positions[i].fret).toUpperCase();
+        if (f === 'X' && el.setText) el.setText('X');
+        el.setFont(TRASTE.familia, TRASTE.tam, 'bold'); el.setYShift(el.getHeight() / 2 - 1);
+      } catch (e) { }
     });
     try { tn.width = Math.max.apply(null, tn.fretElement.map((el) => el.getWidth())); } catch (e) { }
     tn.drawPositions = function () {

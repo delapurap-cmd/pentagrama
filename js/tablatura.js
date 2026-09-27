@@ -36,6 +36,24 @@ const Tablatura = (function () {
     return AFINACIONES[id] || AFINACIONES.estandar;
   };
 
+  /** La cejilla: en qué traste está (0 = sin cejilla). */
+  const capoDe = (score) => {
+    const c = score && score.tab && score.tab.capo;
+    return Math.max(0, Math.min(12, c | 0));
+  };
+
+  /* Las cuerdas como suenan con la cejilla puesta. Con cejilla en el 2, la
+     cuerda al aire es la del traste 2, y los números de la tablatura se
+     cuentan desde la cejilla —así se escribe y así se lee en Guitar Pro—. */
+  const cuerdasDe = (score) => {
+    const capo = capoDe(score);
+    return afinacionDe(score).cuerdas.map((c) => c + capo);
+  };
+
+  /** Los nombres de las cuerdas, de la aguda a la grave (E B G D A E). */
+  const NOMBRES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const nombresDe = (score) => afinacionDe(score).cuerdas.map((m) => NOMBRES[((m % 12) + 12) % 12]);
+
   /** Dónde puede ir una nota: [{ str (0 = la más aguda), fret }]. */
   function sitios(midi, cuerdas) {
     const out = [];
@@ -106,7 +124,7 @@ const Tablatura = (function () {
    * voces en guitarra.
    */
   function digitar(score) {
-    const cuerdas = afinacionDe(score).cuerdas;
+    const cuerdas = cuerdasDe(score);
     const out = new Map();
     const manos = {};
     const ligadas = {};
@@ -138,7 +156,7 @@ const Tablatura = (function () {
     return n;
   }
 
-  return { AFINACIONES, afinacionDe, sitios, digitarAcorde, digitar, fuera, TRASTES };
+  return { AFINACIONES, afinacionDe, capoDe, cuerdasDe, nombresDe, sitios, digitarAcorde, digitar, fuera, TRASTES };
 })();
 
 if (typeof module !== 'undefined') module.exports = Tablatura;

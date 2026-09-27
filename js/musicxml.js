@@ -229,6 +229,7 @@ const MusicXML = (() => {
        se enciende la tablatura del editor y se guarda la cuerda de cada nota. */
     const pentTab = new Set();
     let afinacion = null;               // MIDI de cada cuerda, de la 1 a la 6
+    let capoLeido = 0;                  // traste de la cejilla, si la trae
     let hayCuerdas = false;
     hayCuerdasGlobal = () => { hayCuerdas = true; };
     /* MusicXML escribe cada voz seguida y rebobina el reloj con <backup>.
@@ -323,6 +324,8 @@ const MusicXML = (() => {
                      midi: (oc + 1) * 12 + { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[paso] + al };
           }).sort((a, b) => b.linea - a.linea).map((x) => x.midi);
           if (cuerdas.length >= 4) afinacion = cuerdas;
+          const cp = parseInt(sd.querySelector('capo')?.textContent, 10);
+          if (cp > 0) capoLeido = cp;
         });
       }
 
@@ -498,6 +501,20 @@ const MusicXML = (() => {
         else if (lig.includes('stop')) ev.lig = 'fin';
 
         cuerdaDe(ev, di, node);
+        // técnicas de guitarra (las que escribe MuseScore y este editor)
+        {
+          const q = (sel) => node.querySelector(sel);
+          const tec = [];
+          if (q('notations > technical > hammer-on[type="start"]')) tec.push('H');
+          if (q('notations > technical > pull-off[type="start"]')) tec.push('P');
+          if (q('notations > slide[type="start"]')) tec.push('SL');
+          if (q('notations > technical > bend')) tec.push('B');
+          if (q('notations > ornaments > wavy-line')) tec.push('V');
+          if ((q(':scope > notehead')?.textContent || '').trim() === 'x') tec.push('X');
+          if (q('notations > technical > harmonic')) tec.push('ARM');
+          if (/P\.?\s*M/i.test(q('notations > technical > other-technical')?.textContent || '')) tec.push('PM');
+          if (tec.length) ev.tec = (ev.tec || []).concat(tec.filter((t) => !(ev.tec || []).includes(t)));
+        }
         const dedo = node.querySelector('notations > technical > fingering');
         if (dedo) ev.dedo = (dedo.textContent || '').trim().slice(0, 3);
 
@@ -539,6 +556,7 @@ const MusicXML = (() => {
       const AF = typeof Tablatura !== 'undefined' ? Tablatura.AFINACIONES : {};
       const afin = Object.keys(AF).find((id) => afinacion && AF[id].cuerdas.join() === afinacion.join()) || 'estandar';
       score.tab = { afin };
+      if (capoLeido) score.tab.capo = Math.min(12, capoLeido);
       score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
         if (!ev._cuerdas) return;
         const lista = Model.alturas(ev).map((n) => (ev._cuerdas[n.di] != null ? ev._cuerdas[n.di] : null));

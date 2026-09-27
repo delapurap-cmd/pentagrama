@@ -1177,7 +1177,8 @@
        obra (score.tab), así que se guarda y se abre con ella. */
     tablatura(afin) {
       snapshot();
-      if (afin) state.score.tab = { afin };
+      // cambiar de afinación no quita la cejilla ni la vista elegida
+      if (afin) state.score.tab = Object.assign({}, state.score.tab, { afin });
       else delete state.score.tab;
       render();
       if (afin) {
@@ -1197,7 +1198,7 @@
       const dg = mapa.get(ev.id);
       if (!dg) return;
       const k = cabezaSel(ev);
-      const cuerdas = Tablatura.afinacionDe(state.score).cuerdas;
+      const cuerdas = Tablatura.cuerdasDe(state.score);
       const midi = Model.midisOf(ev, state.score.key, Model.clefAt(state.score, found.mi, found.pent | 0))[k];
       const actual = dg.pos[k] ? dg.pos[k].str : -1;
       const ocupadas = new Set(dg.pos.filter((p, i) => p && i !== k).map((p) => p.str));
@@ -1211,6 +1212,38 @@
       ev.cuerdas = lista;
       render();
       toast('Cuerda ' + (cand + 1) + ' · traste ' + (midi - cuerdas[cand]));
+    },
+    /* Opciones de la tablatura que van en la obra: sólo la TAB, el ritmo
+       debajo de los números y la cejilla. */
+    opcionTab(clave, valor) {
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      snapshot();
+      const t = Object.assign({}, state.score.tab);
+      if (valor === undefined) t[clave] = !t[clave]; else t[clave] = valor;
+      if (!t[clave]) delete t[clave];
+      state.score.tab = t;
+      render();
+      if (clave === 'capo') {
+        const fuera = Tablatura.fuera(Tablatura.digitar(state.score));
+        toast((t.capo ? 'Cejilla en el traste ' + t.capo : 'Sin cejilla') +
+              (fuera ? ' · ' + fuera + ' notas quedan por debajo de la cejilla' : ''));
+      }
+    },
+    /* Técnicas de guitarra en la nota elegida, como en Guitar Pro. H, P y
+       deslizar van hacia la nota siguiente y no se mezclan entre sí; nota
+       muerta y armónico tampoco. */
+    tecnica(t) {
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      const found = currentEvent();
+      if (!found || found.ev.kind !== 'note') { toast('Elige una nota'); return; }
+      const excluyen = { H: ['P', 'SL'], P: ['H', 'SL'], SL: ['H', 'P'], X: ['ARM'], ARM: ['X'] };
+      snapshot();
+      const ev = found.ev;
+      let lista = (ev.tec || []).slice();
+      if (lista.indexOf(t) >= 0) lista = lista.filter((x) => x !== t);
+      else lista = lista.filter((x) => (excluyen[t] || []).indexOf(x) < 0).concat([t]);
+      if (lista.length) ev.tec = lista; else delete ev.tec;
+      render();
     },
     seleccionarTodo() {
       const found = currentEvent();
@@ -1432,6 +1465,32 @@
             [{ sep: true }, { label: 'Quitar la tablatura', sel: !state.score.tab, fn: () => edicion.tablatura(null) }]
           ), btn) },
         { label: 'Cambiar de cuerda', hint: 'Alt+Mayús+↑↓', fn: () => edicion.cuerda(1) },
+        { label: 'Técnica de guitarra…', hint: 'H · P · bend · vibrato…', fn: () => {
+          const found = currentEvent();
+          const tec = (found && found.ev.tec) || [];
+          const t = (id, label, hint) => ({ label, hint, sel: tec.indexOf(id) >= 0, fn: () => edicion.tecnica(id) });
+          menu([{ head: 'Técnica de la nota' },
+            t('H', 'Ligado ascendente', 'H · hacia la siguiente'),
+            t('P', 'Ligado descendente', 'P · hacia la siguiente'),
+            t('SL', 'Deslizar', '/ · hacia la siguiente'),
+            t('B', 'Bend', 'tono entero'),
+            t('V', 'Vibrato', '~'),
+            t('X', 'Nota muerta', 'X'),
+            t('ARM', 'Armónico', '<12>'),
+            t('PM', 'Palm mute', 'P.M.')
+          ], btn);
+        } },
+        { label: 'Vista de la tablatura…', hint: 'sólo TAB · ritmo · cejilla', fn: () => {
+          const tab = state.score.tab || {};
+          menu([{ head: 'Tablatura' },
+            { label: 'Sólo la tablatura', hint: 'sin pentagrama', sel: !!tab.solo, fn: () => edicion.opcionTab('solo') },
+            { label: 'Ritmo bajo la tablatura', hint: 'plicas y barras', sel: !!tab.solo || !!tab.ritmo,
+              fn: () => (tab.solo ? toast('Sin pentagrama el ritmo va siempre') : edicion.opcionTab('ritmo')) },
+            { sep: true }, { head: 'Cejilla' }
+          ].concat([0, 1, 2, 3, 4, 5, 7].map((c) => ({
+            label: c ? 'Traste ' + c : 'Sin cejilla', sel: (tab.capo | 0) === c, fn: () => edicion.opcionTab('capo', c)
+          }))), btn);
+        } },
         { sep: true },
         { head: 'Teclado' },
         { label: 'A–G escribe la nota', hint: 'Mayús: al acorde' },
@@ -1525,11 +1584,32 @@
                        : l === 'fin' ? '<slur type="stop" number="1"/>' : '');
   const dedoXML = (d) => (d ? `<technical><fingering>${xmlEsc(d)}</fingering></technical>` : '');
   /** Digitación y, con tablatura, cuerda (1 = la aguda) y traste. */
-  const tecnicaXML = (dedo, pos) => {
-    const dentro = (dedo ? `<fingering>${xmlEsc(dedo)}</fingering>` : '') +
+  const tecnicaXML = (dedo, pos, extra) => {
+    const dentro = (dedo ? `<fingering>${xmlEsc(dedo)}</fingering>` : '') + (extra || '') +
       (pos ? `<string>${pos.str + 1}</string><fret>${pos.fret}</fret>` : '');
     return dentro ? '<technical>' + dentro + '</technical>' : '';
   };
+
+  /* Técnicas de guitarra, como las escribe MuseScore: H y P son pares
+     start/stop entre dos notas, igual que el deslizar (que va en
+     <notations>). [antes] es la técnica de unión que traía la nota anterior. */
+  const UNE = { H: 'hammer-on', P: 'pull-off' };
+  function tecnicasXML(ev, antes) {
+    const tec = ev.tec || [];
+    let tecnico = '', notas = '';
+    if (UNE[antes]) tecnico += `<${UNE[antes]} type="stop" number="1"/>`;
+    ['H', 'P'].forEach((t) => {
+      if (tec.indexOf(t) >= 0) tecnico += `<${UNE[t]} type="start" number="1">${t}</${UNE[t]}>`;
+    });
+    if (tec.indexOf('B') >= 0) tecnico += '<bend><bend-alter>2</bend-alter></bend>';
+    if (tec.indexOf('ARM') >= 0) tecnico += '<harmonic><natural/></harmonic>';
+    if (tec.indexOf('PM') >= 0) tecnico += '<other-technical>P.M.</other-technical>';
+    if (antes === 'SL') notas += '<slide type="stop" number="1"/>';
+    if (tec.indexOf('SL') >= 0) notas += '<slide type="start" number="1"/>';
+    if (tec.indexOf('V') >= 0) notas += '<ornaments><wavy-line type="start" number="1"/><wavy-line type="stop" number="1"/></ornaments>';
+    return { tecnico, notas, cabeza: tec.indexOf('X') >= 0 ? '<notehead>x</notehead>' : '' };
+  }
+  const unionDe = (ev) => (ev.kind === 'note' && ev.tec ? ['H', 'P', 'SL'].find((t) => ev.tec.indexOf(t) >= 0) || null : null);
 
   /** Notas de adorno: van delante y sin duración, que es lo que las define. */
   function adornosXML(ev, s, marca) {
@@ -1750,6 +1830,7 @@
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
           (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
           Model.pentagramas(s).map((_, p) => claveXML(Model.clefAt(s, 0, p), nPent > 1 ? p + 1 : 0)).join('') +
+          (s.tab && s.tab.capo ? `        <staff-details><capo>${s.tab.capo | 0}</capo></staff-details>\n` : '') +
           '      </attributes>\n' +
           `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
       } else {
@@ -1767,6 +1848,7 @@
          <backup>, que es como MusicXML representa lo simultáneo. */
       Model.voces(m).forEach((vz, iv) => {
         let tiedFrom = false;
+        let unionAntes = null;
         const evs = vz.events.concat(Model.autoRests(m, s.time, vz.vi, cap));
         if (!evs.length) return;
         if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
@@ -1781,6 +1863,8 @@
         } else {
           const prev = tiedFrom;
           tiedFrom = !!ev.tie;
+          const tx = tecnicasXML(ev, unionAntes);
+          unionAntes = unionDe(ev);
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
           xml += direccionesXML(ev, nPent > 1 ? vz.pent : null);
@@ -1797,7 +1881,8 @@
               (base && ev.lig ? ligXML(ev.lig) : '') +
               (base && ev.orn ? ornXML(ev.orn) : '') +
               (base && ev.art ? artXML(ev.art) : '') +
-              tecnicaXML(base ? ev.dedo : null, digi && digi.get(ev.id) && digi.get(ev.id).pos[iN]);
+              (base ? tx.notas : '') +
+              tecnicaXML(base ? ev.dedo : null, digi && digi.get(ev.id) && digi.get(ev.id).pos[iN], base ? tx.tecnico : '');
             xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
               `<step>${letter.toUpperCase()}</step>` +
               (alter ? `<alter>${alter}</alter>` : '') +
@@ -1809,6 +1894,7 @@
               (ev.tup && ev.tup.id
                 ? `<time-modification><actual-notes>${ev.tup.num}</actual-notes><normal-notes>${ev.tup.den}</normal-notes></time-modification>`
                 : '') +
+              tx.cabeza +
               (base && ev.barra ? `<beam number="1">${ev.barra}</beam>` : '') +
               (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
               '</note>\n';
