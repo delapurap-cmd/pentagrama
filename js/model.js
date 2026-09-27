@@ -170,6 +170,15 @@ const Model = (() => {
     }
     return score.time;
   }
+  /** La armadura que rige en el compás `mi`: la del último cambio escrito
+      (m.key) a su izquierda, o la de la obra. */
+  function keyAt(score, mi) {
+    for (let i = Math.min(mi, score.measures.length - 1); i >= 1; i--) {
+      const k = score.measures[i] && score.measures[i].key;
+      if (k) return k;
+    }
+    return score.key;
+  }
   function capacityAt(score, mi) {
     const m = score.measures[mi];
     const cap = capacity(timeAt(score, mi));
@@ -664,7 +673,7 @@ const Model = (() => {
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
     timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
-    alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
+    keyAt, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,

@@ -281,8 +281,8 @@ const Engrave = (() => {
   }
 
   /** Ancho extra del primer compás de cada sistema (clave, armadura, compás). */
-  function leadWidth(score, isFirstSystem) {
-    const fifths = Math.abs(Model.keyBySpec(score.key).fifths);
+  function leadWidth(score, isFirstSystem, mi) {
+    const fifths = Math.abs(Model.keyBySpec(Model.keyAt(score, mi | 0)).fifths);
     const ottava = Model.pentagramas(score).some((_, p) => Model.clefAt(score, 0, p).ottava);
     // con llave, el sistema empieza un poco más adentro
     const llave = Model.nPent(score) > 1 ? 16 : 0;
@@ -618,7 +618,7 @@ const Engrave = (() => {
 
   function drawSystem(score, sys, o) {
     const measures = sys.measures;
-    const lead = leadWidth(score, o.isFirstSystemOfScore);
+    const lead = leadWidth(score, o.isFirstSystemOfScore, sys.from);
     const nPent = Model.nPent(score);
     const solo = soloTab(score);
     const ritmo = ritmoTab(score);
@@ -657,11 +657,16 @@ const Engrave = (() => {
         const compasAntes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
         if (primero) {
           stave.addClef(clef.vex, undefined, clef.ottava);
-          stave.addKeySignature(score.key);
+          stave.addKeySignature(Model.keyAt(score, mi));
           if (o.isFirstSystemOfScore) stave.addTimeSignature(Model.timeLabel(compasAqui));
         } else if (clefPrevia && clefPrevia.id !== clef.id) {
           // Cambio de clave a media línea: va pequeña y antes de la barra.
           stave.addClef(clef.vex, 'small', clef.ottava);
+        }
+        /* Un cambio de armadura se escribe donde ocurre, con los becuadros
+           que anulan la de antes, como en la edición impresa. */
+        if (!primero && mi > 0 && Model.keyAt(score, mi) !== Model.keyAt(score, mi - 1)) {
+          try { stave.addKeySignature(Model.keyAt(score, mi), Model.keyAt(score, mi - 1)); } catch (e) { }
         }
         // un cambio de compás se escribe donde ocurre
         if (compasAntes && (compasAntes.num !== compasAqui.num || compasAntes.den !== compasAqui.den)) {

@@ -242,7 +242,8 @@
   const ES = { c: 'Do', d: 'Re', e: 'Mi', f: 'Fa', g: 'Sol', a: 'La', b: 'Si' };
   function pitchName(ev) {
     const letter = Model.diLetter(ev.di);
-    const alt = ev.acc == null ? Model.keyAlter(state.score.key, letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
+    const donde = Model.findEvent(state.score, ev.id);
+    const alt = ev.acc == null ? Model.keyAlter(Model.keyAt(state.score, donde ? donde.mi : 0), letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
     const mark = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
     return ES[letter] + mark + Model.diOctave(ev.di);
   }
@@ -828,7 +829,7 @@
       const clef = Model.clefAt(state.score, mi, v.pent);
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') return;
-        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(x); });
+        Model.midisOf(ev, Model.keyAt(state.score, mi), clef).forEach((x) => { if (x != null) todas.push(x); });
       });
     }));
     const fuera = Instrumentos.fuera(todas);
@@ -1199,7 +1200,7 @@
       if (!dg) return;
       const k = cabezaSel(ev);
       const cuerdas = Tablatura.cuerdasDe(state.score);
-      const midi = Model.midisOf(ev, state.score.key, Model.clefAt(state.score, found.mi, found.pent | 0))[k];
+      const midi = Model.midisOf(ev, Model.keyAt(state.score, found.mi), Model.clefAt(state.score, found.mi, found.pent | 0))[k];
       const actual = dg.pos[k] ? dg.pos[k].str : -1;
       const ocupadas = new Set(dg.pos.filter((p, i) => p && i !== k).map((p) => p.str));
       const libres = Tablatura.sitios(midi, cuerdas).map((p) => p.str).filter((c) => !ocupadas.has(c));
@@ -1315,6 +1316,37 @@
       render(); colocar(); cargar(); caja.focus();
       toast('Letra' + (verso ? ' (estrofa ' + (verso + 1) + ')' : '') + ' · Espacio: siguiente · «-»: parte la palabra · Intro: terminar');
     },
+    /* Cambio de armadura desde el compás de la nota elegida hasta el
+       siguiente cambio. Lo que suena no se mueve: donde la armadura nueva no
+       lo dice, la nota se escribe con su alteración, como hace MuseScore. */
+    armaduraDesde(spec) {
+      const found = currentEvent();
+      const mi = found ? found.mi : 0;
+      const vieja = Model.keyAt(state.score, mi);
+      snapshot();
+      const hasta = (() => {
+        for (let i = mi + 1; i < state.score.measures.length; i++) if (state.score.measures[i].key) return i;
+        return state.score.measures.length;
+      })();
+      if (mi === 0) state.score.key = spec || state.score.key;
+      else if (spec) state.score.measures[mi].key = spec;
+      else delete state.score.measures[mi].key;
+      const nueva = Model.keyAt(state.score, mi);
+      for (let i = mi; i < hasta; i++) {
+        Model.voces(state.score.measures[i]).forEach((v) => v.events.forEach((ev) => {
+          if (ev.kind !== 'note') return;
+          Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
+            const midi = Model.midiDe(n, vieja);
+            const nat = (Model.diOctave(n.di) + 1) * 12 + Model.SEMIS[Model.diLetter(n.di)];
+            const alt = midi - nat;
+            return { di: n.di, acc: alt === Model.keyAlter(nueva, Model.diLetter(n.di)) ? null : (ALT_ACC[alt] || null) };
+          }));
+        }));
+      }
+      Model.reflow(state.score);
+      render();
+      toast(spec ? 'Armadura de ' + Model.keyBySpec(nueva).label + ' desde el compás ' + (mi + 1) : 'Cambio de armadura quitado');
+    },
     seleccionarTodo() {
       const found = currentEvent();
       const ref = found || { vi: 0, pent: 0 };
@@ -1388,10 +1420,11 @@
     /** Cambia la grafía de la nota elegida sin cambiar lo que suena
         (Do♯ ↔ Re♭), como la J de MuseScore. */
     enarmonia() {
-      mutate((ev) => {
+      mutate((ev, found) => {
         if (ev.kind !== 'note') return;
+        const clave = Model.keyAt(state.score, found.mi);
         state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
-          const midi = Model.midiDe(n, state.score.key);
+          const midi = Model.midiDe(n, clave);
           const opciones = [-1, 1, -2, 2].map((d) => n.di + d).map((di) => {
             const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
             return { di, alt: midi - nat };
@@ -1399,7 +1432,7 @@
           const o = opciones.find((x) => Math.abs(x.alt) <= 1) || opciones[0];
           if (!o) return;
           n.di = o.di;
-          n.acc = o.alt === Model.keyAlter(state.score.key, Model.diLetter(o.di)) ? null : ALT_ACC[o.alt];
+          n.acc = o.alt === Model.keyAlter(clave, Model.diLetter(o.di)) ? null : ALT_ACC[o.alt];
         });
       });
     },
@@ -1416,17 +1449,31 @@
       if (semis < 0 && grados > 0) grados -= 7;
       if (semis > 0 && grados === 0) grados = 7;
       snapshot();
-      state.score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
-        if (ev.cifrado) ev.cifrado = transportarCifrado(ev.cifrado, semis, spec);
-        if (ev.kind !== 'note') return;
-        Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
-          const midi = Model.midiDe(n, de) + semis;
-          const di = n.di + grados;
-          const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
-          const alt = midi - nat;
-          return { di, acc: alt === Model.keyAlter(spec, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
+      /* Los cambios de armadura se mueven lo mismo, en quintas: lo que dista
+         la nueva de la de salida. Fuera de ±7 se toma la enarmónica. */
+      const dq = Model.keyBySpec(spec).fifths - Model.keyBySpec(de).fifths;
+      const moverClave = (k) => {
+        let f = Model.keyBySpec(k).fifths + dq;
+        while (f > 7) f -= 12;
+        while (f < -7) f += 12;
+        return Model.KEYS.find((x) => x.fifths === f).spec;
+      };
+      const antes = state.score.measures.map((m, mi) => Model.keyAt(state.score, mi));
+      state.score.measures.forEach((m, mi) => {
+        const deAqui = antes[mi], aAqui = moverClave(deAqui);
+        Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+          if (ev.cifrado) ev.cifrado = transportarCifrado(ev.cifrado, semis, aAqui);
+          if (ev.kind !== 'note') return;
+          Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
+            const midi = Model.midiDe(n, deAqui) + semis;
+            const di = n.di + grados;
+            const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
+            const alt = midi - nat;
+            return { di, acc: alt === Model.keyAlter(aAqui, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
+          }));
         }));
-      })));
+        if (m.key && mi > 0) m.key = aAqui;
+      });
       state.score.key = spec;
       Model.reflow(state.score);
       render();
@@ -1520,6 +1567,16 @@
           label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === state.score.key,
           fn: () => edicion.transportarA(k.spec)
         })), btn) },
+        { label: 'Cambiar armadura desde aquí…', hint: 'en el compás de la nota', fn: () => {
+          const f = currentEvent();
+          const mi = f ? f.mi : 0;
+          const actual = Model.keyAt(state.score, mi);
+          const hayCambio = mi > 0 && !!state.score.measures[mi].key;
+          menu([{ head: 'Armadura desde el compás ' + (mi + 1) }].concat(Model.KEYS.map((k) => ({
+            label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === actual,
+            fn: () => edicion.armaduraDesde(k.spec)
+          })), hayCambio ? [{ sep: true }, { label: 'Quitar este cambio', fn: () => edicion.armaduraDesde(null) }] : []), btn);
+        } },
         { sep: true },
         { label: 'Insertar compás antes', fn: () => edicion.insertarCompas(false) },
         { label: 'Insertar compás después', fn: () => edicion.insertarCompas(true) },
@@ -1708,10 +1765,10 @@
   }
 
   /** Notas de adorno: van delante y sin duración, que es lo que las define. */
-  function adornosXML(ev, s, marca) {
+  function adornosXML(ev, clave, marca) {
     return (ev.adornos || []).map((a) => {
       const letra = Model.diLetter(a.di);
-      const alt = a.acc == null ? Model.keyAlter(s.key, letra) : ({ '#': 1, b: -1, n: 0 }[a.acc] || 0);
+      const alt = a.acc == null ? Model.keyAlter(clave, letra) : ({ '#': 1, b: -1, n: 0 }[a.acc] || 0);
       return '      <note>' + `<grace${a.barrada ? ' slash="yes"' : ''}/>` +
         `<pitch><step>${letra.toUpperCase()}</step>` + (alt ? `<alter>${alt}</alter>` : '') +
         `<octave>${Model.diOctave(a.di)}</octave></pitch>` + marca +
@@ -1937,7 +1994,10 @@
         }).join('');
         const tc = m.time
           ? `        <time><beats>${m.time.num}</beats><beat-type>${m.time.den}</beat-type></time>\n` : '';
-        if (cambios || tc) xml += '      <attributes>\n' + tc + cambios + '      </attributes>\n';
+        // un cambio de armadura va antes que el de compás, como pide MusicXML
+        const kc = Model.keyAt(s, i) !== Model.keyAt(s, i - 1)
+          ? `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, i)).fifths}</fifths></key>\n` : '';
+        if (cambios || tc || kc) xml += '      <attributes>\n' + kc + tc + cambios + '      </attributes>\n';
       }
 
       /* Cada voz se escribe entera y luego se rebobina el reloj con
@@ -1965,12 +2025,12 @@
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
           xml += direccionesXML(ev, nPent > 1 ? vz.pent : null);
-          xml += adornosXML(ev, s, marca);
+          xml += adornosXML(ev, Model.keyAt(s, i), marca);
           // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
           // adelante llevan <chord/> y comparten la duración de la primera.
           Model.alturas(ev).forEach((n, iN) => {
             const letter = Model.diLetter(n.di);
-            const alter = n.acc == null ? Model.keyAlter(s.key, letter) : (ALT[n.acc] || 0);
+            const alter = n.acc == null ? Model.keyAlter(Model.keyAt(s, i), letter) : (ALT[n.acc] || 0);
             const base = iN === 0;
             const notaciones =
               (base && (prev || ev.tie) ? (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') : '') +

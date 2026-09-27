@@ -182,7 +182,7 @@ const Sound = (() => {
       const midis = [];
       score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
         if (ev.kind === 'note') {
-          Model.midisOf(ev, score.key, Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
+          Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(x));
         }
       })));
       if (midis.length) await preload(midis);
@@ -278,9 +278,9 @@ const Sound = (() => {
       // las notas de adorno roban un poco de tiempo a la que llevan delante
       const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        tone(cuando + k * 0.075, Model.midiDe(a, score.key, it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
+        tone(cuando + k * 0.075, Model.midiDe(a, Model.keyAt(score, it.mi), it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
       });
-      const midis = Model.midisOf(it.ev, score.key, it.clef);
+      const midis = Model.midisOf(it.ev, Model.keyAt(score, it.mi), it.clef);
       midis.forEach((m2, iN) => {
         const mid = m2 + cfg.octava;
         // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
@@ -361,7 +361,7 @@ const Sound = (() => {
                aquí porque aquí está la clave de ese compás y ese pentagrama:
                calcularlas fuera obligaría a recorrer la obra por segunda vez
                para averiguar algo que este bucle ya tiene delante. */
-            const ms = Model.midisOf(it.ev, score.key, it.clef);
+            const ms = Model.midisOf(it.ev, Model.keyAt(score, it.mi), it.clef);
             for (const m of ms) if (m != null) midis.push(m);
           }
         }

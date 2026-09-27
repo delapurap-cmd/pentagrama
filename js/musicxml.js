@@ -140,7 +140,7 @@ const MusicXML = (() => {
     const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
     const di = oc * 7 + (STEP_INDEX[st] ?? 0);
     const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
-    const porArmadura = Model.keyAlter(score.key, Model.diLetter(di));
+    const porArmadura = Model.keyAlter(claveLectura || score.key, Model.diLetter(di));
     const tipo = text(node, 'type');
     return {
       di,
@@ -183,7 +183,12 @@ const MusicXML = (() => {
     if (hayCuerdasGlobal) hayCuerdasGlobal();
   }
 
+  /* La armadura que rige mientras se lee: cambia a mitad de obra, y las
+     alteraciones escritas se deciden contra la que toca en ese compás. */
+  let claveLectura = null;
+
   function parse(xml) {
+    claveLectura = null;
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('El archivo XML está dañado.');
 
@@ -276,8 +281,8 @@ const MusicXML = (() => {
         const fifths = attrs.querySelector('key > fifths');
         if (fifths) {
           const spec = FIFTHS_TO_KEY[fifths.textContent.trim()];
-          if (spec && !keySet) { score.key = spec; keySet = true; }
-          else if (spec && spec !== score.key) drop('cambios de armadura');
+          if (spec && !keySet) { score.key = spec; keySet = true; claveLectura = spec; }
+          else if (spec && spec !== claveLectura) { measure.key = spec; claveLectura = spec; }
         }
         const t = attrs.querySelector('time');
         if (t) {
@@ -436,7 +441,7 @@ const MusicXML = (() => {
             const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
             const d2 = oc * 7 + (STEP_INDEX[st] ?? 0);
             const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
-            const porArmadura = Model.keyAlter(score.key, Model.diLetter(d2));
+            const porArmadura = Model.keyAlter(claveLectura || score.key, Model.diLetter(d2));
             const acc = esc || (al !== porArmadura ? (al === 1 ? '#' : al === -1 ? 'b' : 'n') : null);
             Model.anadirAltura(base, d2, acc);
             cuerdaDe(base, d2, node);
@@ -477,7 +482,7 @@ const MusicXML = (() => {
         const ev = Model.note(di, dur, dots);
         const accEl = text(node, 'accidental');
         const written = { sharp: '#', flat: 'b', natural: 'n' }[accEl];
-        const byKey = Model.keyAlter(score.key, Model.diLetter(di));
+        const byKey = Model.keyAlter(claveLectura || score.key, Model.diLetter(di));
         if (written) ev.acc = written;
         else if (alter !== byKey) ev.acc = alter === 1 ? '#' : alter === -1 ? 'b' : 'n';
 

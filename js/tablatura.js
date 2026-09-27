@@ -132,7 +132,7 @@ const Tablatura = (function () {
       const clef = Model.clefAt(score, mi, v.pent);
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') { return; }
-        const midis = Model.midisOf(ev, score.key, clef);
+        const midis = Model.midisOf(ev, Model.keyAt(score, mi), clef);
         const fijas = Array.isArray(ev.cuerdas) && ev.cuerdas.length === midis.length
           ? ev.cuerdas.map((c) => (c == null ? null : c - 1)) : null;
         // una nota ligada desde la anterior repite su posición
