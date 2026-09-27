@@ -1470,14 +1470,14 @@
           const tec = (found && found.ev.tec) || [];
           const t = (id, label, hint) => ({ label, hint, sel: tec.indexOf(id) >= 0, fn: () => edicion.tecnica(id) });
           menu([{ head: 'Técnica de la nota' },
-            t('H', 'Ligado ascendente', 'H · hacia la siguiente'),
-            t('P', 'Ligado descendente', 'P · hacia la siguiente'),
-            t('SL', 'Deslizar', '/ · hacia la siguiente'),
-            t('B', 'Bend', 'tono entero'),
-            t('V', 'Vibrato', '~'),
-            t('X', 'Nota muerta', 'X'),
-            t('ARM', 'Armónico', '<12>'),
-            t('PM', 'Palm mute', 'P.M.')
+            t('H', 'Ligado ascendente', 'tecla H · hacia la siguiente'),
+            t('P', 'Ligado descendente', 'tecla P · hacia la siguiente'),
+            t('SL', 'Deslizar', 'tecla S · hacia la siguiente'),
+            t('B', 'Bend', 'tecla U · tono entero'),
+            t('V', 'Vibrato', 'tecla V · ~'),
+            t('X', 'Nota muerta', 'tecla X'),
+            t('ARM', 'Armónico', 'tecla N · <12>'),
+            t('PM', 'Palm mute', 'tecla M · P.M.')
           ], btn);
         } },
         { label: 'Vista de la tablatura…', hint: 'sólo TAB · ritmo · cejilla', fn: () => {
@@ -1542,6 +1542,13 @@
         return;
       }
       if (!ctrl && !e.altKey && k === 'j' && state.selectedId) { e.preventDefault(); edicion.enarmonia(); return; }
+      /* Técnicas de guitarra, con la tablatura encendida, como en Guitar Pro.
+         La B y la X de Guitar Pro no valen: B escribe la nota Si, así que el
+         bend va con la U («up»); la X sí está libre. */
+      const TEC_TECLA = { h: 'H', p: 'P', s: 'SL', u: 'B', v: 'V', x: 'X', n: 'ARM', m: 'PM' };
+      if (!ctrl && !e.altKey && !e.shiftKey && state.score.tab && state.selectedId && TEC_TECLA[k]) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.tecnica(TEC_TECLA[k]); return;
+      }
       if (!Radial.isOpen() && (e.key === 'Backspace' || e.key === 'Delete') && state.selectedId) {
         e.preventDefault(); handlers.delete();
       }

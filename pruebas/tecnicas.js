@@ -85,6 +85,18 @@ const montar = (tab) => {
   }, xml);
   ok('MusicXML de vuelta', vuelta, 'H SL B+V PM X ARM P · cejilla 2');
 
+  // 6. Atajos de teclado, como en Guitar Pro
+  await cargar({ afin: 'estandar' });
+  const caja = await p.$eval('.sheet .tab-nota', (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await p.mouse.click(caja.x, caja.y); await p.waitForTimeout(300);
+  const tecDe = () => p.evaluate((KEY) => (JSON.parse(localStorage.getItem(KEY)).measures[0].events[0].tec || []).join('+'), KEY);
+  await p.keyboard.press('m'); await p.waitForTimeout(300);
+  ok('tecla M pone palm mute', await tecDe(), 'H+PM');
+  await p.keyboard.press('p'); await p.waitForTimeout(300);
+  ok('tecla P cambia H por P', await tecDe(), 'PM+P');
+  await p.keyboard.press('u'); await p.waitForTimeout(300);
+  ok('tecla U pone bend', await tecDe(), 'PM+P+B');
+
   if (errores.length) { console.error('errores de la página:', errores); fallos++; }
   await b.close();
   if (fallos) process.exitCode = 1;
