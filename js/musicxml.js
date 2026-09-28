@@ -269,7 +269,13 @@ const MusicXML = (() => {
             if (!a || a.kind !== 'note' || a.oculto || b.tie || b.lig || b.barra) return;
             if (Model.evTicks(b) > Model.evTicks(a)) return;
             const enLaOtra = new Set(Model.alturas(a).map((h) => h.di));
-            if (!Model.alturas(b).every((h) => enLaOtra.has(h.di))) return;
+            const repetida = Model.alturas(b).every((h) => enLaOtra.has(h.di));
+            /* Una nota suelta que empieza y acaba a la vez que otra de la
+               pauta es parte de su acorde: grabada aparte salía con su
+               banderita metida en el grupo barrado de al lado. */
+            const gemela = Model.evTicks(b) === Model.evTicks(a);
+            if (!repetida && !gemela) return;
+            Model.alturas(b).forEach((h) => Model.anadirAltura(a, h.di, h.acc));
             if (b.art) a.art = [...new Set([...(a.art || []), ...b.art])];
             CAMPOS.forEach((c) => { if (a[c] == null && b[c] != null) a[c] = b[c]; });
             // la plica de la buena no se toca: va dentro de su barra

@@ -323,15 +323,19 @@ const Engrave = (() => {
       });
     }
     const out = [];
-    let grupo = [];
+    let grupo = [], sinPlica = true;
+    /* Si ninguna nota del grupo trae su plica escrita, la barra decide una
+       sola para todas. Sin eso cada acorde elegía la suya —los de arriba
+       hacia abajo— y la barra le aplastaba la plica al último. */
     const cierra = () => {
-      if (grupo.length > 1) { try { out.push(new Beam(grupo)); } catch (e) { } }
-      grupo = [];
+      if (grupo.length > 1) { try { out.push(new Beam(grupo, sinPlica)); } catch (e) { } }
+      grupo = []; sinPlica = true;
     };
+    const mete = (i) => { grupo.push(notes[i]); if (all[i].plica) sinPlica = false; };
     all.forEach((ev, i) => {
-      if (ev.barra === 'begin') { cierra(); grupo = [notes[i]]; return; }
-      if (ev.barra === 'continue') { if (grupo.length) grupo.push(notes[i]); return; }
-      if (ev.barra === 'end') { if (grupo.length) { grupo.push(notes[i]); cierra(); } return; }
+      if (ev.barra === 'begin') { cierra(); mete(i); return; }
+      if (ev.barra === 'continue') { if (grupo.length) mete(i); return; }
+      if (ev.barra === 'end') { if (grupo.length) { mete(i); cierra(); } return; }
       cierra();
     });
     cierra();
