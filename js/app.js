@@ -245,7 +245,7 @@
     const donde = Model.findEvent(state.score, ev.id);
     // en la pauta de batería la nota se llama por su instrumento
     if (donde && Model.clefAt(state.score, donde.mi, donde.pent | 0).percusion) return Model.percusionDe(ev.di).nombre;
-    const alt = ev.acc == null ? Model.keyAlter(Model.keyAt(state.score, donde ? donde.mi : 0), letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
+    const alt = ev.acc == null ? Model.keyAlter(Model.keyAt(state.score, donde ? donde.mi : 0, donde ? donde.pent | 0 : 0), letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
     const mark = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
     return ES[letter] + mark + Model.diOctave(ev.di);
   }
@@ -832,7 +832,7 @@
       const clef = Model.clefAt(state.score, mi, v.pent);
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') return;
-        Model.midisOf(ev, Model.keyAt(state.score, mi), clef).forEach((x) => { if (x != null) todas.push(x); });
+        Model.midisOf(ev, Model.keyAt(state.score, mi, v.pent), clef).forEach((x) => { if (x != null) todas.push(x + Model.transpDe(state.score, v.pent)); });
       });
     }));
     const fuera = Instrumentos.fuera(todas);
@@ -1203,7 +1203,7 @@
       if (!dg) return;
       const k = cabezaSel(ev);
       const cuerdas = Tablatura.cuerdasDe(state.score);
-      const midi = Model.midisOf(ev, Model.keyAt(state.score, found.mi), Model.clefAt(state.score, found.mi, found.pent | 0))[k];
+      const midi = Model.midisOf(ev, Model.keyAt(state.score, found.mi, found.pent | 0), Model.clefAt(state.score, found.mi, found.pent | 0))[k];
       const actual = dg.pos[k] ? dg.pos[k].str : -1;
       const ocupadas = new Set(dg.pos.filter((p, i) => p && i !== k).map((p) => p.str));
       const libres = Tablatura.sitios(midi, cuerdas).map((p) => p.str).filter((c) => !ocupadas.has(c));
@@ -1326,6 +1326,8 @@
       const found = currentEvent();
       const mi = found ? found.mi : 0;
       const vieja = Model.keyAt(state.score, mi);
+      // cada pauta con la suya: un transpositor la lleva movida
+      const viejas = Model.pentagramas(state.score).map((_, p) => Model.keyAt(state.score, mi, p));
       snapshot();
       const hasta = (() => {
         for (let i = mi + 1; i < state.score.measures.length; i++) if (state.score.measures[i].key) return i;
@@ -1338,11 +1340,12 @@
       for (let i = mi; i < hasta; i++) {
         Model.voces(state.score.measures[i]).forEach((v) => v.events.forEach((ev) => {
           if (ev.kind !== 'note') return;
+          const deP = viejas[v.pent] || vieja, aP = Model.keyAt(state.score, mi, v.pent);
           Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
-            const midi = Model.midiDe(n, vieja);
+            const midi = Model.midiDe(n, deP);
             const nat = (Model.diOctave(n.di) + 1) * 12 + Model.SEMIS[Model.diLetter(n.di)];
             const alt = midi - nat;
-            return { di: n.di, acc: alt === Model.keyAlter(nueva, Model.diLetter(n.di)) ? null : (ALT_ACC[alt] || null) };
+            return { di: n.di, acc: alt === Model.keyAlter(aP, Model.diLetter(n.di)) ? null : (ALT_ACC[alt] || null) };
           }));
         }));
       }
@@ -1425,7 +1428,7 @@
     enarmonia() {
       mutate((ev, found) => {
         if (ev.kind !== 'note') return;
-        const clave = Model.keyAt(state.score, found.mi);
+        const clave = Model.keyAt(state.score, found.mi, found.pent | 0);
         state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
           const midi = Model.midiDe(n, clave);
           const opciones = [-1, 1, -2, 2].map((d) => n.di + d).map((di) => {
@@ -1467,12 +1470,15 @@
         Model.voces(m).forEach((v) => v.events.forEach((ev) => {
           if (ev.cifrado) ev.cifrado = transportarCifrado(ev.cifrado, semis, aAqui);
           if (ev.kind !== 'note') return;
+          // un transpositor mueve su armadura escrita lo mismo que la de la obra
+          const t = Model.transpDe(state.score, v.pent);
+          const deP = Model.keyMovida(deAqui, -t), aP = Model.keyMovida(aAqui, -t);
           Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
-            const midi = Model.midiDe(n, deAqui) + semis;
+            const midi = Model.midiDe(n, deP) + semis;
             const di = n.di + grados;
             const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
             const alt = midi - nat;
-            return { di, acc: alt === Model.keyAlter(aAqui, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
+            return { di, acc: alt === Model.keyAlter(aP, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
           }));
         }));
         if (m.key && mi > 0) m.key = aAqui;
@@ -1603,7 +1609,7 @@
               toast('Escribe cifrados (Signos → cifrado) y saldrá su diagrama encima');
             }
           } },
-        { label: 'Instrumentos…', hint: 'voz · piano · guitarra · bajo · batería', fn: () => {
+        { label: 'Instrumentos…', hint: 'añadir · cambiar · transpositores', fn: () => {
           const sc = state.score;
           const ps = Model.partes(sc);
           const libres = 4 - Model.nPent(sc);
@@ -1613,11 +1619,33 @@
             Model.reflow(sc); render();
             toast(Model.INSTRUMENTOS[tipo].nombre + ' añadido debajo');
           };
-          menu([{ head: ps.length > 1 ? 'Instrumentos: ' + ps.map((p) => p.nombre).join(', ') : 'Añadir un instrumento' }]
+          /* Cambiar el instrumento de una parte: sólo los que llevan las
+             mismas pautas. Las notas se reescriben para que suene igual —en
+             la trompeta en Si♭ un Do de concierto se escribe Re—. */
+          const cambiar = (k) => {
+            const P = ps[k];
+            menu([{ head: 'Pasar ' + (P.nombre || 'la partitura') + ' a…' }].concat(Object.keys(Model.INSTRUMENTOS)
+              .filter((t) => Model.INSTRUMENTOS[t].claves.length === P.n)
+              .map((t) => {
+                const ins = Model.INSTRUMENTOS[t];
+                return { label: ins.nombre, hint: ins.transp ? 'transpositor' : '', sel: P.tipo === t || P.nombre === ins.nombre,
+                  fn: () => {
+                    snapshot();
+                    const error = Model.cambiarInstrumento(sc, k, t);
+                    if (error) { toast(error); return; }
+                    Model.reflow(sc); render();
+                    toast(ins.transp ? ins.nombre + ': escrito transportado, suena igual' : 'Ahora es ' + ins.nombre.toLowerCase());
+                  } };
+              })), btn);
+          };
+          menu([{ head: ps.length > 1 ? 'Instrumentos de la partitura' : 'El instrumento' }]
+            .concat(ps.map((P, k) => ({ label: (P.nombre || sc.instrumento || 'Partitura') + (Model.transpDe(sc, P.desde) ? ' (transpositor)' : ''),
+              hint: 'cambiar…', fn: () => cambiar(k) })))
+            .concat([{ sep: true }, { head: 'Añadir debajo' }])
             .concat(Object.keys(Model.INSTRUMENTOS).map((t) => {
               const ins = Model.INSTRUMENTOS[t];
               const cabe = ins.claves.length <= libres;
-              return { label: 'Añadir ' + ins.nombre.toLowerCase(), hint: cabe ? ins.claves.length + (ins.claves.length > 1 ? ' pautas' : ' pauta') : 'no cabe',
+              return { label: 'Añadir ' + ins.nombre.charAt(0).toLowerCase() + ins.nombre.slice(1), hint: cabe ? ins.claves.length + (ins.claves.length > 1 ? ' pautas' : ' pauta') : 'no cabe',
                        fn: () => anadir(t) };
             }))
             .concat(ps.length > 1 ? [{ sep: true }, { label: 'Quitar ' + ps[ps.length - 1].nombre.toLowerCase(), hint: 'con lo que tenga escrito',
@@ -1626,7 +1654,7 @@
         { label: 'Sonido…', hint: 'piano · guitarra · bajo', fn: () => {
           const sc = state.score;
           const auto = Sound.instrumentoDe(Object.assign({}, sc, { sonido: null }));
-          const nombre = { piano: 'piano', guitarra: 'guitarra', bajo: 'bajo' };
+          const nombre = { piano: 'piano', guitarra: 'guitarra', bajo: 'bajo', metal: 'metal (sintetizado)', cana: 'caña (sintetizada)', flauta: 'flauta (sintetizada)', arco: 'cuerda frotada (sintetizada)' };
           const elegir = (v) => { snapshot(); if (v) sc.sonido = v; else delete sc.sonido; toast('Suena a ' + nombre[Sound.instrumentoDe(sc)]); };
           menu([{ head: 'Con qué suena' },
             { label: 'Automático', hint: 'ahora: ' + nombre[auto] + (sc.tab ? ' (hay tablatura)' : ''), sel: !sc.sonido, fn: () => elegir(null) },
@@ -1757,6 +1785,12 @@
     percussion: '<sign>percussion</sign><line>2</line>'
   };
   /** `n` es el número de pentagrama (1, 2…); 0 significa que sólo hay uno. */
+  /** <transpose> de MusicXML: semitonos y, aparte, cuántas letras. */
+  function transposeXML(semis) {
+    const oct = Math.trunc(semis / 12), resto = semis - oct * 12;
+    const diat = Math.round(resto * 7 / 12) + oct * 7;
+    return `        <transpose><diatonic>${diat}</diatonic><chromatic>${semis}</chromatic></transpose>\n`;
+  }
   const claveXML = (clef, n) =>
     `        <clef${n ? ` number="${n}"` : ''}>${CLAVE_XML[clef.id] || CLAVE_XML.treble}</clef>\n`;
 
@@ -2035,10 +2069,12 @@
       if (i === 0) {
         xml += '      <attributes>\n' +
           `        <divisions>${div}</divisions>\n` +
-          `        <key><fifths>${Model.keyBySpec(s.key).fifths}</fifths></key>\n` +
+          `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, 0, P.desde)).fifths}</fifths></key>\n` +
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
           (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
           pentasP.map((_, p) => claveXML(Model.clefAt(s, 0, p + P.desde), nPent > 1 ? p + 1 : 0)).join('') +
+          // un transpositor: lo que hay que sumar a lo escrito para oírlo
+          (Model.transpDe(s, P.desde) ? transposeXML(Model.transpDe(s, P.desde)) : '') +
           (s.tab && s.tab.capo && digiDe(P) ? `        <staff-details><capo>${s.tab.capo | 0}</capo></staff-details>\n` : '') +
           '      </attributes>\n' +
           (kParte === 0 ? `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n` : '');
@@ -2052,8 +2088,8 @@
         const tc = m.time
           ? `        <time><beats>${m.time.num}</beats><beat-type>${m.time.den}</beat-type></time>\n` : '';
         // un cambio de armadura va antes que el de compás, como pide MusicXML
-        const kc = Model.keyAt(s, i) !== Model.keyAt(s, i - 1)
-          ? `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, i)).fifths}</fifths></key>\n` : '';
+        const kc = Model.keyAt(s, i, P.desde) !== Model.keyAt(s, i - 1, P.desde)
+          ? `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, i, P.desde)).fifths}</fifths></key>\n` : '';
         if (cambios || tc || kc) xml += '      <attributes>\n' + kc + tc + cambios + '      </attributes>\n';
       }
 
@@ -2084,12 +2120,12 @@
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
           xml += direccionesXML(ev, nPent > 1 ? vz.pent - P.desde : null);
-          xml += adornosXML(ev, Model.keyAt(s, i), marca);
+          xml += adornosXML(ev, Model.keyAt(s, i, vz.pent), marca);
           // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
           // adelante llevan <chord/> y comparten la duración de la primera.
           Model.alturas(ev).forEach((n, iN) => {
             const letter = Model.diLetter(n.di);
-            const alter = n.acc == null ? Model.keyAlter(Model.keyAt(s, i), letter) : (ALT[n.acc] || 0);
+            const alter = n.acc == null ? Model.keyAlter(Model.keyAt(s, i, vz.pent), letter) : (ALT[n.acc] || 0);
             const base = iN === 0;
             const notaciones =
               (base && (prev || ev.tie) ? (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') : '') +

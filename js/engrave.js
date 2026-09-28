@@ -334,7 +334,8 @@ const Engrave = (() => {
 
   /** Ancho extra del primer compás de cada sistema (clave, armadura, compás). */
   function leadWidth(score, isFirstSystem, mi) {
-    const fifths = Math.abs(Model.keyBySpec(Model.keyAt(score, mi | 0)).fifths);
+    // la armadura más larga de las pautas: un transpositor lleva la suya
+    const fifths = Math.max(...Model.pentagramas(score).map((_, p) => Math.abs(Model.keyBySpec(Model.keyAt(score, mi | 0, p)).fifths)));
     const ottava = Model.pentagramas(score).some((_, p) => Model.clefAt(score, 0, p).ottava);
     // con llave, el sistema empieza un poco más adentro
     const llave = Model.nPent(score) > 1 ? 16 : 0;
@@ -710,7 +711,7 @@ const Engrave = (() => {
         const compasAntes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
         if (primero) {
           stave.addClef(clef.vex, undefined, clef.ottava);
-          stave.addKeySignature(Model.keyAt(score, mi));
+          stave.addKeySignature(Model.keyAt(score, mi, p));
           if (o.isFirstSystemOfScore) stave.addTimeSignature(Model.timeLabel(compasAqui));
         } else if (clefPrevia && clefPrevia.id !== clef.id) {
           // Cambio de clave a media línea: va pequeña y antes de la barra.
@@ -718,8 +719,8 @@ const Engrave = (() => {
         }
         /* Un cambio de armadura se escribe donde ocurre, con los becuadros
            que anulan la de antes, como en la edición impresa. */
-        if (!primero && mi > 0 && Model.keyAt(score, mi) !== Model.keyAt(score, mi - 1)) {
-          try { stave.addKeySignature(Model.keyAt(score, mi), Model.keyAt(score, mi - 1)); } catch (e) { }
+        if (!primero && mi > 0 && Model.keyAt(score, mi, p) !== Model.keyAt(score, mi - 1, p)) {
+          try { stave.addKeySignature(Model.keyAt(score, mi, p), Model.keyAt(score, mi - 1, p)); } catch (e) { }
         }
         // un cambio de compás se escribe donde ocurre
         if (compasAntes && (compasAntes.num !== compasAqui.num || compasAntes.den !== compasAqui.den)) {

@@ -9,6 +9,7 @@ const Sound = (() => {
   let metro = null;
   let player = null;
   let vivos = [];        // fuentes sonando ahora mismo, para poder cortarlas
+  const registrar = (s) => { vivos.push(s); };
 
   function ac() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -200,7 +201,7 @@ const Sound = (() => {
   /** Con qué suena la obra: lo que diga (score.sonido) o, si no, guitarra
       —o bajo— cuando lleva tablatura, y piano en lo demás. */
   function instrumentoDe(score) {
-    if (score && score.sonido && (score.sonido === 'piano' || CUERDA[score.sonido])) return score.sonido;
+    if (score && score.sonido && (score.sonido === 'piano' || CUERDA[score.sonido] || SINTE[score.sonido])) return score.sonido;
     if (score && score.tab) return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
     return 'piano';
   }
@@ -210,15 +211,50 @@ const Sound = (() => {
   function instrumentoPent(score, pent) {
     if (!score || !score.partes || score.partes.length < 2) return instrumentoDe(score);
     const P = Model.parteDe(score, pent | 0);
-    if (P && (P.sonido === 'piano' || CUERDA[P.sonido])) return P.sonido;
+    if (P && (P.sonido === 'piano' || CUERDA[P.sonido] || SINTE[P.sonido])) return P.sonido;
     if (score.tab && typeof Tablatura !== 'undefined' && Tablatura.pentsDe(score).includes(pent | 0)) {
       return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
     }
     return 'piano';
   }
 
+  /* ---------- Vientos y arco: sintetizados ----------
+     No hay muestras de trompeta ni de saxo: se sintetizan con la forma de
+     onda que más se les parece —diente de sierra el metal, cuadrada la
+     caña, seno la flauta— y un ataque y un vibrato a su medida. Suenan a
+     sintetizador, no a instrumento real, y así se dice en el menú. */
+  const SINTE = {
+    metal: { onda: 'sawtooth', pico: 0.09, ataque: 0.035, corte: 2600, vib: 0 },
+    cana:  { onda: 'square', pico: 0.065, ataque: 0.025, corte: 2200, vib: 4.5 },
+    flauta:{ onda: 'sine', pico: 0.2, ataque: 0.06, corte: 6000, vib: 5 },
+    arco:  { onda: 'sawtooth', pico: 0.07, ataque: 0.09, corte: 3200, vib: 5.5 }
+  };
+  function sintetizar(at, midi, dur, vol, cfg) {
+    const c = ac();
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = c.createOscillator(), g = c.createGain(), filtro = c.createBiquadFilter();
+    o.type = cfg.onda; o.frequency.setValueAtTime(f, at);
+    filtro.type = 'lowpass'; filtro.frequency.value = cfg.corte;
+    if (cfg.vib) {
+      const lfo = c.createOscillator(), prof = c.createGain();
+      lfo.frequency.value = cfg.vib; prof.gain.value = f * 0.006;
+      lfo.connect(prof).connect(o.frequency);
+      lfo.start(at + 0.15); lfo.stop(at + Math.max(0.2, dur) + 0.1); registrar(lfo);
+    }
+    const pico = cfg.pico * (vol / 0.9), fin = at + Math.max(0.08, dur * 0.97);
+    const ataque = Math.min(cfg.ataque, (fin - at) * 0.4);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(pico, at + ataque);
+    g.gain.setValueAtTime(pico * 0.85, Math.max(at + ataque, fin - 0.06));
+    g.gain.exponentialRampToValueAtTime(0.0001, fin);
+    o.connect(filtro).connect(g).connect(c.destination);
+    registrar(o);
+    o.start(at); o.stop(fin + 0.02);
+  }
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur, vol = 0.9) {
+    if (SINTE[instrumento]) { sintetizar(at, midi, dur, vol, SINTE[instrumento]); return; }
     if (instrumento !== 'piano') { playCuerda(at, midi, dur, vol); return; }
     if (playSample(at, midi, dur, vol)) return;
     const c = ac();
@@ -316,8 +352,9 @@ const Sound = (() => {
         // la batería se sintetiza: sus notas no piden muestras
         if (ev.kind === 'note' && !Model.clefAt(score, mi, v.pent).percusion) {
           const inst = instrumentoPent(score, v.pent);
-          Model.midisOf(ev, Model.keyAt(score, mi), Model.clefAt(score, mi, v.pent))
-            .forEach((x) => { if (x == null) return; if (inst === 'piano') midis.push(x); else deCuerda.push([inst, Math.round(x)]); });
+          const tr = Model.transpDe(score, v.pent);
+          Model.midisOf(ev, Model.keyAt(score, mi, v.pent), Model.clefAt(score, mi, v.pent))
+            .forEach((x) => { if (x == null) return; x += tr; if (inst === 'piano') midis.push(x); else if (CUERDA[inst]) deCuerda.push([inst, Math.round(x)]); });
         }
       })));
       // la guitarra y el bajo no bajan nada: se calcula cada cuerda antes de empezar
@@ -423,13 +460,15 @@ const Sound = (() => {
       instrumento = instrumentoPent(score, it.pent);
       // con el pedal pisado la nota no se corta al soltar la tecla
       const dur = cfg.pedal ? it.dur * 1.9 : it.dur;
+      const tr = Model.transpDe(score, it.pent);
       const adornos = it.ev.adornos || [];
       // las notas de adorno roban un poco de tiempo a la que llevan delante
       const robo = Math.min(it.dur * 0.4, adornos.length * 0.075);
       adornos.forEach((a, k) => {
-        tone(cuando + k * 0.075, Model.midiDe(a, Model.keyAt(score, it.mi), it.clef) + cfg.octava, 0.09, cfg.vol * 0.8);
+        tone(cuando + k * 0.075, Model.midiDe(a, Model.keyAt(score, it.mi, it.pent), it.clef) + tr + cfg.octava, 0.09, cfg.vol * 0.8);
       });
-      const midis = Model.midisOf(it.ev, Model.keyAt(score, it.mi), it.clef);
+      // lo escrito, pasado a lo que suena: una trompeta en Si♭ suena un tono abajo
+      const midis = Model.midisOf(it.ev, Model.keyAt(score, it.mi, it.pent), it.clef).map((x) => x + tr);
       midis.forEach((m2, iN) => {
         const mid = m2 + cfg.octava;
         // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
@@ -510,8 +549,9 @@ const Sound = (() => {
                aquí porque aquí está la clave de ese compás y ese pentagrama:
                calcularlas fuera obligaría a recorrer la obra por segunda vez
                para averiguar algo que este bucle ya tiene delante. */
-            const ms = Model.midisOf(it.ev, Model.keyAt(score, it.mi), it.clef);
-            for (const m of ms) if (m != null) midis.push(m);
+            const tr = Model.transpDe(score, it.pent);
+            const ms = Model.midisOf(it.ev, Model.keyAt(score, it.mi, it.pent), it.clef);
+            for (const m of ms) if (m != null) midis.push(m + tr);
           }
         }
         const firma = ids.join(',');

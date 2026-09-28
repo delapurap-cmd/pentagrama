@@ -49,7 +49,8 @@ const Midi = (() => {
           } else if (ev.kind === 'note') {
             // Un acorde son varias notas a la vez. La ligadura sólo alarga la
             // nota base, que es la que `tie` describe.
-            const midis = Model.midisOf(ev, Model.keyAt(score, mi), clef);
+            const tr = Model.transpDe(score, v.pent);
+            const midis = Model.midisOf(ev, Model.keyAt(score, mi, v.pent), clef).map((x) => x + tr);
             const midi = midis[0];
             if (carry && carry.midi === midi) carry.end += d;       // ligadura
             else {

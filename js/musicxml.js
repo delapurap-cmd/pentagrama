@@ -213,6 +213,10 @@ const MusicXML = (() => {
       if (clave === 'percussion' || /bater|drum|perc/i.test(x.nombre)) return 'bateria';
       if (/bajo|bass/i.test(x.nombre) && !/contra|double/i.test(x.nombre)) return 'bajo';
       if (x.r.score.tab || /guit/i.test(x.nombre)) return 'guitarra';
+      if (/trump|tromp|trombon|trombone|horn|trompa|tuba/i.test(x.nombre)) return 'metal';
+      if (/sax|clarin|oboe|oboe|fagot|bassoon/i.test(x.nombre)) return 'cana';
+      if (/flaut|flute|piccolo|flauto/i.test(x.nombre)) return 'flauta';
+      if (/viol|cell|chelo|cello|viola|contrab|double/i.test(x.nombre)) return 'arco';
       return 'piano';
     };
     const base = sueltas[0].r.score;
@@ -220,7 +224,13 @@ const MusicXML = (() => {
     report.partName = sueltas.map((x) => x.nombre).join(', ');
     let total = Model.nPent(base);
     let claves = Model.pentagramas(base).map((p) => p.clef);
-    base.partes = [{ nombre: sueltas[0].nombre, n: total, sonido: suena(sueltas[0]) }];
+    const parteDe = (x, n) => {
+      const P = { nombre: x.nombre, n, sonido: suena(x) };
+      if (x.r.score.transp) P.transp = x.r.score.transp;
+      return P;
+    };
+    base.partes = [parteDe(sueltas[0], total)];
+    delete base.transp;
     if (base.tab) base.tab.pents = [...Array(total).keys()];
     sueltas.slice(1).forEach((x) => {
       const sc = x.r.score;
@@ -238,7 +248,7 @@ const MusicXML = (() => {
       });
       if (sc.tab && !base.tab) base.tab = Object.assign({}, sc.tab, { pents: [...Array(n).keys()].map((k) => total + k) });
       claves = claves.concat(Model.pentagramas(sc).map((p) => p.clef));
-      base.partes.push({ nombre: x.nombre, n, sonido: suena(x) });
+      base.partes.push(parteDe(x, n));
       report.notes += x.r.report.notes;
       total += n;
     });
@@ -644,6 +654,20 @@ const MusicXML = (() => {
     }
 
     if (mEmpty(score)) throw new Error('El archivo no trae notas que Reper pueda leer.');
+    /* Un transpositor (trompeta en Si♭, saxo alto…) trae lo ESCRITO y un
+       <transpose> que dice cuánto hay que sumar para oírlo. Las notas se
+       quedan escritas; la armadura de la obra se guarda en sonido real, que
+       es la que comparten todas las partes. */
+    const tr = part.querySelector('attributes > transpose');
+    if (tr) {
+      const t = (parseInt(tr.querySelector('chromatic')?.textContent, 10) || 0) +
+        12 * (parseInt(tr.querySelector('octave-change')?.textContent, 10) || 0);
+      if (t) {
+        score.transp = t;
+        score.key = Model.keyMovida(score.key, t);
+        score.measures.forEach((m) => { if (m.key) m.key = Model.keyMovida(m.key, t); });
+      }
+    }
     if (tempo) score.tempo = Math.max(30, Math.min(300, tempo));
     /* Al importar, el tempo que trae el fichero es el ESCRITO. A partir de
        aquí el control de velocidad mueve `tempo` y el mapa se escala en esa

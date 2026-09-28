@@ -166,7 +166,12 @@ const Model = (() => {
      siguientes. Sin `partes`, la obra es un solo instrumento con todos. */
   function partes(score) {
     const total = nPent(score);
-    if (!score.partes || !score.partes.length) return [{ nombre: '', n: total, desde: 0 }];
+    if (!score.partes || !score.partes.length) {
+      const sola = { nombre: score.instrumento || '', n: total, desde: 0 };
+      if (score.transp) sola.transp = score.transp;
+      if (score.sonido) sola.sonido = score.sonido;
+      return [sola];
+    }
     let desde = 0;
     const out = [];
     score.partes.forEach((p) => {
@@ -180,14 +185,115 @@ const Model = (() => {
   }
   const parteDe = (score, pent) => partes(score).find((p) => pent >= p.desde && pent < p.desde + p.n) || partes(score)[0];
 
-  /* Los instrumentos que se pueden añadir, con sus pautas y su sonido. */
+  /* Los instrumentos que se pueden añadir, con sus pautas y su sonido.
+     `transp` es lo que hay que sumar a lo escrito para oír lo que suena:
+     una trompeta en Si♭ escribe un Re y suena un Do (−2). Un transpositor
+     lleva su propia armadura —la de la obra movida lo mismo—, y al
+     cambiar de instrumento las notas se reescriben para que suene igual. */
   const INSTRUMENTOS = {
-    voz:      { nombre: 'Voz', claves: ['treble'], sonido: 'piano' },
-    piano:    { nombre: 'Piano', claves: ['treble', 'bass'], sonido: 'piano' },
-    guitarra: { nombre: 'Guitarra', claves: ['treble-8v'], sonido: 'guitarra' },
-    bajo:     { nombre: 'Bajo', claves: ['bass'], sonido: 'bajo' },
-    bateria:  { nombre: 'Batería', claves: ['percussion'], sonido: 'bateria' }
+    voz:          { nombre: 'Voz', claves: ['treble'], sonido: 'piano' },
+    piano:        { nombre: 'Piano', claves: ['treble', 'bass'], sonido: 'piano' },
+    guitarra:     { nombre: 'Guitarra', claves: ['treble-8v'], sonido: 'guitarra' },
+    bajo:         { nombre: 'Bajo', claves: ['bass'], sonido: 'bajo' },
+    bateria:      { nombre: 'Batería', claves: ['percussion'], sonido: 'bateria' },
+    flauta:       { nombre: 'Flauta', claves: ['treble'], sonido: 'flauta' },
+    violin:       { nombre: 'Violín', claves: ['treble'], sonido: 'arco' },
+    violonchelo:  { nombre: 'Violonchelo', claves: ['bass'], sonido: 'arco' },
+    trompeta:     { nombre: 'Trompeta en Si♭', claves: ['treble'], sonido: 'metal', transp: -2 },
+    clarinete:    { nombre: 'Clarinete en Si♭', claves: ['treble'], sonido: 'cana', transp: -2 },
+    saxoSoprano:  { nombre: 'Saxo soprano en Si♭', claves: ['treble'], sonido: 'cana', transp: -2 },
+    saxoAlto:     { nombre: 'Saxo alto en Mi♭', claves: ['treble'], sonido: 'cana', transp: -9 },
+    saxoTenor:    { nombre: 'Saxo tenor en Si♭', claves: ['treble'], sonido: 'cana', transp: -14 },
+    saxoBaritono: { nombre: 'Saxo barítono en Mi♭', claves: ['treble'], sonido: 'cana', transp: -21 },
+    trompa:       { nombre: 'Trompa en Fa', claves: ['treble'], sonido: 'metal', transp: -7 },
+    trombon:      { nombre: 'Trombón', claves: ['bass'], sonido: 'metal' }
   };
+
+  /** Semitonos de lo escrito a lo que suena en la pauta `pent`. */
+  function transpDe(score, pent = 0) {
+    if (!score) return 0;
+    if (!score.partes || !score.partes.length) return score.transp | 0;
+    return parteDe(score, pent | 0).transp | 0;
+  }
+
+  /** La tónica (0–11) de una armadura mayor. */
+  const tonicaDe = (spec) => (SEMIS[spec[0].toLowerCase()] + (spec[1] === '#' ? 1 : spec[1] === 'b' ? -1 : 0) + 12) % 12;
+
+  /** La armadura de `spec` movida `semis` semitonos, con la escritura más
+      sencilla (Re♭ mejor que Do♯ si están igual de lejos de la de antes). */
+  function keyMovida(spec, semis) {
+    if (!(semis % 12)) return spec;
+    const pc = (tonicaDe(spec) + semis % 12 + 24) % 12;
+    const antes = keyBySpec(spec).fifths;
+    const opciones = KEYS.filter((k) => tonicaDe(k.spec) === pc);
+    opciones.sort((a, b) => Math.abs(a.fifths) - Math.abs(b.fifths) || Math.abs(a.fifths - antes) - Math.abs(b.fifths - antes));
+    return opciones[0] ? opciones[0].spec : spec;
+  }
+
+  /** Cómo se escribe un MIDI (escrito) en una armadura y una clave. */
+  function escribirMidi(midi, spec, clef) {
+    const escrito = midi - ((clef && clefById(clef.id || clef).octava) || 0);
+    const oct = Math.floor(escrito / 12) - 1, bemoles = keyBySpec(spec).fifths < 0;
+    let mejor = null;
+    for (let o = oct - 1; o <= oct + 1; o++) for (let k = 0; k < 7; k++) {
+      const letra = LETTERS[k], alt = escrito - ((o + 1) * 12 + SEMIS[letra]);
+      if (alt < -2 || alt > 2) continue;
+      const enClave = keyAlter(spec, letra);
+      const coste = (alt === enClave ? 0 : 1.5) + Math.abs(alt) * 0.08 + (bemoles && alt > 0 ? 0.2 : 0) + (!bemoles && alt < 0 ? 0.2 : 0);
+      if (!mejor || coste < mejor.coste) mejor = { di: o * 7 + k, acc: alt === enClave ? null : ({ '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' })[alt], coste };
+    }
+    return mejor && { di: mejor.di, acc: mejor.acc };
+  }
+
+  /** Cambia el instrumento de la parte `iParte` (o de la obra, si es un
+      solo instrumento): mismas pautas, y las notas reescritas para que
+      suene exactamente lo mismo. Devuelve un texto de error o null. */
+  function cambiarInstrumento(score, iParte, tipo) {
+    const ins = INSTRUMENTOS[tipo];
+    if (!ins) return 'Instrumento desconocido';
+    const ps = partes(score);
+    const P = ps[iParte | 0];
+    if (!P) return 'No hay esa parte';
+    if (P.n !== ins.claves.length) return `${ins.nombre} lleva ${ins.claves.length === 1 ? 'una pauta' : ins.claves.length + ' pautas'} y esta parte tiene ${P.n}`;
+    const viejo = transpDe(score, P.desde), nuevo = ins.transp | 0;
+    const cambios = [];
+    for (let mi = 0; mi < score.measures.length; mi++) {
+      for (const v of voces(score.measures[mi])) {
+        if (v.pent < P.desde || v.pent >= P.desde + P.n) continue;
+        const claveVieja = clefAt(score, mi, v.pent);
+        const claveNueva = clefById(ins.claves[v.pent - P.desde]);
+        if (claveVieja.percusion || claveNueva.percusion) continue;
+        const kv = keyAt(score, mi, v.pent), kn = keyMovida(keyAt(score, mi), -nuevo);
+        for (const ev of v.events) {
+          if (ev.kind !== 'note') continue;
+          const cabezas = alturas(ev).map((h) => escribirMidi(midiDe(h, kv, claveVieja) + viejo - nuevo, kn, claveNueva));
+          if (cabezas.some((c) => !c)) return 'Una nota no se puede escribir en ese instrumento';
+          const adornos = (ev.adornos || []).map((h) => Object.assign({}, h, escribirMidi(midiDe(h, kv, claveVieja) + viejo - nuevo, kn, claveNueva)));
+          cambios.push({ ev, cabezas, adornos });
+        }
+      }
+    }
+    cambios.forEach(({ ev, cabezas, adornos }) => {
+      ev.di = cabezas[0].di; ev.acc = cabezas[0].acc;
+      if (cabezas.length > 1) ev.mas = cabezas.slice(1); else delete ev.mas;
+      if (ev.adornos && ev.adornos.length) ev.adornos = adornos;
+    });
+    const claves = pentagramas(score).map((p) => p.clef);
+    ins.claves.forEach((c, k) => { claves[P.desde + k] = c; });
+    ponerPentagramas(score, claves.length, claves);
+    score.measures.forEach((m) => { if (m.claves) for (let p = P.desde; p < P.desde + P.n; p++) delete m.claves[p]; });
+    if (!score.partes || !score.partes.length) {
+      if (ps.length === 1) {
+        score.instrumento = ins.nombre; score.sonido = ins.sonido;
+        if (ins.transp) score.transp = ins.transp; else delete score.transp;
+        return null;
+      }
+    }
+    const destino = score.partes[iParte | 0];
+    destino.nombre = ins.nombre; destino.sonido = ins.sonido; destino.tipo = tipo;
+    if (ins.transp) destino.transp = ins.transp; else delete destino.transp;
+    return null;
+  }
 
   /** Añade un instrumento debajo de los que hay. Devuelve false si no cabe
       (el sistema admite cuatro pautas). */
@@ -196,10 +302,19 @@ const Model = (() => {
     if (!ins) return false;
     const antes = nPent(score);
     if (antes + ins.claves.length > 4) return false;
-    if (!score.partes || !score.partes.length) score.partes = [{ nombre: score.instrumento || 'Instrumento', n: antes }];
+    if (!score.partes || !score.partes.length) {
+      // la que había pasa a ser la primera parte, con su sonido y su transporte
+      const primera = { nombre: score.instrumento || 'Instrumento', n: antes };
+      if (score.sonido) primera.sonido = score.sonido;
+      score.partes = [primera];
+    }
     const claves = pentagramas(score).map((p) => p.clef).concat(ins.claves);
     ponerPentagramas(score, claves.length, claves);
-    score.partes.push({ nombre: ins.nombre, n: ins.claves.length, sonido: ins.sonido });
+    if (!score.partes[0].transp && score.transp) score.partes[0].transp = score.transp;
+    delete score.transp;
+    const nueva = { nombre: ins.nombre, n: ins.claves.length, sonido: ins.sonido, tipo };
+    if (ins.transp) nueva.transp = ins.transp;
+    score.partes.push(nueva);
     return true;
   }
 
@@ -250,12 +365,18 @@ const Model = (() => {
   }
   /** La armadura que rige en el compás `mi`: la del último cambio escrito
       (m.key) a su izquierda, o la de la obra. */
-  function keyAt(score, mi) {
+  function keyAt(score, mi, pent) {
+    let k = score.key;
     for (let i = Math.min(mi, score.measures.length - 1); i >= 1; i--) {
-      const k = score.measures[i] && score.measures[i].key;
-      if (k) return k;
+      const x = score.measures[i] && score.measures[i].key;
+      if (x) { k = x; break; }
     }
-    return score.key;
+    // con `pent`, la de esa pauta: un transpositor la lleva movida
+    if (pent != null) {
+      const t = transpDe(score, pent);
+      if (t) return keyMovida(k, -t);
+    }
+    return k;
   }
   function capacityAt(score, mi) {
     const m = score.measures[mi];
@@ -751,7 +872,7 @@ const Model = (() => {
     clefById, clefAt, pentagramas, nPent, ponerPentagramas, ponerClaveEn,
     timeAt, capacityAt, inicios, mapaTempo, segundosEn, tickEn, tempoEn,
     voces, nVoces, vozDe, asegurarVoz, vozDePentagrama, podarVoces, compasVacio, mismaVoz,
-    keyAt, PERCUSION, percusionDe, partes, parteDe, INSTRUMENTOS, anadirInstrumento, quitarUltimoInstrumento, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
+    keyAt, keyMovida, escribirMidi, transpDe, cambiarInstrumento, PERCUSION, percusionDe, partes, parteDe, INSTRUMENTOS, anadirInstrumento, quitarUltimoInstrumento, alturas, anadirAltura, quitarAltura, esAcorde, ponerAlturas, editarCabeza, cabezaCercana, midiDe, midisOf,
     diLetter, diOctave, diToKeyStr, midiOf,
     note, rest, emptyMeasure, measureTicks, measureTicksMax, uid,
     newScore, addSystem, addPage, trimEmptyTail, ensureWritingTail, reflow, autoRests,
