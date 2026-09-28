@@ -190,6 +190,66 @@ const MusicXML = (() => {
   /* Varios instrumentos: cada <part> se lee por separado con el mismo
      lector de siempre y luego se apilan sus pautas en una sola partitura,
      hasta cuatro. Lo que no cabe se dice en el informe. */
+  /* Dos voces de la misma pauta con el mismo ritmo, nota por nota, son un
+     solo acorde: una plica y una barra. Muchos archivos (los de MuseScore
+     que vienen de un MIDI o de un escaneo) reparten las notas de la mano en
+     dos voces aunque suenen juntas, y el grabado salía con dos plicas y dos
+     barras encima de las mismas notas. Se une por grupos —una nota suelta o
+     todo lo que va bajo una barra— y sólo donde coinciden en todo; donde el
+     ritmo difiere, las dos voces sí dicen algo y se quedan. Lo que la voz de
+     abajo cede se vuelve silencio invisible, para que siga midiendo. */
+  function unirVocesGemelas(score) {
+    const firma = (ev) => [ev.kind, ev.dur, ev.dots | 0,
+      ev.tup ? (ev.tup.num + '/' + ev.tup.den) : '', ev.kind === 'note' ? !!ev.tie : '',
+      ev.barra || '', ev.adornos && ev.adornos.length ? 'a' : '', ev.cuerdas ? 'c' : ''].join('|');
+    const inicios = (evs) => { let t = 0; return evs.map((ev) => { const x = t; t += Model.evTicks(ev); return x; }); };
+    const CAMPOS = ['matiz', 'lig', 'ligLado', 'texto', 'textoArriba', 'dedo', 'orn', 'pedal', 'reg', 'octava', 'tempo', 'cifrado', 'letra'];
+    const unir = (a, b) => {
+      if (a.kind === 'rest') { if (a.oculto && !b.oculto) delete a.oculto; }
+      else {
+        Model.alturas(b).forEach((h) => Model.anadirAltura(a, h.di, h.acc));
+        delete a.plica;
+        if (b.art) a.art = [...new Set([...(a.art || []), ...b.art])];
+        CAMPOS.forEach((c) => { if (a[c] == null && b[c] != null) a[c] = b[c]; });
+      }
+      const r = Model.rest(b.dur, b.dots);
+      r.oculto = true;
+      if (b.tup) r.tup = b.tup;
+      return r;
+    };
+    score.measures.forEach((m) => {
+      const vs = Model.voces(m);
+      for (let i = 0; i < vs.length; i++) {
+        for (let j = i + 1; j < vs.length; j++) {
+          const A = vs[i].events, B = vs[j].events;
+          if (vs[i].pent !== vs[j].pent || !A.length || !B.length) continue;
+          const tA = inicios(A), tB = inicios(B);
+          const enB = new Map(tB.map((t, k) => [t, k]));
+          let k = 0;
+          while (k < A.length) {
+            // el grupo: una nota, o todo lo que cuelga de una barra
+            let fin = k;
+            if (A[k].barra === 'begin') while (fin + 1 < A.length && A[fin].barra !== 'end') fin++;
+            const kb = enB.get(tA[k]);
+            let igual = kb != null && kb + (fin - k) < B.length && !B[kb].oculto;
+            for (let x = 0; igual && x <= fin - k; x++) {
+              const a = A[k + x], b = B[kb + x];
+              igual = firma(a) === firma(b) && !b.oculto && (a.kind === 'note' || b.kind === 'rest');
+            }
+            // dos silencios a la vez también son uno solo
+            if (igual) for (let x = 0; x <= fin - k; x++) B[kb + x] = unir(A[k + x], B[kb + x]);
+            k = fin + 1;
+          }
+        }
+      }
+      // la voz que se quedó sin nada que dibujar sobra
+      if (m.voces) {
+        m.voces = m.voces.filter((v) => v.events.some((ev) => !ev.oculto));
+        if (!m.voces.length) delete m.voces;
+      }
+    });
+  }
+
   function parse(xml) {
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     const todas = doc.querySelector('parsererror') ? [] : [...doc.querySelectorAll('score-partwise > part')];
@@ -701,6 +761,8 @@ const MusicXML = (() => {
     score.tempoEscrito = score.tempo;
     Model.ponerPentagramas(score, nPent,
       Array.from({ length: nPent }, (_, p) => clavesVistas[p] || (p === 0 ? 'treble' : 'bass')));
+
+    unirVocesGemelas(score);
 
     // La maquetación no pertenece al archivo musical: no agregar compases
     // ficticios para completar el último sistema. reflow añade solamente

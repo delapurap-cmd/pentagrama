@@ -727,12 +727,39 @@ const Engrave = (() => {
     }
     const P = Curve.Position;
     const ancla = (n) => (lado === 'above' ? arriba(n) : !arriba(n)) ? P.NEAR_TOP : P.NEAR_HEAD;
+    /* Lo que la ligadura tiene que saltar: cabezas, plicas y barras de las
+       notas de en medio. Sin esto pasaba por encima de la primera nota y
+       atravesaba la barra de las siguientes. */
+    const borde = (n) => {
+      try {
+        const ys = n.getYs();
+        let y = lado === 'above' ? Math.min(...ys) : Math.max(...ys);
+        if (n.hasStem && n.hasStem() && (lado === 'above') === arriba(n)) {
+          const e = n.getStemExtents();
+          y = lado === 'above' ? Math.min(y, e.topY, e.baseY) : Math.max(y, e.topY, e.baseY);
+        }
+        return y;
+      } catch (e) { return null; }
+    };
+    let alto = 14;
+    const xa = a.getAbsoluteX(), xb = b.getAbsoluteX();
+    const ya = borde(a), yb = borde(b);
+    if (info && info.medio && ya != null && yb != null && xb > xa) {
+      info.medio.forEach((n) => {
+        const x = n.getAbsoluteX(), y = borde(n);
+        if (y == null || x <= xa || x >= xb) return;
+        const linea = ya + (yb - ya) * (x - xa) / (xb - xa);
+        const hondo = lado === 'above' ? linea - y : y - linea;
+        alto = Math.max(alto, (hondo + 12) / 0.75);
+      });
+    }
+    alto = Math.min(alto, 70);
     return new Curve(a, b, {
       thickness: 3.4,
       position: ancla(a), positionEnd: ancla(b),
       openingDirection: lado === 'above' ? 'down' : 'up',
       yShift: 8,
-      cps: [{ x: 0, y: 14 }, { x: 0, y: 14 }]
+      cps: [{ x: 0, y: alto }, { x: 0, y: alto }]
     });
   }
 
@@ -762,6 +789,8 @@ const Engrave = (() => {
         const ab = ligPorVoz.get(voz); ligPorVoz.delete(voz);
         const x = ab && refs.get(ab.id), y = refs.get(ev.id);
         if (x && y && x.system === y.system && Curve) {
+          const pauta = x.note.getStave && x.note.getStave();
+          ab.medio = [...refs.values()].filter((r) => r.system === x.system && r.note.getStave && r.note.getStave() === pauta).map((r) => r.note);
           try { ligadura(x.note, y.note, ab).setContext(x.ctx).draw(); } catch (e) { }
         }
       }
