@@ -112,7 +112,7 @@ const Engrave = (() => {
     grupeto: 'turn', grupetoInv: 'turnInverted'
   };
 
-  function buildNote(ev, clef) {
+  function buildNote(ev, clef, lado) {
     const isRest = ev.kind === 'rest';
     // un silencio invisible del archivo: ocupa su tiempo y no se ve
     if (isRest && ev.oculto && VF.GhostNote) {
@@ -126,7 +126,9 @@ const Engrave = (() => {
     const centro = clef ? clef.midLine : Model.MIDDLE_LINE_DI;
     const opts = {
       keys: isRest
-        ? [Model.diToKeyStr(centro + (ev.measureRest ? 2 : 0))]
+        /* con dos voces en la pauta, el silencio de la de arriba sube y el
+           de la de abajo baja: si no, cae en medio de las notas de la otra */
+        ? [Model.diToKeyStr(centro + (ev.measureRest ? 2 : 0) + (lado || 0) * 4)]
         : notas.map((n) => Model.diToKeyStr(n.di) + (clef && clef.percusion && Model.percusionDe(n.di).x ? '/x2' : '')),
       duration: durStr(ev),
       clef: clef ? clef.vex : 'treble',
@@ -216,8 +218,8 @@ const Engrave = (() => {
     }
     if (ev.texto && Annotation) {
       try {
-        n.addModifier(new Annotation(String(ev.texto)).setFont(SERIF, 12, 400, 'italic')
-          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM), 0);
+        n.addModifier(new Annotation(String(ev.texto)).setFont(SERIF, 12, ev.textoArriba ? 700 : 400, 'italic')
+          .setVerticalJustification(ev.textoArriba ? Annotation.VerticalJustify.TOP : Annotation.VerticalJustify.BOTTOM), 0);
       } catch (e) { }
     }
     return n;
@@ -544,7 +546,7 @@ const Engrave = (() => {
 
       if (pageIndex === 0 && !compact) {
         const head = document.createElement('div');
-        head.className = 'sheet-head';
+        head.className = 'sheet-head' + (String(score.title || '').length > 34 ? ' largo' : '');
         head.innerHTML =
           `<div class="sheet-title" contenteditable="true" spellcheck="false" data-field="title">${escapeHtml(score.title)}</div>` +
           `<div class="sheet-sub" contenteditable="true" spellcheck="false" data-field="composer" data-ph="añadir autor">${escapeHtml(score.composer)}</div>`;
@@ -701,6 +703,30 @@ const Engrave = (() => {
     })));
   }
 
+  /* Una ligadura de expresión va por encima o por debajo de las notas, no
+     por en medio: se ancla a la cabeza por el lado de las cabezas y a la
+     punta de la plica por el lado de las plicas, y se abre hacia fuera.
+     El lado lo dice el archivo; si no, con dos voces en la pauta la de
+     arriba va encima y la de abajo debajo, y con una, el contrario a la
+     plica. */
+  function ligadura(a, b, info) {
+    const arriba = (n) => (n.getStemDirection ? n.getStemDirection() : 1) === 1;
+    let lado = info && info.lado;
+    if (!lado) {
+      if (info && info.hermanas > 1) lado = info.primera ? 'above' : 'below';
+      else lado = arriba(a) ? 'below' : 'above';
+    }
+    const P = Curve.Position;
+    const ancla = (n) => (lado === 'above' ? arriba(n) : !arriba(n)) ? P.NEAR_TOP : P.NEAR_HEAD;
+    return new Curve(a, b, {
+      thickness: 3.4,
+      position: ancla(a), positionEnd: ancla(b),
+      openingDirection: lado === 'above' ? 'down' : 'up',
+      yShift: 8,
+      cps: [{ x: 0, y: 14 }, { x: 0, y: 14 }]
+    });
+  }
+
   /* Lo que abarca más de una nota: ligaduras de expresión, reguladores y
      pedal. Se dibuja al final, cuando ya se sabe dónde ha caído cada nota, y
      sólo si las dos puntas están en el mismo sistema: partir una ligadura
@@ -716,12 +742,18 @@ const Engrave = (() => {
       return { a: x, b: y, dato: a.dato };
     };
 
+    /* Una ligadura de expresión por voz: con dos voces en la pauta (o una
+       mano en cada pauta) cada una lleva la suya, y la de una no puede
+       cerrar la de la otra. */
+    const ligPorVoz = new Map();
     score.measures.forEach((m) => Model.voces(m).forEach((vz) => vz.events.forEach((ev) => {
-      if (ev.lig === 'inicio') abiertos.lig = { id: ev.id };
+      const voz = vz.pent + ':' + vz.vi;
+      if (ev.lig === 'inicio') ligPorVoz.set(voz, { id: ev.id, lado: ev.ligLado, hermanas: Model.voces(m).filter((x) => x.pent === vz.pent).length, primera: Model.voces(m).filter((x) => x.pent === vz.pent)[0] === vz });
       else if (ev.lig === 'fin') {
-        const par = cerrar('lig', ev.id);
-        if (par && Curve) {
-          try { new Curve(par.a.note, par.b.note, {thickness:3.4}).setContext(par.a.ctx).draw(); } catch (e) { }
+        const ab = ligPorVoz.get(voz); ligPorVoz.delete(voz);
+        const x = ab && refs.get(ab.id), y = refs.get(ev.id);
+        if (x && y && x.system === y.system && Curve) {
+          try { ligadura(x.note, y.note, ab).setContext(x.ctx).draw(); } catch (e) { }
         }
       }
       if (ev.reg === 'cresc' || ev.reg === 'dim') abiertos.reg = { id: ev.id, dato: ev.reg };
@@ -906,10 +938,11 @@ const Engrave = (() => {
         const auto = Model.autoRests(m, score.time, v.vi, Model.capacityAt(score, mi));
         const all = v.events.concat(auto);
         if (!all.length) return;
-        const notes = all.map((ev) => buildNote(ev, pent.clef));
         // con dos voces en la misma pauta, la de arriba lleva las plicas
         // hacia arriba y la de abajo hacia abajo, como manda la costumbre
         const hermanas = Model.voces(m).filter((x) => x.pent === v.pent);
+        const lado = hermanas.length > 1 ? (hermanas[0].vi === v.vi ? 1 : -1) : 0;
+        const notes = all.map((ev) => buildNote(ev, pent.clef, lado));
         if (Stem) {
           const porVoz = hermanas.length > 1 ? (hermanas[0].vi === v.vi ? Stem.UP : Stem.DOWN) : null;
           all.forEach((ev, idx) => {

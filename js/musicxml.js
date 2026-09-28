@@ -494,7 +494,7 @@ const MusicXML = (() => {
           const pal = node.querySelector('direction-type > words');
           if (pal) {
             const t = (pal.textContent || '').trim();
-            if (t) textoPendiente = t.slice(0, 40);
+            if (t) textoPendiente = { t: t.slice(0, 40), arriba: node.getAttribute('placement') === 'above' };
           }
           return;
         }
@@ -587,9 +587,14 @@ const MusicXML = (() => {
           .map((x) => ORNAMENTOS[x.tagName]).find(Boolean);
         if (orn) ev.orn = orn;
 
-        const lig = [...node.querySelectorAll('notations > slur')].map((x) => x.getAttribute('type'));
-        if (lig.includes('start')) ev.lig = 'inicio';
-        else if (lig.includes('stop')) ev.lig = 'fin';
+        const ligs = [...node.querySelectorAll('notations > slur')];
+        const lig = ligs.map((x) => x.getAttribute('type'));
+        if (lig.includes('start')) {
+          ev.lig = 'inicio';
+          // por dónde va la curva, si el archivo lo dice
+          const pl = ligs.find((x) => x.getAttribute('type') === 'start').getAttribute('placement');
+          if (pl === 'above' || pl === 'below') ev.ligLado = pl;
+        } else if (lig.includes('stop')) ev.lig = 'fin';
 
         cuerdaDe(ev, di, node);
         // técnicas de guitarra (las que escribe MuseScore y este editor)
@@ -627,7 +632,11 @@ const MusicXML = (() => {
         if (pedalPendiente) { ev.pedal = pedalPendiente; pedalPendiente = null; }
         if (regPendiente) { ev.reg = regPendiente; regPendiente = null; }
         if (octavaPendiente != null) { ev.octava = octavaPendiente; octavaPendiente = null; }
-        if (textoPendiente) { ev.texto = textoPendiente; textoPendiente = null; }
+        if (textoPendiente) {
+          ev.texto = textoPendiente.t;
+          if (textoPendiente.arriba) ev.textoArriba = true;
+          textoPendiente = null;
+        }
         if (tempoPendiente) { ev.tempo = tempoPendiente; tempoPendiente = null; }
 
         aqui.events.push(ev);
