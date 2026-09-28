@@ -242,6 +242,46 @@ const MusicXML = (() => {
           }
         }
       }
+      /* La nota del bajo repetida en otra voz: el archivo pone la misma
+         nota, a la vez, en una voz aparte con plica hacia abajo, una fusa y
+         un silencio —así marca MuseScore el bajo acentuado de un arpegio—.
+         Grabado tal cual salen banderitas y silencios metidos dentro del
+         grupo barrado. Si la otra voz ya toca esa nota en ese momento y
+         durante al menos lo mismo, la repetida sobra: su matiz pasa a la
+         buena y lo que queda de ella, hasta su siguiente nota, calla. */
+      for (let i = 0; i < vs.length; i++) {
+        for (let j = 0; j < vs.length; j++) {
+          if (i === j || vs[i].pent !== vs[j].pent) continue;
+          const A = vs[i].events, B = vs[j].events;
+          const tA = inicios(A), tB = inicios(B);
+          const enA = new Map(tA.map((t, k) => [t, k]));
+          let callando = false;
+          B.forEach((b, k) => {
+            if (b.kind === 'rest') {
+              if (callando && !b.oculto) { b.oculto = true; }
+              return;
+            }
+            callando = false;
+            if (b.oculto) return;
+            const ka = enA.get(tB[k]);
+            const a = ka == null ? null : A[ka];
+            // una nota que va en su propia barra es melodía, no un bajo repetido
+            if (!a || a.kind !== 'note' || a.oculto || b.tie || b.lig || b.barra) return;
+            if (Model.evTicks(b) > Model.evTicks(a)) return;
+            const enLaOtra = new Set(Model.alturas(a).map((h) => h.di));
+            if (!Model.alturas(b).every((h) => enLaOtra.has(h.di))) return;
+            if (b.art) a.art = [...new Set([...(a.art || []), ...b.art])];
+            CAMPOS.forEach((c) => { if (a[c] == null && b[c] != null) a[c] = b[c]; });
+            // la plica de la buena no se toca: va dentro de su barra
+            const r = Model.rest(b.dur, b.dots);
+            r.oculto = true;
+            if (b.tup) r.tup = b.tup;
+            B[k] = r;
+            callando = true;
+          });
+        }
+      }
+
       // la voz que se quedó sin nada que dibujar sobra
       if (m.voces) {
         m.voces = m.voces.filter((v) => v.events.some((ev) => !ev.oculto));

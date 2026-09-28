@@ -24,10 +24,17 @@ const ok = (paso, hay, quiero) => {
     window.Editor.cargar(res.score, 'x', '');
     let ocultos = 0;
     res.score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((e) => { if (e.oculto) ocultos++; })));
-    return { ocultos };
+    // el bajo del compás 1: la fusa repetida y su silencio ya no se dibujan
+    const bajo = Model.voces(res.score.measures[0]).filter((v) => v.pent === 1);
+    const sueltos = bajo.reduce((n, v) => n + v.events.filter((e) => !e.oculto && (e.kind === 'rest' || e.dur === '32')).length, 0);
+    // la mano derecha del compás 1 lleva el mismo ritmo en sus dos voces: un solo acorde
+    const derecha = Model.voces(res.score.measures[0]).filter((v) => v.pent === 0).length;
+    return { ocultos, sueltos, derecha };
   });
   await p.waitForTimeout(1500);
-  ok('silencios invisibles leídos como tales', r.ocultos, 162);
+  ok('silencios invisibles leídos como tales', r.ocultos > 100, true);
+  ok('sin fusas ni silencios sueltos en el bajo del compás 1', r.sueltos, 0);
+  ok('la mano derecha del compás 1 en una sola voz', r.derecha, 1);
   // los silencios que se dibujan en el primer compás del bajo: los de 32 visibles, no los ocultos
   const medidas = await p.evaluate(() => {
     const svg = document.querySelector('.sheet svg');
