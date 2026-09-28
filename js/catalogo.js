@@ -166,26 +166,113 @@ const Catalogo = (() => {
     return fallos + (a.length - i) + (b.length - j) <= 1;
   }
 
+  /* Cómo suena una palabra, para perdonar faltas de oído: «mosart» y
+     «mozart» suenan igual; «bethoven» y «beethoven», también. */
+  const suena = (w) => w
+    .replace(/ph/g, 'f').replace(/t?sch|t?ch|sh/g, 's').replace(/c([eiy])/g, 's$1').replace(/qu|ck|[cqk]/g, 'k')
+    .replace(/[zx]/g, 's').replace(/v/g, 'b').replace(/[yj]/g, 'i').replace(/w/g, 'b')
+    .replace(/h/g, '').replace(/(.)\1+/g, '$1');
+
+  // Cuántas letras hay que cambiar, quitar, poner o dar la vuelta para ir
+  // de una palabra a otra; en cuanto pasa de `tope` deja de contar.
+  function distancia(a, b, tope) {
+    if (Math.abs(a.length - b.length) > tope) return tope + 1;
+    let ante = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const fila = [i];
+      let menor = i;
+      for (let j = 1; j <= b.length; j++) {
+        let d = Math.min(prev[j] + 1, fila[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (ante && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d = Math.min(d, ante[j - 2] + 1);
+        fila.push(d);
+        if (d < menor) menor = d;
+      }
+      if (menor > tope) return tope + 1;
+      ante = prev; prev = fila;
+    }
+    return prev[b.length];
+  }
+
+  /* Las palabras que el buscador conoce: los apellidos y nombres de los
+     compositores del catálogo y las de los grupos de sinónimos. Con ellas
+     se corrige lo tecleado antes de buscar: «motzar» → «mozart». */
+  let vocabulario = null;
+  const pesos = new Map();      // cuántas obras tiene detrás cada palabra
+  function conocidas() {
+    if (vocabulario && vocabulario.de === facetas) return vocabulario.palabras;
+    const palabras = new Map();   // palabra → cómo suena
+    const pon = (w, cuenta = 0) => {
+      if (w.length < 4) return;
+      if (!palabras.has(w)) palabras.set(w, suena(w));
+      pesos.set(w, (pesos.get(w) || 0) + cuenta);
+    };
+    pesos.clear();
+    ((facetas && facetas.pestanas && facetas.pestanas.artista) || []).forEach((a) => {
+      if (!/^otros/.test(a.id)) palabrasDe(a.nombre).forEach((w) => pon(w, a.cuenta || 0));
+    });
+    (destacadas || []).forEach((c) => palabrasDe(`${c.nombre} ${c.corto || ''}`).forEach(pon));
+    GRUPOS.forEach((g) => g.forEach(pon));
+    vocabulario = { de: facetas, palabras };
+    return palabras;
+  }
+
+  /** Las palabras conocidas que se parecen a una tecleada: las que suenan
+   *  igual y, si no hay, las más cercanas (una falta; dos si es larga). */
+  function correcciones(w) {
+    if (w.length < 4) return [];
+    const s = suena(w), tope = w.length >= 6 ? 2 : 1;
+    const cerca = [];
+    conocidas().forEach((sv, v) => {
+      if (v === w) return;
+      const d = sv === s ? 0 : Math.min(distancia(w, v, tope), distancia(s, sv, tope));
+      if (d <= tope) cerca.push([d, v]);
+    });
+    if (!cerca.length) return [];
+    // las más cercanas y las que quedan a un paso de ellas: «chaikovsky»
+    // suena igual que «chaikovski» y casi igual que «tchaikovsky»
+    const mejor = Math.min(...cerca.map((c) => c[0]));
+    // a igual distancia, primero la que más obras tiene: Schubert antes que Hubert
+    // si alguna suena igual, sólo ésas; si no, las más cercanas y las de un paso más
+    return cerca.filter((c) => c[0] <= (mejor === 0 ? 0 : mejor + 1))
+      .sort((a, b) => a[0] - b[0] || (pesos.get(b[1]) || 0) - (pesos.get(a[1]) || 0))
+      .slice(0, 8).map((c) => c[1]);
+  }
+
+  function grafias(w) {
+    const s = suena(w), fuera = [];
+    conocidas().forEach((sv, v) => { if (v !== w && v.length >= 6 && distancia(s, sv, 1) <= 1) fuera.push(v); });
+    return fuera.slice(0, 8);
+  }
+
   /** Lo que se teclea, en palabras con sus variantes. */
   function consulta(texto) {
     let ws = palabrasDe(texto);
     if (!ws.length) ws = (limpiar(texto).match(/[a-z0-9]+/g) || []);
     return ws.map((w) => {
       const alt = new Set();
-      SINONIMOS.forEach((grupo, clave) => {
-        if (clave === w || (w.length >= 5 && casiIgual(w, clave))) grupo.forEach((x) => alt.add(x));
+      // si es una palabra conocida, o el principio de una (se está tecleando), no se corrige
+      const sabida = conocidas().has(w) || [...conocidas().keys()].some((v) => v.startsWith(w));
+      /* Un nombre largo conocido se escribe de muchas maneras (Chaikovsky,
+         Tchaikovsky, Tschaikowski): se buscan también las que suenan casi igual. */
+      const base = !sabida ? [w, ...correcciones(w)]
+        : w.length >= 7 ? [w, ...grafias(w)] : [w];
+      base.forEach((b) => {
+        if (b !== w) alt.add(b);
+        (SINONIMOS.get(b) || []).forEach((x) => alt.add(x));
       });
       alt.delete(w);
-      return { w, alt: [...alt] };
+      // si se ha corregido, lo tecleado ya no se estira: «shubert» es
+      // Schubert, no «Hubert» con una letra de más
+      return { w, alt: [...alt], exacta: !sabida && base.length > 1 };
     });
   }
 
   /* Lo tecleado casa empezando la palabra o con una letra de diferencia;
      un sinónimo sólo si es la palabra entera (o su plural): si no, «night»
      se parecía a «light» y «casse» a «case», y salía cualquier cosa. */
-  function casaPalabra({ w, alt }, fichaPalabras) {
+  function casaPalabra({ w, alt, exacta }, fichaPalabras) {
     return fichaPalabras.some((t) => t.startsWith(w) ||
-      (w.length >= 5 && (casiIgual(w, t) || (t.length > w.length && casiIgual(w, t.slice(0, w.length)))))) ||
+      (!exacta && w.length >= 5 && (casiIgual(w, t) || (t.length > w.length && casiIgual(w, t.slice(0, w.length)))))) ||
       alt.some((a) => fichaPalabras.some((t) => t === a || t === a + 's' || t === a + 'e' || t === a + 'n' ||
         (a.length >= 7 && t.startsWith(a))));
   }
