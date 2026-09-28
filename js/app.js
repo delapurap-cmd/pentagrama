@@ -63,7 +63,7 @@
     bindKeys();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
-    else if (!saved) setTimeout(() => toast('Toca el pentagrama para escribir tu primera nota'), 700);
+    else abrirPortada(saved);
   }
 
   /* ---------------- Render ---------------- */
@@ -1692,17 +1692,35 @@
      pasan por el mismo importador que cualquier archivo de MuseScore: lo que
      se ve aquí es exactamente lo que el editor entiende, sin trampa. */
   const EJEMPLOS = [
+    // la que se abre la primera vez: piano de verdad, con dos voces por mano
+    { archivo: 'schumann-paganini-16',  titulo: 'Schumann · Estudio sobre el capricho 16 de Paganini', pista: 'la de portada' },
     { archivo: 'escala-do-mayor',       titulo: 'Escala de Do mayor', pista: 'para empezar' },
     { archivo: 'satie-gymnopedie-1',    titulo: 'Satie · Gymnopédie n.º 1', pista: 'acordes y matices' },
     { archivo: 'chopin-nocturno-op9-2', titulo: 'Chopin · Nocturno op. 9 n.º 2', pista: 'lo que aguanta' }
   ];
 
-  async function abrirEjemplo(ej) {
+  /* La partitura de portada: el estudio de Schumann se abre la primera
+     vez. A quien ya tenía algo escrito no se le pisa: lo suyo pasa antes a
+     «Mis partituras», y la portada sólo se abre una vez por versión. */
+  const LS_PORTADA = 'reper.portada';
+  const PORTADA = 'schumann-paganini-16';
+  function abrirPortada(saved) {
+    let vista = null;
+    try { vista = localStorage.getItem(LS_PORTADA); } catch (e) { }
+    if (vista === PORTADA) return;
+    try { localStorage.setItem(LS_PORTADA, PORTADA); } catch (e) { }
+    const hayAlgo = saved && saved.measures && saved.measures.some((m) => Model.voces(m).some((v) => v.events.some((e) => e.kind === 'note')));
+    if (hayAlgo) saveToLibrary();
+    abrirEjemplo(EJEMPLOS.find((e) => e.archivo === PORTADA), { sinDeshacer: true })
+      .then(() => { if (hayAlgo) toast('Lo que tenías escrito está en Archivo → Mis partituras'); });
+  }
+
+  async function abrirEjemplo(ej, opciones = {}) {
     try {
       const resp = await fetch('ejemplos/' + ej.archivo + '.mxl');
       if (!resp.ok) throw new Error('No se encontró el ejemplo');
       const resultado = MusicXML.parse(await MusicXML.readAny(await resp.blob()));
-      snapshot();
+      if (!opciones.sinDeshacer) snapshot();
       state.score = resultado.score;
       if (!state.score.title || state.score.title === 'Sin título') state.score.title = ej.titulo;
       state.selectedId = null;
