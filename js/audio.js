@@ -252,6 +252,54 @@ const Sound = (() => {
     o.start(at); o.stop(fin + 0.02);
   }
 
+  /* ---------- Piano MIDI en vivo ----------
+     Lo que se toca en el teclado —el de la pantalla o uno MIDI— suena
+     mientras se tiene pulsado, con las mismas muestras del reproductor.
+     Con otro sonido (vientos, arco) va sintetizado, y la guitarra y el
+     bajo, pulsados: una cuerda no se sostiene. */
+  const vivas = new Map(); let pedalVivo = false;
+  function soltarViva(v) {
+    if (!v || !v.activa) return; v.activa = false;
+    if (v.fuente && v.ganancia) try {
+      const t = ac().currentTime; v.fuente.loop = false;
+      v.ganancia.gain.cancelScheduledValues(t);
+      v.ganancia.gain.setValueAtTime(Math.max(0.0001, v.ganancia.gain.value), t);
+      v.ganancia.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      v.fuente.stop(t + 0.26);
+    } catch (e) { /* ya parada */ }
+  }
+  async function liveOn(midi, velocity = 0.85, timbre = 'piano') {
+    if (!Number.isInteger(midi) || midi < 0 || midi > 127) return;
+    if (vivas.has(midi)) soltarViva(vivas.get(midi));
+    const v = { activa: true, abajo: true, fuente: null, ganancia: null }; vivas.set(midi, v);
+    try {
+      const c = ac();
+      if (CUERDA[timbre]) { const antes = instrumento; instrumento = timbre; playCuerda(c.currentTime, midi, 1.5, velocity); instrumento = antes; return; }
+      if (SINTE[timbre]) {
+        const cfg = SINTE[timbre];
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = cfg.onda; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+        g.gain.setValueAtTime(0.0001, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(Math.min(0.3, cfg.pico * 1.6 * velocity), c.currentTime + cfg.ataque);
+        o.connect(g).connect(c.destination); v.fuente = o; v.ganancia = g; o.start(c.currentTime); return;
+      }
+      const { midi: muestra, rate } = nearestSample(midi);
+      const buf = await loadSample(muestra);
+      if (!v.activa || vivas.get(midi) !== v) return;   // se soltó mientras cargaba
+      if (!buf) { tone(c.currentTime, midi, 0.4, velocity); return; }
+      const f = c.createBufferSource(), g = c.createGain(); v.fuente = f; v.ganancia = g;
+      f.buffer = buf; f.playbackRate.value = rate;
+      g.gain.setValueAtTime(Math.max(0.12, Math.min(1, velocity)), c.currentTime);
+      if (buf.duration > 0.4) { f.loop = true; f.loopStart = Math.min(0.3, buf.duration * 0.16); f.loopEnd = Math.max(f.loopStart + 0.08, buf.duration - 0.06); }
+      f.connect(g).connect(c.destination); f.start(c.currentTime);
+      f.onended = () => { if (vivas.get(midi) === v) vivas.delete(midi); };
+      setTimeout(() => { if (vivas.get(midi) === v) { soltarViva(v); vivas.delete(midi); } }, 18000);
+    } catch (e) { if (vivas.get(midi) === v) vivas.delete(midi); }
+  }
+  function liveOff(midi) { const v = vivas.get(midi); if (!v) return; v.abajo = false; if (pedalVivo) return; soltarViva(v); vivas.delete(midi); }
+  function livePedal(on) { pedalVivo = !!on; if (!pedalVivo) for (const [m, v] of vivas) if (!v.abajo) { soltarViva(v); vivas.delete(m); } }
+  function liveAllOff() { pedalVivo = false; for (const v of vivas.values()) soltarViva(v); vivas.clear(); }
+
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function tone(at, midi, dur, vol = 0.9) {
     if (SINTE[instrumento]) { sintetizar(at, midi, dur, vol, SINTE[instrumento]); return; }
@@ -730,6 +778,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-  return { ac, click, tone, tambor, preload, instrumentoDe, instrumentoPent, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
+  return { ac, click, tone, tambor, preload, instrumentoDe, instrumentoPent, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, play, stop, playing,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

@@ -1,5 +1,6 @@
 /* ==========================================================================
-   Catálogo — 226.401 partituras a las que se llega sin salir del editor.
+   Catálogo — decenas de miles de partituras libres, depuradas y ordenadas
+   por calidad con Jev, a las que se llega sin salir del editor.
 
    No se baja el catálogo entero: sólo la página que se está mirando, de mil
    fichas y unos 25 KB. Y al abrir una partitura tampoco se baja el paquete
@@ -25,7 +26,11 @@ const Catalogo = (() => {
     disponibles: null,
   }, window.CATALOGO_CONFIG || {});
 
+  /* «Destacadas» sale del ranking de Jev: los compositores con obras de
+     nota alta (≥ 0,7), cada uno con lo mejor suyo. Si el sitio del
+     catálogo todavía no la trae, la pestaña no aparece. */
   const PESTANAS = [
+    { id: 'destacadas', nombre: 'Destacadas' },
     { id: 'nombre', nombre: 'Nombre' },
     { id: 'artista', nombre: 'Artista' },
     { id: 'genero', nombre: 'Género' },
@@ -34,6 +39,7 @@ const Catalogo = (() => {
 
   let fondo, caja, entrada, pestanas, valores, lista, pie, cuerpo, volver;
   let facetas = null;
+  let destacadas = null;    // [{nombre, corto, obras:[ficha…]}], del ranking de Jev
   let pestana = 'nombre';
   let valor = null;         // qué valor de la pestaña se está viendo
   let busqueda = '';        // lo que se ha tecleado
@@ -218,7 +224,9 @@ const Catalogo = (() => {
 
   function pintarValores() {
     valores.innerHTML = '';
-    const grupo = (facetas.pestanas[pestana] || []);
+    const grupo = pestana === 'destacadas'
+      ? (destacadas || []).map((c) => ({ id: c.corto || c.nombre, nombre: c.nombre, cuenta: c.obras.length, obras: c.obras }))
+      : (facetas.pestanas[pestana] || []);
     grupo.forEach((v) => {
       const b = document.createElement('button');
       b.innerHTML = `<span class="cat-nom">${escapar(rotulo(v))}</span>` +
@@ -253,6 +261,12 @@ const Catalogo = (() => {
       if (!cola.length) { vecinosProbados = true; prepararCola(true); }
     }
     lista.scrollTop = 0;
+    // las destacadas ya vinieron enteras en su JSON: no hay páginas que pedir
+    if (pestana === 'destacadas' && !buscando()) {
+      ((valor && valor.obras) || []).forEach((f) => lista.appendChild(ficha(f)));
+      contador = valor && valor.obras ? valor.obras.length : 0;
+      fin = true; rematar(); return;
+    }
     siguientePagina();
   }
 
@@ -487,6 +501,14 @@ const Catalogo = (() => {
                           `${escapar(err.message)}</p>`;
         return;
       }
+      if (facetas.destacadas) {
+        try { destacadas = await (await traer('destacadas.json')).json(); } catch (e) { destacadas = null; }
+      }
+      if (!destacadas || !destacadas.length) {
+        const b = [...pestanas.children][PESTANAS.findIndex((x) => x.id === 'destacadas')];
+        if (b) b.hidden = true;
+        if (pestana === 'destacadas') pestana = 'nombre';
+      } else pestana = 'destacadas';
       pintarPestanas();
       pintarValores();
       arrancarLista();

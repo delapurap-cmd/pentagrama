@@ -28,46 +28,12 @@ const Instrumentos = (function () {
   const PIANO = { min: 24, max: 84 };
   const esNegra = (m) => [1, 3, 6, 8, 10].indexOf(((m % 12) + 12) % 12) >= 0;
 
-  function montarPiano(cont) {
-    const teclas = new Map();
-    const caja = el('div', 'ins-piano');
-    const blancas = [];
-    for (let m = PIANO.min; m <= PIANO.max; m++) if (!esNegra(m)) blancas.push(m);
-    const w = 100 / blancas.length;
-
-    blancas.forEach((m, i) => {
-      const t = el('div', 'ins-blanca');
-      t.style.left = (i * w) + '%';
-      t.style.width = w + '%';
-      t.title = nombreDe(m);
-      caja.appendChild(t);
-      teclas.set(m, t);
-    });
-    for (let m = PIANO.min; m <= PIANO.max; m++) {
-      if (!esNegra(m)) continue;
-      const i = blancas.filter((b) => b < m).length;
-      const t = el('div', 'ins-negra');
-      t.style.left = 'calc(' + (i * w) + '% - ' + (w * 0.3) + '%)';
-      t.style.width = (w * 0.6) + '%';
-      t.title = nombreDe(m);
-      caja.appendChild(t);
-      teclas.set(m, t);
-    }
-    cont.appendChild(caja);
-
-    let encendidas = [];
-    return {
-      encender(midis) {
-        encendidas.forEach((t) => t.classList.remove('on'));
-        encendidas = [];
-        midis.forEach((m) => {
-          const t = teclas.get(m);
-          if (t) { t.classList.add('on'); encendidas.push(t); }
-        });
-      },
-      fuera: (m) => m < PIANO.min || m > PIANO.max
-    };
-  }
+  /* El piano es el teclado MIDI de More Than Modes (piano-midi.js): se ve
+     lo que suena, se toca con el dedo o con un teclado MIDI, y escribe o
+     graba en la partitura. Qué hacer con cada tecla lo dice el editor. */
+  let pianoHandlers = {};
+  function configurarPiano(h) { pianoHandlers = h || {}; }
+  function montarPiano(cont) { return PianoMidi.mount(cont, pianoHandlers); }
 
   /* ── Guitarra ───────────────────────────────────────────────────────────
      La posición es la que elige la app de More Than Modes (`_midiToFret`):
@@ -179,7 +145,7 @@ const Instrumentos = (function () {
     return (midis || []).filter(activo.fuera).length;
   }
 
-  return { catalogo: CATALOGO, montar, encender, fuera, posicionEnMastil, nombreDe };
+  return { catalogo: CATALOGO, montar, configurarPiano, encender, fuera, posicionEnMastil, nombreDe };
 })();
 
 if (typeof module !== 'undefined') module.exports = Instrumentos;

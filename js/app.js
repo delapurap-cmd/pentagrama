@@ -50,6 +50,7 @@
     bindBar();
     bindStage();
     bindPanel();
+    bindPianoMidi();   // antes que la ayuda: el piano se monta con estas manos
     bindPlayPanel();
     bindKeys();
     bindEditar();
@@ -694,7 +695,7 @@
         { head: 'Partitura' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
         { label: 'Abrir MusicXML o MIDI', hint: 'también Guitar Pro', fn: importScore },
-        { label: 'Del catálogo', hint: '226.401 partituras libres', fn: () => Catalogo.abrir() },
+        { label: 'Del catálogo', hint: 'partituras libres, lo mejor primero', fn: () => Catalogo.abrir() },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
         { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
@@ -808,6 +809,138 @@
       onEnd: () => { pararTodo(); }
     });
   }
+
+  /* ---------------- Piano MIDI ----------------
+     El teclado de la ayuda —táctil o uno MIDI enchufado— suena, y con
+     «Escribir notas» pone cada tecla detrás de la nota elegida, con la
+     figura de la última. Varias teclas a la vez son un acorde. «Grabar»
+     toca a tempo y lo escribe entero al parar, en una sola operación. */
+  const teclasAbajo = new Set();
+  let ultimaMidi = null;
+  /** Cómo se escribe en esa pauta lo que suena (MIDI de concierto). */
+  function midiAAltura(midi, mi, pent) {
+    return Model.escribirMidi(midi - Model.transpDe(state.score, pent), Model.keyAt(state.score, mi, pent), Model.clefAt(state.score, mi, pent));
+  }
+  function bindPianoMidi() {
+    if (typeof Instrumentos === 'undefined' || !Instrumentos.configurarPiano) return;
+    Instrumentos.configurarPiano({
+      onDown: (midi, vel, escribir) => {
+        const acorde = teclasAbajo.size > 0; teclasAbajo.add(midi);
+        const f = currentEvent();
+        Sound.liveOn(midi, vel, Sound.instrumentoPent(state.score, f ? f.pent | 0 : 0));
+        if (escribir) escribirMidi(midi, acorde);
+      },
+      onUp: (midi) => { teclasAbajo.delete(midi); Sound.liveOff(midi); },
+      onPedal: (on) => Sound.livePedal(on),
+      getTempo: () => state.score.tempo,
+      getBeats: () => Math.max(1, Math.round(Model.capacity(state.score.time) / Model.beatTicks(state.score.time))),
+      getTarget: () => {
+        const f = currentEvent(), pent = f ? f.pent | 0 : 0;
+        const enPauta = f ? Model.voces(state.score.measures[f.mi]).filter((v) => v.pent === pent) : [];
+        return { staff: pent, staves: Model.nPent(state.score), voice: f ? Math.max(1, enPauta.findIndex((v) => v.vi === f.vi) + 1) : 1 };
+      },
+      onRecorded: escribirToma
+    });
+  }
+  function escribirMidi(midi, acorde) {
+    if (Sound.playing()) pararTodo();
+    const ahora = performance.now();
+    // teclas casi a la vez: se suman a la nota recién escrita
+    if (acorde && ultimaMidi && ultimaMidi.score === state.score && ahora - ultimaMidi.at < 130) {
+      const f = Model.findEvent(state.score, ultimaMidi.id);
+      if (f && f.ev.kind === 'note') {
+        const p = midiAAltura(midi, f.mi, f.pent | 0);
+        if (p && Model.anadirAltura(f.ev, p.di, p.acc)) { ultimaMidi.at = ahora; render(); return; }
+      }
+    }
+    const f = currentEvent();
+    let mi, vi, index, pent;
+    if (f) { mi = f.mi; vi = f.vi; pent = f.pent | 0; index = f.index + 1; }
+    else {
+      pent = 0;
+      mi = state.score.measures.findIndex((m, i) => Model.measureTicks(m, 0) < Model.capacityAt(state.score, i));
+      if (mi < 0) { mi = state.score.measures.length; state.score.measures.push(Model.emptyMeasure()); }
+      vi = 0; index = Model.vozDe(state.score.measures[mi], 0).events.length;
+    }
+    const p = midiAAltura(midi, mi, pent); if (!p) return;
+    snapshot();
+    const ev = Model.note(p.di, state.pending.dur, state.pending.dots, p.acc);
+    Model.insertEvent(state.score, mi, vi, index, ev);
+    state.selectedId = ev.id; ultimaMidi = { score: state.score, id: ev.id, at: ahora };
+    Radial.close(); render();
+  }
+  /** Una toma grabada, escrita de una vez: se deshace con un solo paso. */
+  function escribirToma(toma, opts = {}) {
+    if (!toma.groups.length) { toast('No se grabó ninguna nota'); return; }
+    if (Sound.playing()) pararTodo();
+    const f = currentEvent();
+    const mi = f ? f.mi : 0;
+    const m = state.score.measures[mi];
+    const pent = Math.max(0, Math.min(Model.nPent(state.score) - 1, opts.staff | 0));
+    const orden = Math.max(1, Math.min(4, opts.voice | 0));
+    const suyas = Model.voces(m).filter((v) => v.pent === pent);
+    if (orden > suyas.length + 1) throw Error('Crea antes la voz anterior');
+    const eventos = PracticeCore.events(toma, Model, (x) => midiAAltura(x, mi, pent));
+    if (!eventos.some((e) => e.kind === 'note')) return;
+    snapshot();
+    const destino = suyas[orden - 1] || (pent === 0 && !suyas.length ? Model.vozDe(m, 0) : Model.asegurarVoz(m, Model.nVoces(m), pent));
+    const en = f && f.vi === destino.vi && (f.pent | 0) === pent ? f.index + 1 : destino.events.length;
+    destino.events.splice(en, 0, ...eventos);
+    Model.reflow(state.score);
+    state.selectedId = eventos.find((e) => e.kind === 'note').id;
+    Radial.close(); render();
+    toast(`${toma.notes} notas grabadas en la pauta ${pent + 1}, voz ${orden}`);
+  }
+
+  /* ---------------- Compases enteros ----------------
+     Copiar, pegar, duplicar, borrar y transportar compases. El tramo es el
+     de la selección (Mayús+flechas) o, si no hay, el compás de la nota. */
+  let portapapeles = null;
+  function tramoDeCompases() {
+    const f = currentEvent();
+    if (!f) return null;
+    let a = f.mi, b = f.mi;
+    if (state.rango && state.rango.ancla) {
+      const x = Model.findEvent(state.score, state.rango.ancla);
+      if (x) { a = Math.min(a, x.mi); b = Math.max(b, x.mi); }
+    }
+    return { a: a + 1, b: b + 1 };
+  }
+  function compases(accion) {
+    const t = tramoDeCompases();
+    if (!t && accion !== 'pegar') { toast('Elige una nota del compás'); return; }
+    const texto = t ? (t.a === t.b ? `el compás ${t.a}` : `los compases ${t.a}–${t.b}`) : '';
+    try {
+      if (accion === 'copiar') { portapapeles = RangeEdit.copy(state.score, t.a, t.b); toast('Copiado ' + texto); return; }
+      if (accion === 'pegar') {
+        if (!portapapeles || !portapapeles.length) { toast('Primero copia algún compás'); return; }
+        const tras = t ? t.b : state.score.measures.length;
+        snapshot(); RangeEdit.paste(state.score, portapapeles, tras, Model);
+        state.selectedId = null; state.rango = null; render(); toast(`Pegado detrás del compás ${tras}`); return;
+      }
+      if (accion === 'duplicar') {
+        snapshot(); RangeEdit.paste(state.score, RangeEdit.copy(state.score, t.a, t.b), t.b, Model);
+        state.rango = null; render(); toast('Duplicado ' + texto); return;
+      }
+      if (accion === 'borrar') {
+        snapshot(); RangeEdit.remove(state.score, t.a, t.b, Model);
+        state.selectedId = null; state.rango = null; render(); toast('Borrado ' + texto + ' (se deshace con Ctrl+Z)'); return;
+      }
+      if (accion === 'transportar') {
+        askNumber('Transportar ' + texto + ': semitonos (−24 a 24)', 0, -24, 24, (n) => {
+          if (!n) return;
+          const copia = Model.clone(state.score);
+          try {
+            const cuantos = RangeEdit.transpose(copia, t.a, t.b, n, Model, midiAAlturaEn(copia));
+            snapshot(); state.score = copia; state.selectedId = null; render();
+            toast(`${cuantos} notas transportadas`);
+          } catch (err) { toast(err.message); }
+        });
+      }
+    } catch (err) { toast(err.message); }
+  }
+  const midiAAlturaEn = (sc) => (midi, mi, pent) =>
+    Model.escribirMidi(midi, Model.keyAt(sc, mi, pent), Model.clefAt(sc, mi, pent));
 
   /** Pone o quita el instrumento de ayuda y ajusta el aviso de lo que no cabe. */
   function montaAyuda() {
@@ -1576,6 +1709,18 @@
           label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === state.score.key,
           fn: () => edicion.transportarA(k.spec)
         })), btn) },
+        { label: 'Compases…', hint: 'copiar · pegar · duplicar · borrar · transportar', fn: () => {
+          const t = tramoDeCompases();
+          const de = t ? (t.a === t.b ? 'el compás ' + t.a : 'los compases ' + t.a + '–' + t.b) : 'elige una nota';
+          menu([{ head: 'Compases: ' + de },
+            { label: 'Copiar', hint: 'Mayús+flechas para varios', fn: () => compases('copiar') },
+            { label: 'Pegar detrás', hint: portapapeles ? portapapeles.length + ' copiados' : 'nada copiado', fn: () => compases('pegar') },
+            { label: 'Duplicar', fn: () => compases('duplicar') },
+            { label: 'Transportar…', hint: 'semitonos', fn: () => compases('transportar') },
+            { sep: true },
+            { label: 'Borrar', hint: 'se deshace con Ctrl+Z', fn: () => compases('borrar') }
+          ], btn);
+        } },
         { label: 'Cambiar armadura desde aquí…', hint: 'en el compás de la nota', fn: () => {
           const f = currentEvent();
           const mi = f ? f.mi : 0;

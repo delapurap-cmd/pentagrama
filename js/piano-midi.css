@@ -1,0 +1,18 @@
+/* El teclado MIDI de la ayuda (piano-midi.js). Sólo lo suyo: la barra de
+   controles, el lienzo y sus selectores. La colocación del panel la lleva
+   el editor. */
+.mtm-midi-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px;font-size:11px;color:#cbbf9e}
+.mtm-midi-controls .btn{height:29px;min-height:29px;font-size:11px;padding:0 8px}
+.mtm-midi-write{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.mtm-midi-write input{accent-color:#c9a84c}
+#pianoInputs{max-width:180px;height:29px;background:#191919;color:#f3ead7;border:1px solid #88723d;border-radius:6px}
+#pianoStatus{font-size:10px;color:#d7c188;flex:1;min-width:130px}
+.mtm-midi-scroll{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;overscroll-behavior-x:contain;user-select:none;touch-action:pan-x}
+#pianoMidiCanvas{display:block;height:120px;touch-action:none;user-select:none;cursor:pointer}
+.mtm-midi-scroll::-webkit-scrollbar{height:7px}
+.mtm-midi-scroll::-webkit-scrollbar-thumb{background:rgba(201,168,76,.55);border-radius:5px}
+#pianoMidiCanvas:focus-visible{outline:2px solid #c9a84c;outline-offset:-2px}
+#pianoRecord[aria-pressed="true"]{background:#8a262d;color:#fff;border-color:#e07178}
+#pianoGrid,#pianoCount,#pianoStaff,#pianoVoice{height:29px;max-width:175px;background:#211d19;border:1px solid #77613a;border-radius:6px;color:#f4e9d2;font-size:11px}
+#pianoRecordStatus{font-size:11px;color:#e5c678;min-width:100px}
+@media(max-width:640px){#pianoMidiCanvas{height:96px}.mtm-midi-controls{gap:5px}#pianoStatus{flex-basis:100%;min-width:0}}
