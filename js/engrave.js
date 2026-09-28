@@ -88,6 +88,10 @@ const Engrave = (() => {
 
   function buildNote(ev, clef) {
     const isRest = ev.kind === 'rest';
+    // un silencio invisible del archivo: ocupa su tiempo y no se ve
+    if (isRest && ev.oculto && VF.GhostNote) {
+      return new VF.GhostNote({ duration: ev.dur + 'd'.repeat(ev.dots || 0) });
+    }
     const notas = isRest ? [] : Model.alturas(ev);
     /* Un silencio se coloca en la tercera línea de SU pentagrama, y el de
        compás entero cuelga de la cuarta. Estaban fijos en si4 y re5, que son
@@ -104,6 +108,10 @@ const Engrave = (() => {
     };
     if (ev.measureRest) opts.alignCenter = true;
     const n = new StaveNote(opts);
+    if (ev.oculto) {
+      const nada = { fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' };
+      n.setStyle(nada); if (n.setLedgerLineStyle) n.setLedgerLineStyle(nada);
+    }
     if (ev.dots) Dot.buildAndAttach([n], { all: true });
     // Una alteración por cabeza, y en su índice: en un acorde no valen todas
     // pegadas a la primera.
@@ -254,6 +262,42 @@ const Engrave = (() => {
      página de música por debajo del papel. */
   function holguraDe(score, sys, nPentTotal) {
     let arriba = 0, abajo = 0;
+    /* Entre dos pautas del mismo sistema —la de sol y la de fa del piano—
+       también hace falta aire: lo que baja de la de arriba (notas graves con
+       la plica hacia abajo, matices) y lo que sube de la de abajo (arpegios
+       del bajo con la plica y la barra hacia arriba). Con el hueco fijo, las
+       barras del bajo se metían en la clave de sol. Se mide en semiespacios
+       (5 px) respecto a la línea de abajo y a la de arriba de cada pauta. */
+    const bajaDe = new Array(nPentTotal).fill(0);   // px bajo la 5.ª línea
+    const subeDe = new Array(nPentTotal).fill(0);   // px sobre la 1.ª línea
+    const PLICA = 7;                                // 3,5 espacios
+    sys.measures.forEach((m, k) => {
+      const mi = sys.from + k;
+      Model.voces(m).forEach((v) => {
+        const clef = Model.clefAt(score, mi, v.pent);
+        v.events.forEach((ev) => {
+          if (ev.matiz && v.pent < nPentTotal - 1) bajaDe[v.pent] = Math.max(bajaDe[v.pent], 26);
+          if (ev.kind === 'note' && !ev.oculto && !clef.percusion) {
+            const al = Model.alturas(ev);
+            if (al.length) {
+              const media = al.reduce((t, n) => t + n.di, 0) / al.length;
+              const abajoLaPlica = ev.plica ? ev.plica === 'down' : media >= clef.midLine;
+              const barra = ev.barra || ['8', '16', '32', '64'].indexOf(ev.dur) >= 0 ? 2 : 0;
+              const piso = al[0].di - (abajoLaPlica ? PLICA + barra : 0);
+              const techo = al[al.length - 1].di + (abajoLaPlica ? 0 : PLICA + barra);
+              bajaDe[v.pent] = Math.max(bajaDe[v.pent], ((clef.midLine - 4) - piso) * 5);
+              subeDe[v.pent] = Math.max(subeDe[v.pent], (techo - (clef.midLine + 4)) * 5);
+            }
+          }
+        });
+      });
+    });
+    // el hueco que ya hay entre pautas (92 − 40 de pentagrama y su margen)
+    const HUECO = 44;
+    const entre = [];
+    for (let p = 0; p < nPentTotal - 1; p++) {
+      entre.push(Math.max(0, Math.round(bajaDe[p] + subeDe[p + 1] + 8 - HUECO)));
+    }
     sys.measures.forEach((m, k) => {
       const mi = sys.from + k;
       Model.voces(m).forEach((v) => {
@@ -281,8 +325,12 @@ const Engrave = (() => {
         });
       });
     });
-    return { arriba: arriba + 28, abajo };
+    const masEntre = entre.reduce((t, e) => t + e, 0);
+    return { arriba: arriba + 28, abajo: abajo + masEntre, entre };
   }
+
+  /** Cuánto baja la pauta `p` respecto a su sitio nominal. */
+  const bajadaDe = (entre, p) => (entre || []).slice(0, p).reduce((t, e) => t + e, 0);
 
   /** Numbers belong to the SVG, so they appear in the editor AND PDF print. */
   function numberText(svg,x,y,value,type,anchor='start') {
@@ -403,6 +451,7 @@ const Engrave = (() => {
           x: marginLeft,
           width: pageWidth - marginLeft - marginRight,
           systemHeight,
+          entre: holguras[sysIndex].entre,
           isFirstSystemOfScore: pageIndex === 0 && sysIndex === 0,
           selectedId: opts.selectedId,
           playingId: opts.playingId,
@@ -591,7 +640,7 @@ const Engrave = (() => {
       for (let p = 0; p < nPent; p++) {
         const clef = Model.clefAt(score, mi, p);
         const clefPrevia = mi > 0 ? Model.clefAt(score, mi - 1, p) : null;
-        const stave = new Stave(x, o.y + p * PENT_H, w);
+        const stave = new Stave(x, o.y + p * PENT_H + bajadaDe(o.entre, p), w);
         const compasAqui = Model.timeAt(score, mi);
         const compasAntes = mi > 0 ? Model.timeAt(score, mi - 1) : null;
         if (primero) {
@@ -690,7 +739,7 @@ const Engrave = (() => {
         const tabCfg=Tablature.config(score);
         const notes=bloques.filter(b=>b.v.pent===tabCfg.staff).flatMap(b=>
           b.all.map((ev,k)=>({ev,vi:b.v.vi,x:b.notes[k]?.getAbsoluteX()||x+35})));
-        Tablature.draw(o.svg,score,mi,{x,width:w,y:o.y+(nPent-1)*PENT_H+97,first:primero,notes});
+        Tablature.draw(o.svg,score,mi,{x,width:w,y:o.y+(nPent-1)*PENT_H+bajadaDe(o.entre,nPent-1)+97,first:primero,notes});
       }
 
       // Un punto de impacto por pentagrama: al tocar se sabe en qué pauta se

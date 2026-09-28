@@ -433,8 +433,14 @@ const MusicXML = (() => {
         if (type && !TYPE_TO_DUR[type]) drop('figuras más breves que la semifusa');
 
         const isRest = !!node.querySelector(':scope > rest');
+        /* print-object="no": MuseScore rellena con silencios invisibles la
+           voz que calla —en un estudio de piano son cientos—. Cuentan para
+           el ritmo pero no se dibujan: si se dibujan, la clave de fa se llena
+           de silencios que el grabador había quitado. */
+        const oculto = node.getAttribute('print-object') === 'no';
         if (isRest) {
           const r = Model.rest(dur, dots);
+          if (oculto) r.oculto = true;
           ponerGrupo(r, node);
           aqui.events.push(r);
           return;
@@ -448,6 +454,7 @@ const MusicXML = (() => {
         const di = octave * 7 + (STEP_INDEX[step] ?? 0);
 
         const ev = Model.note(di, dur, dots);
+        if (oculto) ev.oculto = true;
         const accEl = text(node, 'accidental');
         const written = { sharp: '#', flat: 'b', natural: 'n' }[accEl];
         const byKey = Model.keyAlter(score.key, Model.diLetter(di));
