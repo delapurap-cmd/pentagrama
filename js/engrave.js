@@ -187,6 +187,7 @@ const Engrave = (() => {
           .setFont('Bravura,Academico,serif', 22)
           .setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
         n.addModifier(a, 0);
+        n._matiz = a;
       } catch (e) { }
     }
 
@@ -308,10 +309,18 @@ const Engrave = (() => {
      archivo— se respeta tal cual; si no, se agrupa por tiempo como siempre.
      Un 12/8 agrupado por tiempo une la nota grave del bajo con los acordes
      de encima, y eso es justo lo que el grabador decidió no hacer. */
-  function construirBarras(all, notes, time) {
+  function construirBarras(all, notes, time, compasConBarras) {
     const explicito = all.some((ev) => ev.barra);
+    /* Si el archivo barró las otras voces del compás y ésta no, es que el
+       grabador la quiso suelta: barrarla por tiempo unía el bajo con su
+       silencio y le daba la vuelta a la plica, que se metía entre las
+       barras de la otra voz. */
+    if (!explicito && compasConBarras) return [];
     if (!explicito) {
-      return Beam.generateBeams(notes, { groups: Beam.getDefaultBeamGroups(Model.timeLabel(time)) });
+      return Beam.generateBeams(notes, {
+        groups: Beam.getDefaultBeamGroups(Model.timeLabel(time)),
+        maintainStemDirections: all.some((ev) => ev.plica)
+      });
     }
     const out = [];
     let grupo = [];
@@ -933,6 +942,29 @@ const Engrave = (() => {
       // Cada voz se formatea con las demás para que lo simultáneo quede
       // alineado en vertical, que es lo que hace legible un sistema de piano.
       const bloques = [];
+      /* Hasta dónde baja la punta de una plica hacia abajo (en grados) en
+         cada instante: el «sf» de la voz de arriba se ponía justo encima de
+         la plica hacia abajo del bajo y se montaban. */
+      const plicaBaja = new Map();
+      Model.voces(m).forEach((v) => {
+        const hs = Model.voces(m).filter((x) => x.pent === v.pent);
+        const abajoVoz = hs.length > 1 && hs[0].vi !== v.vi;
+        const clef = pentagramas[Math.min(v.pent, nPent - 1)].clef;
+        const suelo = (clef ? clef.midLine : Model.MIDDLE_LINE_DI) - 4;
+        let t = 0;
+        v.events.forEach((ev) => {
+          const alts = ev.kind === 'note' ? Model.alturas(ev) : [];
+          const baja = ev.plica === 'down' || (!ev.plica && abajoVoz);
+          if (alts.length && baja && !ev.oculto) {
+            const minDi = Math.min(...alts.map((a) => a.di));
+            const largo = 7 + ({ '32': 2, '64': 4 }[ev.dur] || 0);
+            const punta = minDi - largo;
+            const k = v.pent + ':' + t;
+            if (punta < suelo) plicaBaja.set(k, Math.min(punta, plicaBaja.has(k) ? plicaBaja.get(k) : punta));
+          }
+          t += Model.evTicks(ev);
+        });
+      });
       Model.voces(m).forEach((v) => {
         const pent = pentagramas[Math.min(v.pent, nPent - 1)];
         const auto = Model.autoRests(m, score.time, v.vi, Model.capacityAt(score, mi));
@@ -943,6 +975,19 @@ const Engrave = (() => {
         const hermanas = Model.voces(m).filter((x) => x.pent === v.pent);
         const lado = hermanas.length > 1 ? (hermanas[0].vi === v.vi ? 1 : -1) : 0;
         const notes = all.map((ev) => buildNote(ev, pent.clef, lado));
+        let tt = 0;
+        v.events.forEach((ev, idx) => {
+          const punta = plicaBaja.get(v.pent + ':' + tt);
+          if (notes[idx]._matiz && punta != null) {
+            // VexFlow cuenta las líneas de texto desde la cabeza más grave de
+            // la nota: se baja lo que la separa de la punta de la plica
+            const alts = ev.kind === 'note' ? Model.alturas(ev) : [];
+            const desde = alts.length ? Math.min(...alts.map((a) => a.di)) : (pent.clef ? pent.clef.midLine : Model.MIDDLE_LINE_DI);
+            const n = Math.floor((desde - punta) / 2) - 1;
+            if (n > 0) notes[idx]._bajaMatiz = n;
+          }
+          tt += Model.evTicks(ev);
+        });
         if (Stem) {
           const porVoz = hermanas.length > 1 ? (hermanas[0].vi === v.vi ? Stem.UP : Stem.DOWN) : null;
           all.forEach((ev, idx) => {
@@ -981,16 +1026,19 @@ const Engrave = (() => {
         const deTab = bloques.filter((b) => b.tab).map((b) => b.tab.voice);
         deTab.forEach((v) => fmt.joinVoices([v]));
         fmt.format(bloques.map((b) => b.voice).concat(deTab), Math.max(40, inner));
+        const compasConBarras = bloques.some((b) => b.all.some((ev) => ev.barra));
         bloques.forEach((b) => {
           oculto(() => {
-            const beams = construirBarras(b.all, b.notes, compasDelCompas);
+            const beams = construirBarras(b.all, b.notes, compasDelCompas, compasConBarras);
+            // después de formatear, que es cuando VexFlow reparte las líneas de texto
+            b.notes.forEach((n) => { if (n._matiz && n._bajaMatiz) n._matiz.setTextLine(n._bajaMatiz); });
             b.voice.draw(o.ctx, b.pent.stave);
             beams.forEach((x) => x.setContext(o.ctx).draw());
             b.grupos.forEach((g) => { try { g.setContext(o.ctx).draw(); } catch (err) { } });
           });
           if (b.tab) {
             // las barras antes de dibujar: así las notas no pintan su corchete suelto
-            const barrasTab = ritmo ? construirBarras(b.all, b.tab.notes, compasDelCompas) : [];
+            const barrasTab = ritmo ? construirBarras(b.all, b.tab.notes, compasDelCompas, compasConBarras) : [];
             b.tab.voice.draw(o.ctx, tab);
             barrasTab.forEach((x) => { try { x.setContext(o.ctx).draw(); } catch (err) { } });
             b.tab.notes.forEach((tn, idx) => {
