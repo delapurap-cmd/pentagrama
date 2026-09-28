@@ -87,8 +87,16 @@
 
   </div>
   <span class="sp"></span>
+  <!-- Lo que se toca a cada rato, junto al Play: volver al principio y el
+       metrónomo con su tempo. Antes el tempo vivía dos menús más abajo. -->
+  <button class="btn icon ghost" id="btnQuickStart" type="button" aria-label="Ir al inicio" title="Ir al inicio"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14M19 5 7 12l12 7V5Z"/></svg></button>
   <button class="btn icon primary" id="btnQuickPlay" type="button" aria-label="Reproducir" title="Reproducir"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" focusable="false"><path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/></svg></button>
-  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="false" title="Controles de reproducción"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M9 5v14M14 5l7 7-7 7V5Z"/></svg> Controles</button>
+  <div class="quick-tempo" role="group" aria-label="Metrónomo y tempo">
+    <button class="btn icon ghost" id="btnQuickMetro" type="button" aria-pressed="false" aria-label="Metrónomo" title="Metrónomo"><svg class="metro-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 5h8l4 16H4L8 5ZM12 17l5-14M8 17h8"/><circle cx="17" cy="3" r="1.3" fill="currentColor" stroke="none"/></svg></button>
+    <input type="range" id="quickTempo" min="30" max="240" step="1" value="90" aria-label="Tempo en pulsaciones por minuto">
+    <output id="quickTempoVal" for="quickTempo">90</output>
+  </div>
+  <button class="btn" id="btnPlay" type="button" aria-controls="panelPlay" aria-expanded="false" title="Controles de reproducción" aria-label="Controles de reproducción"><svg class="transport-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5v14M9 5v14M14 5l7 7-7 7V5Z"/></svg><span class="btn-txt"> Controles</span></button>
 <!-- Reproductor -->
 <section class="panel play open" id="panelPlay" aria-label="Reproductor de partitura" aria-hidden="false">
   <div class="transport-main row" role="group" aria-label="Transporte musical">

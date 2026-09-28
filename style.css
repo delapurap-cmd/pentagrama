@@ -554,3 +554,22 @@ body.con-ayuda .panel.open{
   border: 1.5px solid #b0801f; border-radius: 6px; background: #fffdf6; color: #1b1b1b;
   box-shadow: 0 2px 8px rgba(0,0,0,.18); outline: none;
 }
+
+/* Metrónomo y tempo junto al Play */
+.quick-tempo { display: inline-flex; align-items: center; gap: 6px; }
+.quick-tempo input[type=range] { width: 90px; accent-color: #d9b45a; }
+.quick-tempo output { min-width: 2.2em; font-variant-numeric: tabular-nums; text-align: right; }
+.quick-tempo output::after { content: " BPM"; opacity: .6; font-size: .8em; }
+#btnQuickMetro.on { color: #d9b45a; border-color: #d9b45a; }
+@media (max-width: 520px) { .quick-tempo input[type=range] { width: 80px; } }
+@media (max-width: 1500px) { #btnPlay .btn-txt { display: none; } }
+/* Orden fijo del transporte en la barra: inicio, play, metrónomo, controles.
+   Otras hojas le dan su propio `order` al Play y lo separaban del resto. */
+body:not(.embed) > .bar > #btnQuickStart,
+body:not(.embed) > .bar > #btnQuickPlay,
+body:not(.embed) > .bar > .quick-tempo { order: 1 !important; flex: 0 0 auto; }
+body:not(.embed) > .bar > #btnPlay { order: 2 !important; }
+@media (max-width: 1500px) and (min-width: 781px) {
+  .quick-tempo input[type=range] { width: 64px; }
+  .quick-tempo output::after { content: ""; }
+}

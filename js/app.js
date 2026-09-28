@@ -98,6 +98,8 @@
       $('#chipKey').textContent = Model.keyBySpec(state.score.key).label;
       $('#chipTime').textContent = Model.timeLabel(state.score.time);
       $('#metroTempo').textContent=String(state.score.tempo);
+      $('#quickTempo').value=String(state.score.tempo);
+      $('#quickTempoVal').textContent=String(state.score.tempo);
       $('#deviceWritten').value=state.score.instrumentId||'concert';
       $('#deviceCurrent').textContent=ScoreInstrument.byId(state.score.instrumentId).name;
       $('#deviceApply').disabled=true;
@@ -1197,6 +1199,8 @@
     $('#ppBucle').classList.toggle('on', rep.bucle);
     $('#ppBucle').setAttribute('aria-pressed', String(rep.bucle));
     $('#ppMetro').classList.toggle('on', rep.metronomo);
+    $('#btnQuickMetro').classList.toggle('on', rep.metronomo);
+    $('#btnQuickMetro').setAttribute('aria-pressed', String(rep.metronomo));
     $('#ppMetro').setAttribute('aria-pressed', String(rep.metronomo));
     $('#btnMetroAlways').setAttribute('aria-pressed',String(rep.metronomo));
     $('#btnMetroAlways').classList.toggle('on',rep.metronomo);
@@ -1423,10 +1427,13 @@
       $('#ppRangeButton').setAttribute('aria-expanded',String(!controls.hidden));
       $('#ppRangeButton').classList.toggle('expanded',!controls.hidden);
     });
-    $('#ppStop').addEventListener('click', () => {
+    const alInicio = () => {
       if (rep.playing) pararTodo();
       rep.bucle = false; posicionar(0, true);
-    });
+    };
+    $('#ppStop').addEventListener('click', alInicio);
+    $('#btnQuickStart').addEventListener('click', alInicio);
+    $('#btnQuickMetro').addEventListener('click', toggleMetro);
     $('#ppPrev').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) - 1));
     $('#ppNext').addEventListener('click', () => irACompas(compasDelTick(rep.cursorTick) + 1));
     $('#ppClose').addEventListener('click', () => togglePlayPanel(false));
@@ -1563,6 +1570,11 @@
       boton.addEventListener('pointercancel', parar);
       boton.addEventListener('pointerleave', parar);
     };
+    // La barra del tempo junto al Play: mientras se arrastra sólo cambia la
+    // cifra; al soltar se aplica, que redibujar a cada pulso atasca el móvil.
+    const quick = $('#quickTempo');
+    quick.addEventListener('input', () => { $('#quickTempoVal').textContent = quick.value; });
+    quick.addEventListener('change', () => ponerTempo(+quick.value));
     pasoLargo($('#bpmDown'), -1);
     pasoLargo($('#bpmUp'), 1);
 
