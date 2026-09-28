@@ -34,6 +34,10 @@ const ok = (paso, hay, quiero) => {
   await p.waitForSelector('.cat-ficha', { timeout: 60000 });
   const fichas = await p.evaluate(() => document.querySelectorAll('.cat-ficha').length);
   ok('el catálogo enseña fichas', fichas > 0, true);
+  const pest = await p.evaluate(() => [...document.querySelectorAll('.cat-pestanas button')].filter((b) => !b.hidden).map((b) => b.textContent + (b.classList.contains('on') ? '*' : '')).join(' '));
+  ok('empieza por las destacadas de Jev', pest.startsWith('Destacadas*'), true);
+  const primero = await p.evaluate(() => document.querySelector('.cat-valores button .cat-nom')?.textContent);
+  ok('Bach, el primero de los destacados', primero, 'Johann Sebastian Bach');
   const antes = await p.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('mtm-score:v1:current') || '{}').title || ''));
   await p.locator('.cat-ficha').first().click();
   await p.waitForFunction(() => !document.querySelector('.cat-fondo') || getComputedStyle(document.querySelector('.cat-fondo')).display === 'none' || (JSON.parse(localStorage.getItem('mtm-score:v1:current') || '{}').measures || []).length > 1, null, { timeout: 60000 }).catch(() => {});
