@@ -62,6 +62,7 @@ const Catalogo = (() => {
   let pagina = 0, cargando = false, fin = false;
   const SEGUIDAS = 20;      // tope de páginas por tirón, no vaya a irse de las manos
   let vigia = null, contador = 0, revision = 0;
+  let vistas = new Set();
 
   /* ---------------- utilidades ---------------- */
 
@@ -95,6 +96,129 @@ const Catalogo = (() => {
     const respuesta = await fetch(CONFIG.datos + '/' + camino, { cache: 'no-store' });
     if (!respuesta.ok) throw new Error('No se pudo leer ' + ruta);
     return respuesta;
+  }
+
+  /* ---------------- el buscador ----------------
+     Se busca por palabras, no por el principio del título: «elisa» tiene
+     que encontrar «Für Elise». Cada palabra tecleada debe casar con alguna
+     del título o del autor, empezándola («beet» → Beethoven), con una letra
+     de diferencia («elisa» ≈ «elise», «nocturno» ≈ «nocturne») o por un
+     sinónimo en otro idioma («claro de luna» → «Moonlight», «Mondschein»).
+     Las palabras vacías son las mismas que usa el generador del catálogo
+     (herramientas/generar_web.py, VACIAS) para repartir las fichas. */
+  const VACIAS = new Set(`a al and au aus avec d da dal das de del dei della der des di die du e ed
+    el en et for fur from im in l la las le les lo los mit no nr num o of on op
+    ou para per por pour sur the to un una und une uno vom von y zu zum zur`.split(/\s+/));
+
+  // Cada grupo son la misma idea en varios idiomas; basta con que la palabra
+  // tecleada sea una de ellas (o se le parezca) para buscar todas.
+  const GRUPOS = [
+    'elisa elise', 'luna moon moonlight mond mondschein lune', 'claro clair moonlight mondschein',
+    'vals waltz walzer valse valzer', 'marcha march marsch marche marcia',
+    'nocturno nocturne notturno nachtstuck', 'nocturna night nacht nachtmusik nocturne notturno',
+    'cancion song lied chanson canzone', 'canciones songs lieder chansons',
+    'himno hymn hymne inno anthem ode', 'oda ode', 'alegria joy freude joie gioia',
+    'navidad christmas xmas weihnacht weihnachten noel natale', 'noche night nacht nuit notte',
+    'paz peace stille silent frieden paix pace', 'cumpleanos birthday geburtstag anniversaire compleanno',
+    'feliz happy froh joyeux', 'boda wedding hochzeit mariage nozze', 'nupcial wedding bridal hochzeit',
+    'primavera spring fruhling printemps', 'verano summer sommer ete estate', 'otono autumn herbst automne autunno',
+    'invierno winter hiver inverno', 'estaciones seasons jahreszeiten saisons stagioni',
+    'cuatro four vier quatre quattro', 'lago lake see lac', 'cisne cisnes swan schwan schwanensee cygne cigno',
+    'flauta flute flote flauto', 'magica magic zauber zauberflote enchantee magico', 'sueno dream traum traumerei reve sogno',
+    'amor love liebe amour amore', 'adios farewell goodbye abschied adieu addio',
+    'sinfonia symphony sinfonie symphonie', 'concierto concerto konzert concert', 'cuarteto quartet quartett quatuor quartetto',
+    'preludio prelude praludium', 'fuga fugue fuge', 'estudio etude study studie studio', 'danza dance tanz danse',
+    'hungara hungarian ungarische ungarischer hongroise', 'rapsodia rhapsody rhapsodie', 'cascanueces nutcracker nussknacker casse',
+    'bella beauty belle schone', 'durmiente sleeping dornroschen dormant dormiente', 'maria marie mary',
+    'mesias messiah messias messie', 'misa mass messe messa', 'campana campanas bells glocken cloches campanella',
+    'turca turkish turk turc turque', 'serenata serenade standchen nachtmusik', 'pequena little kleine petite piccola',
+    'musica music musik musique', 'agua water wasser eau acqua', 'fuego fire feuer feu fuoco',
+    'barbero barber barbier barbiere', 'sevilla seville siviglia', 'flor flores flower flowers blume blumen fleur fleurs fiore fiori',
+    'rey king konig roi re', 'reina queen konigin reine regina', 'montana mountain berg montagne',
+    'tocata toccata', 'aire air aria', 'minueto minuet menuett menuet minuetto', 'zarabanda sarabande',
+    'giga gigue jig', 'gavota gavotte', 'cantata kantate cantate', 'pajaro bird vogel oiseau uccello',
+    'mariposa butterfly schmetterling papillon farfalla', 'vuelo flight flug vol volo', 'moscardon bumblebee hummel',
+    'fantasma phantom fantome', 'piratas pirates', 'guerra war wars krieg guerre', 'galaxias galaxy star stars',
+    'estrella estrellas star stars stern sterne etoile', 'ninos children kinder enfants bambini', 'escenas scenes szenen',
+    'infancia childhood kinderszenen enfance', 'lagrimas tears tranen larmes lacrime', 'ave ave', 'gracia grace gnade',
+    'asombrosa amazing', 'bach bach', 'juego game spiel jeu', 'marcha march', 'fantasia fantasy fantaisie phantasie',
+  ].map((g) => g.split(' '));
+  const SINONIMOS = new Map();
+  GRUPOS.forEach((g) => g.forEach((w) => {
+    const ya = SINONIMOS.get(w) || new Set();
+    g.forEach((x) => ya.add(x));
+    SINONIMOS.set(w, ya);
+  }));
+
+  const palabrasDe = (t) => (limpiar(t).match(/[a-z0-9]+/g) || [])
+    .filter((w) => w.length >= 2 && !VACIAS.has(w) && !/^\d+$/.test(w));
+
+  // Distancia de edición, cortando en cuanto pasa de uno: sólo interesa
+  // saber si dos palabras se diferencian en una letra como mucho.
+  function casiIgual(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, fallos = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++fallos > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return fallos + (a.length - i) + (b.length - j) <= 1;
+  }
+
+  /** Lo que se teclea, en palabras con sus variantes. */
+  function consulta(texto) {
+    let ws = palabrasDe(texto);
+    if (!ws.length) ws = (limpiar(texto).match(/[a-z0-9]+/g) || []);
+    return ws.map((w) => {
+      const alt = new Set();
+      SINONIMOS.forEach((grupo, clave) => {
+        if (clave === w || (w.length >= 5 && casiIgual(w, clave))) grupo.forEach((x) => alt.add(x));
+      });
+      alt.delete(w);
+      return { w, alt: [...alt] };
+    });
+  }
+
+  /* Lo tecleado casa empezando la palabra o con una letra de diferencia;
+     un sinónimo sólo si es la palabra entera (o su plural): si no, «night»
+     se parecía a «light» y «casse» a «case», y salía cualquier cosa. */
+  function casaPalabra({ w, alt }, fichaPalabras) {
+    return fichaPalabras.some((t) => t.startsWith(w) ||
+      (w.length >= 5 && (casiIgual(w, t) || (t.length > w.length && casiIgual(w, t.slice(0, w.length)))))) ||
+      alt.some((a) => fichaPalabras.some((t) => t === a || t === a + 's' || t === a + 'e' || t === a + 'n' ||
+        (a.length >= 7 && t.startsWith(a))));
+  }
+
+  function casa(q, titulo, autor) {
+    if (!q.length) return true;
+    const ws = (limpiar(`${titulo || ''} ${autor || ''}`).match(/[a-z0-9]+/g) || []);
+    return q.every((alt) => casaPalabra(alt, ws));
+  }
+
+  const cajonDe = (w, letras) => w.replace(/[^a-z0-9]/g, '').slice(0, letras).padEnd(letras, '_');
+
+  /* Qué archivos del buscador hay que bajar: los cajones de la palabra que
+     menos páginas cuesta, con todas sus variantes. */
+  let rutasHechas = null;
+  function rutasBusqueda() {
+    if (rutasHechas && rutasHechas.texto === busqueda) return rutasHechas.rutas;
+    const letras = facetas.letras || 2;
+    const cajones = facetas.busqueda || {};
+    const q = consulta(busqueda);
+    let mejor = null;
+    q.forEach(({ w, alt }) => {
+      const claves = [...new Set([w, ...alt].filter((a) => a.length >= letras).map((a) => cajonDe(a, letras)))];
+      if (!claves.length) return;
+      const coste = claves.reduce((n, c) => n + (cajones[c] || 0), 0);
+      if (!mejor || coste < mejor.coste) mejor = { claves, coste };
+    });
+    const rutas = [];
+    if (mejor) mejor.claves.forEach((c) => {
+      for (let n = 0; n < (cajones[c] || 0); n++) rutas.push(`b/${c}-${String(n).padStart(3, '0')}.tsv.gz`);
+    });
+    rutasHechas = { texto: busqueda, rutas, q };
+    return rutas;
   }
 
   /* ---------------- armar la ventana ---------------- */
@@ -236,8 +360,7 @@ const Catalogo = (() => {
   }
 
   function coincide(f) {
-    const q = limpiar(busqueda);
-    return !q || limpiar(`${f.titulo || ''} ${f.autor || ''}`).includes(q);
+    return !busqueda || casa(consulta(busqueda), f.titulo, f.autor);
   }
 
   function pintarEspecial() {
@@ -407,12 +530,7 @@ const Catalogo = (() => {
 
   /** Qué archivo toca bajar ahora: el del buscador o el de la pestaña. */
   function rutaPagina() {
-    if (busqueda.length >= (facetas.letras || 2)) {
-      const letras = facetas.letras || 2;
-      const clave = limpiar(busqueda).replace(/[^a-z0-9]/g, '').slice(0, letras).padEnd(letras, '_');
-      const total = (facetas.busqueda || {})[clave] || 0;
-      return pagina < total ? `b/${clave}-${String(pagina).padStart(3, '0')}.tsv.gz` : null;
-    }
+    if (busqueda.length >= (facetas.letras || 2)) return rutasBusqueda()[pagina] || null;
     if (!valor) return null;
     return pagina < valor.paginas
       ? `p/${pestana}/${valor.id}-${String(pagina).padStart(3, '0')}.tsv.gz`
@@ -429,14 +547,19 @@ const Catalogo = (() => {
     try {
       const crudo = await texto(await traer(ruta));
       if (actual !== revision) return;
-      const filtro = busqueda.length >= (facetas.letras || 2) ? limpiar(busqueda) : null;
+      const buscando = busqueda.length >= (facetas.letras || 2);
+      const q = buscando ? (rutasBusqueda(), rutasHechas.q) : null;
+      // con varios cajones una misma ficha puede venir dos veces
+      if (pagina === 0) vistas = new Set();
       let puestas = 0;
       crudo.split('\n').forEach((linea) => {
         if (!linea) return;
         const [titulo, autor, genero, instrumentos, partes, ref, nota] = linea.split('\t');
         if (!fichaValida({ titulo, autor, ref })) return;
         // dentro del cajón de dos letras aún hay que afinar
-        if (filtro && !(limpiar(titulo).includes(filtro) || limpiar(autor).includes(filtro))) return;
+        if (q && !casa(q, titulo, autor)) return;
+        if (vistas.has(ref)) return;
+        vistas.add(ref);
         lista.appendChild(ficha({ titulo, autor, genero, instrumentos, partes, ref, nota: +nota || 0 }));
         puestas++;
       });
