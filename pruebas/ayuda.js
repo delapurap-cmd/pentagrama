@@ -41,7 +41,7 @@ for (const ins of ['piano', 'guitarra']) {
       enPantalla: !p.hidden && b.width > 100 && b.height > 20 &&
                   b.top < innerHeight && b.bottom > 0 && b.left < innerWidth && b.right > 0,
       caja: Math.round(b.width) + 'x' + Math.round(b.height) + ' @y' + Math.round(b.top),
-      piezas: document.querySelectorAll('#insCaja .ins-blanca, #insCaja .ins-negra, #insCaja .ins-cuerda').length,
+      piezas: document.querySelectorAll('#insCaja .ins-blanca, #insCaja .ins-negra, #insCaja .ins-cuerda, #insCaja canvas').length,
       aviso: document.querySelector('#insAviso').textContent.trim().slice(0, 70),
     };
   });
@@ -53,12 +53,15 @@ for (const ins of ['piano', 'guitarra']) {
   for (let i = 0; i < 20; i++) {
     await pg.waitForTimeout(250);
     pico = Math.max(pico, await pg.evaluate(() =>
-      document.querySelectorAll('#insCaja .ins-blanca.on, #insCaja .ins-negra.on, #insCaja .ins-dedo').length));
+      document.querySelectorAll('#insCaja .ins-blanca.on, #insCaja .ins-negra.on, #insCaja .ins-dedo').length +
+      // el piano MIDI pinta en un lienzo: dice cuántas teclas lleva encendidas
+      (+(document.querySelector('#pianoMidiCanvas')?.dataset.encendidas || 0))));
   }
   await pg.click('#btnPlay');
   await pg.waitForTimeout(500);
   const tras = await pg.evaluate(() =>
-    document.querySelectorAll('#insCaja .ins-blanca.on, #insCaja .ins-negra.on, #insCaja .ins-dedo').length);
+    document.querySelectorAll('#insCaja .ins-blanca.on, #insCaja .ins-negra.on, #insCaja .ins-dedo').length +
+    (+(document.querySelector('#pianoMidiCanvas')?.dataset.encendidas || 0)));
   console.log(`   encendidas a la vez, máximo: ${pico} · tras parar: ${tras}`);
   if (pico === 0) { console.log('   ✗ no se encendió nada'); fallo = 1; }
   if (tras !== 0) { console.log('   ✗ quedaron encendidas al parar'); fallo = 1; }

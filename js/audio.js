@@ -97,6 +97,181 @@ const Sound = (() => {
     return true;
   }
 
+  /* ---------- Guitarra y bajo: cuerda pulsada sintetizada ----------
+     Karplus-Strong: un golpe de ruido que recorre una línea de retardo del
+     largo de la cuerda y se va apagando al promediarse consigo mismo. Suena
+     a cuerda pulsada de verdad y no pesa nada: no hay muestras que bajar.
+     Cada altura se calcula una vez y se guarda. */
+  let instrumento = 'piano';
+  const cuerdas = new Map();                       // 'inst:midi' -> AudioBuffer
+  const CUERDA = {
+    guitarra: { seg: 2.6, apaga: 0.996, brillo: 0.5, corte: 4200, vol: 0.55 },
+    bajo:     { seg: 3.2, apaga: 0.998, brillo: 0.25, corte: 1400, vol: 0.8 }
+  };
+  function bufferDeCuerda(midi) {
+    const clave = instrumento + ':' + midi;
+    if (cuerdas.has(clave)) return cuerdas.get(clave);
+    const cfg = CUERDA[instrumento];
+    const c = ac(), sr = c.sampleRate;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const N = Math.max(2, Math.round(sr / f));
+    const largo = Math.round(sr * cfg.seg);
+    const buf = c.createBuffer(1, largo, sr);
+    const y = buf.getChannelData(0);
+    // el golpe: ruido suavizado (la púa no es un chasquido) y la cuerda que lo filtra
+    let prev = 0;
+    for (let i = 0; i < N; i++) { const r = Math.random() * 2 - 1; prev = prev + cfg.brillo * (r - prev); y[i] = prev; }
+    // las cuerdas agudas se apagan antes que las graves, como en el instrumento
+    const apaga = Math.pow(cfg.apaga, Math.max(0.6, f / 220));
+    for (let i = N; i < largo; i++) y[i] = apaga * 0.5 * (y[i - N] + y[i - N + 1]);
+    let pico = 0;
+    for (let i = 0; i < largo; i++) pico = Math.max(pico, Math.abs(y[i]));
+    if (pico > 0) for (let i = 0; i < largo; i++) y[i] /= pico;
+    cuerdas.set(clave, buf);
+    return buf;
+  }
+  function playCuerda(at, midi, dur, vol) {
+    const cfg = CUERDA[instrumento];
+    const c = ac();
+    const src = c.createBufferSource();
+    src.buffer = bufferDeCuerda(Math.round(midi));
+    const pb = c.createBiquadFilter();
+    pb.type = 'lowpass'; pb.frequency.value = cfg.corte;
+    const g = c.createGain();
+    const end = at + Math.max(0.15, dur);
+    const v = vol * cfg.vol;
+    g.gain.setValueAtTime(v, at);
+    g.gain.setValueAtTime(v, Math.max(at, end - 0.05));
+    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.12);   // se apaga con la mano
+    src.connect(pb).connect(g).connect(c.destination);
+    src.start(at);
+    src.stop(end + 0.2);
+    vivos.push(src);
+  }
+
+  /* ---------- Batería sintetizada ----------
+     Cada golpe se fabrica con osciladores y ruido, como en una caja de
+     ritmos: el bombo es un seno que cae de tono, la caja ruido con un poco de
+     cuerpo, los platos ruido agudo de más o menos cola. */
+  let ruidoBuf = null;
+  function ruido() {
+    const c = ac();
+    if (!ruidoBuf) {
+      ruidoBuf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+      const d = ruidoBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = c.createBufferSource();
+    src.buffer = ruidoBuf;
+    return src;
+  }
+  function golpeRuido(at, vol, filtro, frec, cola) {
+    const c = ac();
+    const src = ruido();
+    const f = c.createBiquadFilter();
+    f.type = filtro; f.frequency.value = frec;
+    const g = c.createGain();
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + cola);
+    src.connect(f).connect(g).connect(c.destination);
+    src.start(at); src.stop(at + cola + 0.05);
+    vivos.push(src);
+  }
+  function golpeTono(at, vol, desde, hasta, cola) {
+    const c = ac();
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(desde, at);
+    o.frequency.exponentialRampToValueAtTime(hasta, at + cola * 0.6);
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + cola);
+    o.connect(g).connect(c.destination);
+    o.start(at); o.stop(at + cola + 0.05);
+    vivos.push(o);
+  }
+  function tambor(at, son, vol = 0.9) {
+    const v = Math.max(0.05, vol);
+    switch (son) {
+      case 'bombo': golpeTono(at, v * 1.1, 150, 45, 0.45); break;
+      case 'caja': golpeTono(at, v * 0.45, 220, 160, 0.12); golpeRuido(at, v * 0.6, 'highpass', 1500, 0.2); break;
+      case 'tomAlto': golpeTono(at, v * 0.9, 260, 180, 0.35); break;
+      case 'tomMedio': golpeTono(at, v * 0.9, 200, 135, 0.4); break;
+      case 'tomPiso': golpeTono(at, v * 0.95, 140, 90, 0.5); break;
+      case 'charles': golpeRuido(at, v * 0.35, 'highpass', 7000, 0.06); break;
+      case 'charlesPie': golpeRuido(at, v * 0.3, 'highpass', 6000, 0.045); break;
+      case 'ride': golpeRuido(at, v * 0.25, 'bandpass', 5000, 0.9); golpeTono(at, v * 0.08, 900, 880, 0.6); break;
+      case 'crash': golpeRuido(at, v * 0.4, 'highpass', 3500, 1.6); break;
+      default: golpeRuido(at, v * 0.5, 'highpass', 1500, 0.2);
+    }
+  }
+
+  /** Con qué suena la obra: lo que diga (score.sonido) o, si no, guitarra
+      —o bajo— cuando lleva tablatura, y piano en lo demás. */
+  function instrumentoDe(score) {
+    if (score && score.sonido && (score.sonido === 'piano' || CUERDA[score.sonido] || SINTE[score.sonido])) return score.sonido;
+    // el sonido elegido en la barra de instrumentos (score-instruments.js)
+    if (score && score.soundId && score.soundId !== 'piano' && typeof ScoreInstrument !== 'undefined') {
+      return timbreASonido(ScoreInstrument.toneOf(score));
+    }
+    if (score && score.tab) return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
+    return 'piano';
+  }
+
+  /** El sonido de una pauta: con varios instrumentos, el de su parte (la
+      voz y el piano, a piano; la guitarra y el bajo, a cuerda). */
+  function instrumentoPent(score, pent) {
+    if (!score || !score.partes || score.partes.length < 2) return instrumentoDe(score);
+    const P = Model.parteDe(score, pent | 0);
+    if (P && (P.sonido === 'piano' || CUERDA[P.sonido] || SINTE[P.sonido])) return P.sonido;
+    if (score.tab && typeof Tablatura !== 'undefined' && Tablatura.pentsDe(score).includes(pent | 0)) {
+      return score.tab.afin === 'bajo' ? 'bajo' : 'guitarra';
+    }
+    return 'piano';
+  }
+
+  /* ---------- Vientos y arco: sintetizados ----------
+     No hay muestras de trompeta ni de saxo: se sintetizan con la forma de
+     onda que más se les parece —diente de sierra el metal, cuadrada la
+     caña, seno la flauta— y un ataque y un vibrato a su medida. Suenan a
+     sintetizador, no a instrumento real, y así se dice en el menú. */
+  const SINTE = {
+    organo:{ onda: 'sine', pico: 0.2, ataque: 0.02, corte: 5000, vib: 0 },
+    metal: { onda: 'sawtooth', pico: 0.09, ataque: 0.035, corte: 2600, vib: 0 },
+    cana:  { onda: 'square', pico: 0.065, ataque: 0.025, corte: 2200, vib: 4.5 },
+    flauta:{ onda: 'sine', pico: 0.2, ataque: 0.06, corte: 6000, vib: 5 },
+    arco:  { onda: 'sawtooth', pico: 0.07, ataque: 0.09, corte: 3200, vib: 5.5 }
+  };
+  function sintetizar(at, midi, dur, vol, cfg) {
+    const c = ac();
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = c.createOscillator(), g = c.createGain();
+    // sin filtro si el contexto no lo tiene (las pruebas usan uno de mentira)
+    const filtro = c.createBiquadFilter ? c.createBiquadFilter() : null;
+    o.type = cfg.onda; o.frequency.setValueAtTime(f, at);
+    if (filtro) { filtro.type = 'lowpass'; filtro.frequency.value = cfg.corte; }
+    if (cfg.vib) {
+      const lfo = c.createOscillator(), prof = c.createGain();
+      lfo.frequency.value = cfg.vib; prof.gain.value = f * 0.006;
+      lfo.connect(prof).connect(o.frequency);
+      lfo.start(at + 0.15); lfo.stop(at + Math.max(0.2, dur) + 0.1); registrar(lfo);
+    }
+    const pico = cfg.pico * (vol / 0.9), fin = at + Math.max(0.08, dur * 0.97);
+    const ataque = Math.min(cfg.ataque, (fin - at) * 0.4);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(pico, at + ataque);
+    g.gain.setValueAtTime(pico * 0.85, Math.max(at + ataque, fin - 0.06));
+    g.gain.exponentialRampToValueAtTime(0.0001, fin);
+    (filtro ? o.connect(filtro) : o).connect(g).connect(c.destination);
+    registrar(o);
+    o.start(at); o.stop(fin + 0.02);
+  }
+
+  /* Los timbres de los instrumentos de la barra (score-instruments.js) en
+     los sonidos de aquí. */
+  const DE_TIMBRE = { brass: 'metal', reed: 'cana', organ: 'organo', bass: 'bajo', piano: 'piano' };
+  const timbreASonido = (t) => DE_TIMBRE[t] || t || 'piano';
+
   /* Live MIDI uses THE SAME loaded Opus piano buffers as score playback. */
   const live=new Map();let pedal=false;
   function soltar(v){
@@ -146,8 +321,13 @@ const Sound = (() => {
 
   /* ---------- Nota (reproducción de la partitura) ---------- */
   function wave(timbre){return ({organ:'sine',bass:'triangle',brass:'sawtooth',reed:'square'})[timbre]||'triangle';}
-  function tone(at, midi, dur, vol = 0.9, timbre='piano') {
-    if (timbre==='piano' && playSample(at, midi, dur, vol)) return;
+  /* `timbre`, si se pasa, manda (el piano MIDI, la barra de instrumentos);
+     si no, el instrumento de la pauta que está sonando. */
+  function tone(at, midi, dur, vol = 0.9, timbre) {
+    const inst = timbre ? timbreASonido(timbre) : instrumento;
+    if (SINTE[inst]) { sintetizar(at, midi, dur, vol, SINTE[inst]); return; }
+    if (CUERDA[inst]) { const antes = instrumento; instrumento = inst; playCuerda(at, midi, dur, vol); instrumento = antes; return; }
+    if (playSample(at, midi, dur, vol)) return;
     const c = ac();
     const f = 440 * Math.pow(2, (midi - 69) / 12);
     const o = c.createOscillator();
@@ -245,16 +425,30 @@ const Sound = (() => {
     stop();
     const generation = playGeneration;
     const c = ac();
+    instrumento = instrumentoDe(score);
     // las muestras del piano se piden antes de empezar, para que no entre
     // media melodía con oscilador y la otra media con piano
     try {
       const midis = [];
+      const deCuerda = [];
       score.measures.forEach((m, mi) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
-        if (ev.kind === 'note') {
-          Model.midisOf(ev, score.key, Model.clefAt(score, mi, v.pent)).forEach((x) => midis.push(ScoreInstrument.concert(score,x)));
+        // la batería se sintetiza: sus notas no piden muestras
+        if (ev.kind === 'note' && !Model.clefAt(score, mi, v.pent).percusion) {
+          const inst = instrumentoPent(score, v.pent);
+          const tr = Model.transpDe(score, v.pent);
+          Model.midisOf(ev, Model.keyAt(score, mi, v.pent), Model.clefAt(score, mi, v.pent))
+            .forEach((x) => { if (x == null) return; x += tr; if (inst === 'piano') midis.push(x); else if (CUERDA[inst]) deCuerda.push([inst, Math.round(x)]); });
         }
       })));
-      if (midis.length && ScoreInstrument.toneOf(score)==='piano') await preload(midis);
+      // la guitarra y el bajo no bajan nada: se calcula cada cuerda antes de empezar
+      const vistas = new Set();
+      deCuerda.forEach(([inst, x]) => {
+        if (vistas.has(inst + x)) return;
+        vistas.add(inst + x);
+        instrumento = inst; bufferDeCuerda(x);
+      });
+      instrumento = instrumentoDe(score);
+      if (midis.length) await preload(midis);
     } catch (e) { /* se sigue con el oscilador */ }
     if (generation !== playGeneration) return; // user navigated before preload completed
 
@@ -340,18 +534,26 @@ const Sound = (() => {
 
     const sonar = (it, cfg, cuando, restante) => {
       if (it.ev.kind !== 'note') return;
+      // en la pauta de batería cada nota es un golpe, no una altura
+      if (it.clef && it.clef.percusion) {
+        Model.alturas(it.ev).forEach((n) => tambor(cuando, Model.percusionDe(n.di).son, cfg.vol));
+        return;
+      }
+      instrumento = instrumentoPent(score, it.pent);
       // A hard loop boundary cuts notes, grace notes AND sustain at exactly B.
       const dur = Math.min(cfg.pedal ? it.dur * 1.9 : it.dur, restante);
       if (dur <= 0.02) return;
+      const tr = Model.transpDe(score, it.pent);
       const adornos = it.ev.adornos || [];
       const robo = Math.min(dur * 0.35, adornos.length * 0.075);
       adornos.forEach((a, k) => {
         const offset = k * 0.075;
         if (offset + 0.02 < dur) tone(cuando + offset,
-          ScoreInstrument.concert(score,Model.midiDe(a, score.key, it.clef)) + cfg.octava,
-          Math.min(0.09, dur - offset), cfg.vol * 0.8,ScoreInstrument.toneOf(score));
+          Model.midiDe(a, Model.keyAt(score, it.mi, it.pent), it.clef) + tr + cfg.octava,
+          Math.min(0.09, dur - offset), cfg.vol * 0.8);
       });
-      const midis = Model.midisOf(it.ev, score.key, it.clef).map(m=>ScoreInstrument.concert(score,m));
+      // lo escrito, pasado a lo que suena: una trompeta en Si♭ suena un tono abajo
+      const midis = Model.midisOf(it.ev, Model.keyAt(score, it.mi, it.pent), it.clef).map((x) => x + tr);
       midis.forEach((m2, iN) => {
         const mid = m2 + cfg.octava;
         // el adorno escrito sobre la nota sólo desarrolla la voz de arriba
@@ -361,7 +563,7 @@ const Sound = (() => {
         let t = cuando + robo;
         partes.forEach(([nota, d]) => {
           const permitted = Math.min(d, dur - (t - cuando));
-          if (permitted > 0.02) tone(t, nota, permitted, cfg.vol,ScoreInstrument.toneOf(score));
+          if (permitted > 0.02) tone(t, nota, permitted, cfg.vol);
           t += d;
         });
       });
@@ -489,8 +691,13 @@ const Sound = (() => {
           if (offset > phase) break;
           if (it.ev.kind === 'note' && Math.min(largo, offset + it.dur) > phase) {
             ids.push(it.ev.id);
-            Model.midisOf(it.ev, score.key, it.clef)
-              .map(m => ScoreInstrument.concert(score,m)).forEach(m => {if(m != null) midis.push(m);});
+            /* Las alturas ya resueltas, para las ayudas visuales. Se sacan
+               aquí porque aquí está la clave de ese compás y ese pentagrama:
+               calcularlas fuera obligaría a recorrer la obra por segunda vez
+               para averiguar algo que este bucle ya tiene delante. */
+            const tr = Model.transpDe(score, it.pent);
+            const ms = Model.midisOf(it.ev, Model.keyAt(score, it.mi, it.pent), it.clef);
+            for (const m of ms) if (m != null) midis.push(m + tr);
           }
         }
         const signature = ids.join(',');
@@ -659,6 +866,6 @@ const Sound = (() => {
 
   const now = () => ac().currentTime;
 
-   return { ac, click, tone, preload, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, metroSpacing, play, stop, playing, playOrigin,
+   return { ac, click, tone, tambor, preload, instrumentoDe, instrumentoPent, liveOn, liveOff, livePedal, liveAllOff, metroStart, metroStop, metroOn, metroOrigin, metroSpacing, play, stop, playing, playOrigin,
            quantize, quantizeSeries, figureFor, fitTempo, bpmFromTaps, now };
 })();

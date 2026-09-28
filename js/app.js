@@ -22,6 +22,11 @@
   const state = {
     score: null,
     selectedId: null,
+    // En un acorde, qué cabeza se está editando (índice de grave a aguda).
+    selectedHead: 0,
+    // Tramo elegido: desde `ancla` hasta la nota elegida, por la misma voz.
+    rango: null,
+    portapapeles: null,
     playingId: null,
     pending: { dur: 'q', dots: 0 },   // última figura usada
     undo: [],
@@ -36,8 +41,12 @@
     const saved = EMBED ? null : load();
     state.score = saved || Model.newScore({ systems: EMBED ? 1 : 4 });
     Model.reflow(state.score);
+    const zoomGuardado = parseFloat(localStorage.getItem(LS_ZOOM));
     state.zoom = EMBED ? Math.max(0.43, Math.min(1.05, (innerWidth - 12) / 820))
-      : (parseFloat(localStorage.getItem(LS_ZOOM)) || 0.75);
+      : (zoomGuardado || 0.75);
+    // En el teléfono, la primera vez la hoja entra entera de lado a lado:
+    // a 75 % se salía por la derecha y había que adivinar que existe «⤢».
+    if (!EMBED && !zoomGuardado && innerWidth < 780) requestAnimationFrame(() => encuadrar(true));
     applyZoom();
     bindBar();
     bindTab();
@@ -61,6 +70,7 @@
     bindPlayPanel();
     if(!EMBED)togglePlayPanel(false);
     bindKeys();
+    bindEditar();
     render();
     if (EMBED) parent.postMessage({ type: 'reper-ready', id: BLOCK_ID }, '*');
     else abrirPortada(saved);
@@ -73,6 +83,8 @@
     renderRaf = requestAnimationFrame(() => {
       Engrave.render(state.score, $('#stage'), {
         selectedId: state.selectedId,
+        selectedHead: state.selectedHead,
+        rango: state.rango ? new Set(seleccion().map((f) => f.ev.id)) : null,
         playingId: state.playingId,
         compact: EMBED,
         measuresPerSystem: Math.max(2, state.score.measuresPerSystem || 2)
@@ -133,7 +145,7 @@
   }
 
   /** Encuadra la hoja: el sistema entero de izquierda a derecha, centrado. */
-  function encuadrar() {
+  function encuadrar(silencioso) {
     const scroller = $('#scroller');
     // el aire de los lados se lee del propio relleno, que cambia con la
     // pantalla; medir la hoja no valdría porque su ancho es lo que se calcula
@@ -144,7 +156,7 @@
     Radial.close();
     // al encuadrar, se vuelve al principio: ya se ve todo el ancho
     scroller.scrollLeft = 0;
-    toast('Hoja ajustada a la pantalla');
+    if (!silencioso) toast('Hoja ajustada a la pantalla');
   }
 
   function bindHeadFields() {
@@ -270,13 +282,20 @@
     else if (p.y < techo) scroller.scrollTop -= techo - p.y;
   }
 
+  /** La cabeza del acorde que se está editando, ya acotada. */
+  function cabezaSel(ev) {
+    const n = Model.alturas(ev).length;
+    return n ? Math.max(0, Math.min(n - 1, state.selectedHead | 0)) : 0;
+  }
+
   function radialState(ev) {
     const alturas = Model.alturas(ev);
+    const cab = alturas[cabezaSel(ev)] || { di: ev.di, acc: ev.acc };
     return {
       kind: ev.kind,
       dur: ev.dur,
       dots: ev.dots || 0,
-      acc: ev.acc,
+      acc: cab.acc,
       tie: !!ev.tie,
       // grados que ya están sonando por encima de la base, para marcar los
       // intervalos que el acorde ya tiene
@@ -285,14 +304,17 @@
       cifrado: ev.cifrado || '',
       art: ev.art || [],
       tup: ev.tup || null,
-      pitch: ev.kind === 'note' ? pitchName(ev) : ''
+      pitch: ev.kind === 'note' ? pitchName(cab) + (alturas.length > 1 ? ' · ' + (cabezaSel(ev) + 1) + '/' + alturas.length : '') : ''
     };
   }
 
   const ES = { c: 'Do', d: 'Re', e: 'Mi', f: 'Fa', g: 'Sol', a: 'La', b: 'Si' };
   function pitchName(ev) {
     const letter = Model.diLetter(ev.di);
-    const alt = ev.acc == null ? Model.keyAlter(state.score.key, letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
+    const donde = Model.findEvent(state.score, ev.id);
+    // en la pauta de batería la nota se llama por su instrumento
+    if (donde && Model.clefAt(state.score, donde.mi, donde.pent | 0).percusion) return Model.percusionDe(ev.di).nombre;
+    const alt = ev.acc == null ? Model.keyAlter(Model.keyAt(state.score, donde ? donde.mi : 0, donde ? donde.pent | 0 : 0), letter) : ({ '#': 1, b: -1, n: 0 })[ev.acc];
     const mark = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
     return ES[letter] + mark + Model.diOctave(ev.di);
   }
@@ -328,19 +350,46 @@
     step(d) {
       mutate((ev) => {
         if (ev.kind === 'rest') return;
-        ev.di = Math.max(20, Math.min(48, ev.di + d));
+        // en un acorde se mueve la cabeza que se tocó, no siempre la más grave
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
+          n.di = Math.max(20, Math.min(48, n.di + d));
+        });
       });
+    },
+    /** Pasa a la cabeza de encima (+1) o de debajo (−1) del acorde. */
+    cabeza(d) {
+      const found = currentEvent();
+      if (!found || found.ev.kind !== 'note') return;
+      const n = Model.alturas(found.ev).length;
+      if (n < 2) return;
+      state.selectedHead = (cabezaSel(found.ev) + d + n) % n;
+      render();
+      requestAnimationFrame(() => { const f2 = currentEvent(); if (f2) Radial.update(radialState(f2.ev)); });
     },
     dot() {
       // se cicla 0 → 1 → 2 → 0: el doble puntillo se pide repitiendo el botón
       mutate((ev) => { ev.dots = ((ev.dots || 0) + 1) % 3; });
     },
     acc(a) {
-      mutate((ev) => { if (ev.kind === 'note') ev.acc = ev.acc === a ? null : a; });
+      mutate((ev) => {
+        if (ev.kind !== 'note') return;
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => { n.acc = n.acc === a ? null : a; });
+      });
     },
     delete() {
       const found = currentEvent();
       if (!found) return;
+      // En un acorde se borra la nota elegida y el acorde sigue (como en
+      // MuseScore); con una sola nota se borra el evento.
+      const alt = Model.alturas(found.ev);
+      if (alt.length > 1) {
+        mutate((ev) => {
+          const i = cabezaSel(ev);
+          Model.quitarAltura(ev, alt[i].di);
+          state.selectedHead = Math.min(i, alt.length - 2);
+        });
+        return;
+      }
       snapshot();
       Model.removeEvent(state.score, found.mi, found.vi, found.index);
       state.selectedId = null;
@@ -364,7 +413,10 @@
         const base = Model.alturas(ev)[0].di;
         const di = base + grados;
         if (di > 48 || di < 20) { toast('Esa nota se sale del pentagrama'); return; }
-        if (!Model.quitarAltura(ev, di)) Model.anadirAltura(ev, di);
+        if (!Model.quitarAltura(ev, di)) {
+          Model.anadirAltura(ev, di);
+          state.selectedHead = Model.alturas(ev).findIndex((n) => n.di === di);
+        } else state.selectedHead = 0;
       });
     },
     acordeQuitar() {
@@ -448,6 +500,7 @@
     const target = flat[at + dir];
     if (target) {
       state.selectedId = target.ev.id;
+      state.selectedHead = 0;
       render();
       requestAnimationFrame(() => {
         Radial.update(radialState(target.ev));
@@ -518,11 +571,17 @@
       // arrastrar una nota existente hacia arriba o abajo cambia su altura
       if (cand.hit.hitEvent && cand.hit.hitEvent.ev.kind === 'note' &&
           (cand.dragging || (Math.abs(dy) > 8 && Math.abs(dy) > dx))) {
-        if (!cand.dragging) { cand.dragging = true; snapshot(); state.selectedId = cand.hit.hitEvent.ev.id; }
+        if (!cand.dragging) {
+          cand.dragging = true; snapshot();
+          state.selectedId = cand.hit.hitEvent.ev.id;
+          // se arrastra la cabeza que se agarró, no la más grave del acorde
+          state.selectedHead = Model.cabezaCercana(cand.hit.hitEvent.ev, cand.hit.di);
+        }
         const found = Model.findEvent(state.score, cand.hit.hitEvent.ev.id);
         const probe = Engrave.hitTest(cand.x, e.clientY);
-        if (found && probe && probe.di !== found.ev.di) {
-          found.ev.di = probe.di;
+        const actual = found && Model.alturas(found.ev)[cabezaSel(found.ev)];
+        if (found && probe && actual && probe.di !== actual.di) {
+          state.selectedHead = Model.editarCabeza(found.ev, cabezaSel(found.ev), (n) => { n.di = probe.di; });
           render();
         }
         return;
@@ -538,7 +597,7 @@
       const c = cand;
       cand = null;
       if (c.dragging) { e.preventDefault(); render(); return; }   // se arrastró la altura
-      if (write && pts.size === 0) { e.preventDefault(); writeAt(c.hit); }
+      if (write && pts.size === 0) { e.preventDefault(); writeAt(c.hit, e.shiftKey); }
     };
     scroller.addEventListener('pointerup', (e) => finish(e, true));
     scroller.addEventListener('pointercancel', (e) => finish(e, false));
@@ -554,6 +613,16 @@
 
   /* TAB and notation share score.measures' pitch events. Each tab edit is
      atomic and redraws both views; no second, unsynchronized note collection. */
+  /* El botón TAB y el panel de la barra mandan sobre la tablatura que dibuja
+     el editor (tablatura.js: técnicas, cejilla, ritmo, sólo TAB): se pasa su
+     afinación, su cejilla y su pauta a `score.tab`. */
+  const AFIN_DE_PRESET = { guitar: 'estandar', 'guitar-drop-d': 'dropD', bass4: 'bajo', bass5: 'bajo' };
+  function tabDeLaBarra(sc) {
+    const c = Tablature.config(sc);
+    if (!c.enabled) { delete sc.tab; return; }
+    sc.tab = Object.assign({}, sc.tab || {}, { afin: AFIN_DE_PRESET[c.preset] || 'estandar', pents: [c.staff] });
+    if (c.capo) sc.tab.capo = c.capo; else delete sc.tab.capo;
+  }
   function bindTab(){
     const settings=$('#tabDeviceControls');
     for(const [id,preset] of Object.entries(Tablature.PRESETS)){
@@ -564,6 +633,7 @@
       const next=Model.clone(state.score);
       next.tablature={...Tablature.config(next)};
       update(next.tablature);
+      tabDeLaBarra(next);
       const old=JSON.stringify(state.score.tablature||{}),nw=JSON.stringify(next.tablature);
       if(old===nw)return;
       if(rep.playing)pararTodo();
@@ -643,9 +713,19 @@
   }
 
   /** Selecciona la nota tocada o escribe una nueva en esa altura. */
-  function writeAt(hit) {
+  function writeAt(hit, mayus) {
+    // Mayús + clic sobre otra figura alarga la selección hasta ella
+    if (mayus && hit.hitEvent && state.selectedId) {
+      extenderHasta(hit.hitEvent.ev.id);
+      render();
+      avisoTramo();
+      return;
+    }
+    state.rango = null;
     if (hit.hitEvent) {
       state.selectedId = hit.hitEvent.ev.id;
+      // en un acorde, la cabeza que está más cerca de donde se tocó
+      state.selectedHead = Model.cabezaCercana(hit.hitEvent.ev, hit.di);
       render();
       requestAnimationFrame(() => openRadialFor(state.selectedId));
       return;
@@ -654,25 +734,18 @@
     const ev = Model.note(hit.di, state.pending.dur, 0);
     Model.insertEvent(state.score, hit.mi, vozDelToque(hit), hit.insertIndex, ev);
     state.selectedId = ev.id;
+    state.selectedHead = 0;
     render();
     requestAnimationFrame(() => openRadialFor(ev.id));
   }
 
   /* Piano MIDI -> notation, respecting score key, selected voice and figure. */
   const keysDown=new Set();let lastMidiEvent=null;
+  /* Lo que suena (MIDI de concierto) escrito en esa pauta: con su clave, su
+     armadura —la de un transpositor va movida— y su transporte. */
   function midiPitch(midi,mi,pent){
-    const clef=Model.clefAt(state.score,mi,pent),note=ScoreInstrument.written(state.score,midi)-(clef.octava||0);
-    const oct=Math.floor(note/12)-1,flats=Model.keyBySpec(state.score.key).fifths<0;
-    let best=null;
-    for(let o=oct-1;o<=oct+1;o++)for(let k=0;k<7;k++){
-      const di=o*7+k,letter=Model.LETTERS[k],alt=note-((o+1)*12+Model.SEMIS[letter]);
-      if(alt<-2||alt>2)continue;
-      const inKey=Model.keyAlter(state.score.key,letter);
-      const cost=(alt===inKey?0:1.5)+Math.abs(alt)*.08+
-        (flats&&alt>0?.2:0)+(!flats&&alt<0?.2:0);
-      if(!best||cost<best.cost)best={di,acc:alt===inKey?null:({'-2':'bb','-1':'b',0:'n',1:'#',2:'##'}[alt]),cost};
-    }
-    return best;
+    return Model.escribirMidi(midi-Model.transpDe(state.score,pent),
+      Model.keyAt(state.score,mi,pent),Model.clefAt(state.score,mi,pent));
   }
   function insertMidi(midi,chord=false){
     if(rep.playing)pararTodo();
@@ -681,7 +754,7 @@
       const found=Model.findEvent(state.score,lastMidiEvent.id);
       if(found&&found.ev.kind==='note'){
         const p=midiPitch(midi,found.mi,found.pent),clef=Model.clefAt(state.score,found.mi,found.pent);
-        if(p&&!Model.midisOf(found.ev,state.score.key,clef).includes(ScoreInstrument.written(state.score,midi))&&Model.anadirAltura(found.ev,p.di,p.acc)){
+        if(p&&!Model.midisOf(found.ev,Model.keyAt(state.score,found.mi,found.pent),clef).includes(midi-Model.transpDe(state.score,found.pent))&&Model.anadirAltura(found.ev,p.di,p.acc)){
           lastMidiEvent.at=now;render();return;
         }
       }
@@ -911,6 +984,7 @@
         { head: 'Importar' },
         { label: 'Importar MusicXML', hint: '.musicxml, .xml, .mxl', fn: () => importScore('musicxml') },
         { label: 'Importar MIDI', hint: '.mid, .midi', fn: () => importScore('midi') },
+        { label: 'Importar Guitar Pro', hint: '.gp, .gp3, .gp4, .gp5, .gpx', fn: () => importScore('guitarpro') },
         { sep: true },
         { head: 'Exportar' },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
@@ -936,7 +1010,7 @@
 
     $('#btnZoomIn').addEventListener('click', () => stepZoom(1));
     $('#btnZoomOut').addEventListener('click', () => stepZoom(-1));
-    $('#btnZoomFit').addEventListener('click', encuadrar);
+    $('#btnZoomFit').addEventListener('click', () => encuadrar());
     let rt = 0;
     window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
       if (EMBED) state.zoom = Math.max(0.43, Math.min(1.05, (innerWidth - 12) / SHEET_BASE));
@@ -1214,6 +1288,53 @@
     sonar();
   }
 
+  /* ---------------- Compases enteros ----------------
+     Copiar, pegar, duplicar, borrar y transportar compases. El tramo es el
+     de la selección (Mayús+flechas) o, si no hay, el compás de la nota. */
+  let portapapeles = null;
+  function tramoDeCompases() {
+    const f = currentEvent();
+    if (!f) return null;
+    let a = f.mi, b = f.mi;
+    if (state.rango && state.rango.ancla) {
+      const x = Model.findEvent(state.score, state.rango.ancla);
+      if (x) { a = Math.min(a, x.mi); b = Math.max(b, x.mi); }
+    }
+    return { a: a + 1, b: b + 1 };
+  }
+  function compases(accion) {
+    const t = tramoDeCompases();
+    if (!t && accion !== 'pegar') { toast('Elige una nota del compás'); return; }
+    const texto = t ? (t.a === t.b ? `el compás ${t.a}` : `los compases ${t.a}–${t.b}`) : '';
+    try {
+      if (accion === 'copiar') { portapapeles = RangeEdit.copy(state.score, t.a, t.b); toast('Copiado ' + texto); return; }
+      if (accion === 'pegar') {
+        if (!portapapeles || !portapapeles.length) { toast('Primero copia algún compás'); return; }
+        const tras = t ? t.b : state.score.measures.length;
+        snapshot(); RangeEdit.paste(state.score, portapapeles, tras, Model);
+        state.selectedId = null; state.rango = null; render(); toast(`Pegado detrás del compás ${tras}`); return;
+      }
+      if (accion === 'duplicar') {
+        snapshot(); RangeEdit.paste(state.score, RangeEdit.copy(state.score, t.a, t.b), t.b, Model);
+        state.rango = null; render(); toast('Duplicado ' + texto); return;
+      }
+      if (accion === 'borrar') {
+        snapshot(); RangeEdit.remove(state.score, t.a, t.b, Model);
+        state.selectedId = null; state.rango = null; render(); toast('Borrado ' + texto + ' (se deshace con Ctrl+Z)'); return;
+      }
+      if (accion === 'transportar') {
+        askNumber('Transportar ' + texto + ': semitonos (−24 a 24)', 0, -24, 24, (n) => {
+          if (!n) return;
+          const copia = Model.clone(state.score);
+          try {
+            const cuantos = RangeEdit.transpose(copia, t.a, t.b, n, Model, (m, mi, pent) => midiPitch(m, mi, pent));
+            snapshot(); state.score = copia; state.selectedId = null; render();
+            toast(`${cuantos} notas transportadas`);
+          } catch (err) { toast(err.message); }
+        });
+      }
+    } catch (err) { toast(err.message); }
+  }
   /** Pone o quita el instrumento de ayuda y ajusta el aviso de lo que no cabe. */
   function montaAyuda() {
     try { localStorage.setItem('reper.ayuda', ayuda); } catch (e) { }
@@ -1244,7 +1365,7 @@
       const clef = Model.clefAt(state.score, mi, v.pent);
       v.events.forEach((ev) => {
         if (ev.kind !== 'note') return;
-        Model.midisOf(ev, state.score.key, clef).forEach((x) => { if (x != null) todas.push(ScoreInstrument.concert(state.score,x)); });
+        Model.midisOf(ev, Model.keyAt(state.score, mi, v.pent), clef).forEach((x) => { if (x != null) todas.push(x + Model.transpDe(state.score, v.pent)); });
       });
     }));
     const fuera = Instrumentos.fuera(todas);
@@ -1550,6 +1671,601 @@
   }
 
   /* ---------------- Teclado ---------------- */
+
+  /* ---------------- Edición por tramos (como MuseScore) ----------------
+     Hasta aquí se editaba nota a nota. Esto añade lo que separa un visor
+     editable de un editor: elegir un tramo (Mayús + clic, Mayús + ←/→,
+     Ctrl+A), copiar, cortar, pegar y borrar, transportar, escribir con las
+     letras del teclado y poner o quitar compases. El tramo va siempre por
+     una misma voz, que es como lo recorre la escritura. */
+
+  /** Los eventos de la voz de `ref`, en orden, con su sitio. */
+  function lineaDe(ref) {
+    const flat = [];
+    state.score.measures.forEach((m, mi) => {
+      const v = Model.mismaVoz(m, ref);
+      if (v) v.events.forEach((ev, index) => flat.push({ ev, mi, vi: v.vi, pent: v.pent, index }));
+    });
+    return flat;
+  }
+
+  /** Lo seleccionado: el tramo si lo hay, si no la nota elegida. */
+  function seleccion() {
+    const found = currentEvent();
+    if (!found) return [];
+    if (!state.rango) return [found];
+    const flat = lineaDe(found);
+    const a = flat.findIndex((f) => f.ev.id === state.rango.ancla);
+    const b = flat.findIndex((f) => f.ev.id === state.selectedId);
+    if (a < 0 || b < 0) { state.rango = null; return [found]; }
+    return flat.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+
+  /** Amplía (o empieza) el tramo hasta `id`. */
+  function extenderHasta(id) {
+    if (!state.selectedId) { state.selectedId = id; state.rango = null; return; }
+    if (!state.rango) state.rango = { ancla: state.selectedId };
+    state.selectedId = id;
+    state.selectedHead = 0;
+  }
+
+  function avisoTramo() {
+    const n = seleccion().length;
+    if (n > 1) toast(n + ' figuras seleccionadas · Ctrl+C copiar · Supr borrar · ↑↓ transportar');
+  }
+
+  function aplicarATramo(fn) {
+    const sel = seleccion();
+    if (!sel.length) return;
+    snapshot();
+    sel.forEach((f) => fn(f.ev));
+    Model.reflow(state.score);
+    render();
+  }
+
+  const copiaSinIds = (ev) => {
+    const c = JSON.parse(JSON.stringify(ev));
+    delete c.id; delete c.auto;
+    return c;
+  };
+
+  const edicion = {
+    /* Tablatura: se enciende con una afinación y se apaga con null. Va en la
+       obra (score.tab), así que se guarda y se abre con ella. */
+    tablatura(afin) {
+      snapshot();
+      // cambiar de afinación no quita la cejilla ni la vista elegida
+      if (afin) state.score.tab = Object.assign({}, state.score.tab, { afin });
+      else delete state.score.tab;
+      render();
+      if (afin) {
+        const fuera = Tablatura.fuera(Tablatura.digitar(state.score));
+        toast(fuera ? fuera + ' notas no caben en el mástil y quedan fuera de la tablatura'
+                    : 'Tablatura · Alt+Mayús+↑↓ cambia la cuerda de la nota');
+      }
+    },
+    /* Pasar la nota elegida a la cuerda de al lado sin cambiar lo que suena,
+       como Ctrl+↑↓ en Guitar Pro. Se guarda en ev.cuerdas (1 = la aguda). */
+    cuerda(d) {
+      const found = currentEvent();
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      if (!found || found.ev.kind !== 'note') return;
+      const ev = found.ev;
+      const mapa = Tablatura.digitar(state.score);
+      const dg = mapa.get(ev.id);
+      if (!dg) return;
+      const k = cabezaSel(ev);
+      const cuerdas = Tablatura.cuerdasDe(state.score);
+      const midi = Model.midisOf(ev, Model.keyAt(state.score, found.mi, found.pent | 0), Model.clefAt(state.score, found.mi, found.pent | 0))[k];
+      const actual = dg.pos[k] ? dg.pos[k].str : -1;
+      const ocupadas = new Set(dg.pos.filter((p, i) => p && i !== k).map((p) => p.str));
+      const libres = Tablatura.sitios(midi, cuerdas).map((p) => p.str).filter((c) => !ocupadas.has(c));
+      // d > 0 es hacia la cuerda aguda (número menor)
+      const cand = libres.filter((c) => (d > 0 ? c < actual : c > actual)).sort((a, b) => (d > 0 ? b - a : a - b))[0];
+      if (cand == null) { toast('Esa nota no cabe en otra cuerda por ese lado'); return; }
+      snapshot();
+      const lista = dg.pos.map((p) => (p ? p.str + 1 : null));
+      lista[k] = cand + 1;
+      ev.cuerdas = lista;
+      render();
+      toast('Cuerda ' + (cand + 1) + ' · traste ' + (midi - cuerdas[cand]));
+    },
+    /* Opciones de la tablatura que van en la obra: sólo la TAB, el ritmo
+       debajo de los números y la cejilla. */
+    opcionTab(clave, valor) {
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      snapshot();
+      const t = Object.assign({}, state.score.tab);
+      if (valor === undefined) t[clave] = !t[clave]; else t[clave] = valor;
+      if (!t[clave]) delete t[clave];
+      state.score.tab = t;
+      render();
+      if (clave === 'capo') {
+        const fuera = Tablatura.fuera(Tablatura.digitar(state.score));
+        toast((t.capo ? 'Cejilla en el traste ' + t.capo : 'Sin cejilla') +
+              (fuera ? ' · ' + fuera + ' notas quedan por debajo de la cejilla' : ''));
+      }
+    },
+    /* Técnicas de guitarra en la nota elegida, como en Guitar Pro. H, P y
+       deslizar van hacia la nota siguiente y no se mezclan entre sí; nota
+       muerta y armónico tampoco. */
+    tecnica(t) {
+      if (!state.score.tab) { toast('Enciende primero la tablatura (menú Editar)'); return; }
+      const found = currentEvent();
+      if (!found || found.ev.kind !== 'note') { toast('Elige una nota'); return; }
+      const excluyen = { H: ['P', 'SL'], P: ['H', 'SL'], SL: ['H', 'P'], X: ['ARM'], ARM: ['X'] };
+      snapshot();
+      const ev = found.ev;
+      let lista = (ev.tec || []).slice();
+      if (lista.indexOf(t) >= 0) lista = lista.filter((x) => x !== t);
+      else lista = lista.filter((x) => (excluyen[t] || []).indexOf(x) < 0).concat([t]);
+      if (lista.length) ev.tec = lista; else delete ev.tec;
+      render();
+    },
+    /* Escribir la letra como en MuseScore: una cajita bajo la nota, Espacio
+       pasa a la siguiente, «-» parte la palabra y pasa, ← vuelve con la caja
+       vacía, Intro o Esc terminan. [verso] es la estrofa (0 = la primera). */
+    letraModo(verso) {
+      verso = verso | 0;
+      const inicio = currentEvent();
+      if (!inicio || inicio.ev.kind !== 'note') { toast('Elige la nota donde empieza la letra'); return; }
+      if (Radial.isOpen()) Radial.close();
+      state.selectedId = inicio.ev.id;
+      let caja = document.querySelector('.letra-caja');
+      if (!caja) {
+        caja = document.createElement('input');
+        caja.className = 'letra-caja';
+        caja.setAttribute('autocomplete', 'off');
+        caja.setAttribute('autocapitalize', 'off');
+        caja.setAttribute('spellcheck', 'false');
+        document.body.appendChild(caja);
+      }
+      const colocar = () => {
+        const p = Engrave.screenPosOf(state.selectedId);
+        if (!p) return;
+        caja.style.left = Math.round(p.x - 45) + 'px';
+        caja.style.top = Math.round(p.y + 56) + 'px';
+      };
+      const cargar = () => {
+        const f = currentEvent();
+        caja.value = f ? String(((f.ev.letra || [])[verso]) || '').replace(/-$/, '') : '';
+        caja.select();
+      };
+      const guardar = (guion) => {
+        const f = currentEvent();
+        if (!f || f.ev.kind !== 'note') return;
+        const t = caja.value.trim();
+        const antes = ((f.ev.letra || [])[verso]) || '';
+        const ahora = t ? t + (guion ? '-' : '') : '';
+        if (antes === ahora) return;
+        snapshot();
+        const lista = (f.ev.letra || []).slice();
+        lista[verso] = ahora;
+        while (lista.length && !lista[lista.length - 1]) lista.pop();
+        if (lista.length) f.ev.letra = lista; else delete f.ev.letra;
+      };
+      const mover = (d) => {
+        const flat = lineaDe(currentEvent());
+        let i = flat.findIndex((x) => x.ev.id === state.selectedId) + d;
+        while (i >= 0 && i < flat.length && flat[i].ev.kind !== 'note') i += d;
+        if (i < 0 || i >= flat.length) return false;
+        state.selectedId = flat[i].ev.id;
+        state.selectedHead = 0;
+        return true;
+      };
+      const cerrar = () => { caja.onkeydown = null; caja.onblur = null; caja.remove(); render(); };
+      caja.onkeydown = (e) => {
+        if (e.key === ' ' || e.key === '-' || e.key === 'Tab') {
+          e.preventDefault();
+          guardar(e.key === '-');
+          const hay = mover(1);
+          render(); colocar(); cargar();
+          if (!hay) toast('Última nota de la voz');
+        } else if (e.key === 'Enter' || e.key === 'Escape') {
+          e.preventDefault(); guardar(false); cerrar();
+        } else if (e.key === 'Backspace' && !caja.value) {
+          e.preventDefault();
+          if (mover(-1)) { render(); colocar(); cargar(); }
+        }
+      };
+      caja.onblur = () => { guardar(false); cerrar(); };
+      render(); colocar(); cargar(); caja.focus();
+      toast('Letra' + (verso ? ' (estrofa ' + (verso + 1) + ')' : '') + ' · Espacio: siguiente · «-»: parte la palabra · Intro: terminar');
+    },
+    /* Cambio de armadura desde el compás de la nota elegida hasta el
+       siguiente cambio. Lo que suena no se mueve: donde la armadura nueva no
+       lo dice, la nota se escribe con su alteración, como hace MuseScore. */
+    armaduraDesde(spec) {
+      const found = currentEvent();
+      const mi = found ? found.mi : 0;
+      const vieja = Model.keyAt(state.score, mi);
+      // cada pauta con la suya: un transpositor la lleva movida
+      const viejas = Model.pentagramas(state.score).map((_, p) => Model.keyAt(state.score, mi, p));
+      snapshot();
+      const hasta = (() => {
+        for (let i = mi + 1; i < state.score.measures.length; i++) if (state.score.measures[i].key) return i;
+        return state.score.measures.length;
+      })();
+      if (mi === 0) state.score.key = spec || state.score.key;
+      else if (spec) state.score.measures[mi].key = spec;
+      else delete state.score.measures[mi].key;
+      const nueva = Model.keyAt(state.score, mi);
+      for (let i = mi; i < hasta; i++) {
+        Model.voces(state.score.measures[i]).forEach((v) => v.events.forEach((ev) => {
+          if (ev.kind !== 'note') return;
+          const deP = viejas[v.pent] || vieja, aP = Model.keyAt(state.score, mi, v.pent);
+          Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
+            const midi = Model.midiDe(n, deP);
+            const nat = (Model.diOctave(n.di) + 1) * 12 + Model.SEMIS[Model.diLetter(n.di)];
+            const alt = midi - nat;
+            return { di: n.di, acc: alt === Model.keyAlter(aP, Model.diLetter(n.di)) ? null : (ALT_ACC[alt] || null) };
+          }));
+        }));
+      }
+      Model.reflow(state.score);
+      render();
+      toast(spec ? 'Armadura de ' + Model.keyBySpec(nueva).label + ' desde el compás ' + (mi + 1) : 'Cambio de armadura quitado');
+    },
+    seleccionarTodo() {
+      const found = currentEvent();
+      const ref = found || { vi: 0, pent: 0 };
+      const flat = lineaDe(ref).filter((f) => !f.ev.auto);
+      if (!flat.length) return;
+      state.rango = { ancla: flat[0].ev.id };
+      state.selectedId = flat[flat.length - 1].ev.id;
+      render();
+      avisoTramo();
+    },
+    copiar() {
+      const sel = seleccion();
+      if (!sel.length) { toast('Elige primero una nota o un tramo'); return false; }
+      state.portapapeles = sel.map((f) => copiaSinIds(f.ev));
+      toast(sel.length === 1 ? 'Copiada 1 figura' : 'Copiadas ' + sel.length + ' figuras');
+      return true;
+    },
+    cortar() {
+      if (edicion.copiar()) edicion.borrar();
+    },
+    borrar() {
+      const sel = seleccion();
+      if (!sel.length) return;
+      if (sel.length === 1 && !state.rango) { handlers.delete(); return; }
+      snapshot();
+      // de atrás adelante, para que los índices sigan valiendo
+      sel.slice().reverse().forEach((f) => {
+        const v = Model.vozDe(state.score.measures[f.mi], f.vi);
+        const i = v ? v.events.findIndex((e) => e.id === f.ev.id) : -1;
+        if (i >= 0) v.events.splice(i, 1);
+      });
+      state.score.measures.forEach((m) => Model.podarVoces(m));
+      Model.reflow(state.score);
+      state.selectedId = null; state.rango = null;
+      Radial.close();
+      render();
+    },
+    /** Pega detrás de la selección. Las figuras entran nuevas: otros ids, y
+        los grupos (tresillos…) con su propio id para no juntarse con otros. */
+    pegar() {
+      const clip = state.portapapeles;
+      if (!clip || !clip.length) { toast('No hay nada copiado'); return; }
+      const sel = seleccion();
+      const ult = sel[sel.length - 1];
+      if (!ult) { toast('Elige dónde pegar: toca una nota'); return; }
+      snapshot();
+      const grupos = {};
+      const nuevos = clip.map((c) => {
+        const ev = JSON.parse(JSON.stringify(c));
+        ev.id = Model.uid();
+        if (ev.tup) ev.tup = Object.assign({}, ev.tup, { id: grupos[ev.tup.id] || (grupos[ev.tup.id] = Model.uid()) });
+        return ev;
+      });
+      const v = Model.vozDe(state.score.measures[ult.mi], ult.vi);
+      const i = v.events.findIndex((e) => e.id === ult.ev.id);
+      v.events.splice(i + 1, 0, ...nuevos);
+      Model.reflow(state.score);
+      state.rango = nuevos.length > 1 ? { ancla: nuevos[0].id } : null;
+      state.selectedId = nuevos[nuevos.length - 1].id;
+      state.selectedHead = 0;
+      render();
+      toast('Pegado');
+    },
+    /** Sube o baja el tramo `grados` grados (7 = octava). */
+    mover(grados) {
+      aplicarATramo((ev) => {
+        if (ev.kind !== 'note') return;
+        Model.ponerAlturas(ev, Model.alturas(ev).map((n) => ({ di: Math.max(13, Math.min(55, n.di + grados)), acc: n.acc })));
+      });
+    },
+    /** Cambia la grafía de la nota elegida sin cambiar lo que suena
+        (Do♯ ↔ Re♭), como la J de MuseScore. */
+    enarmonia() {
+      mutate((ev, found) => {
+        if (ev.kind !== 'note') return;
+        const clave = Model.keyAt(state.score, found.mi, found.pent | 0);
+        state.selectedHead = Model.editarCabeza(ev, cabezaSel(ev), (n) => {
+          const midi = Model.midiDe(n, clave);
+          const opciones = [-1, 1, -2, 2].map((d) => n.di + d).map((di) => {
+            const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
+            return { di, alt: midi - nat };
+          }).filter((o) => Math.abs(o.alt) <= 2);
+          const o = opciones.find((x) => Math.abs(x.alt) <= 1) || opciones[0];
+          if (!o) return;
+          n.di = o.di;
+          n.acc = o.alt === Model.keyAlter(clave, Model.diLetter(o.di)) ? null : ALT_ACC[o.alt];
+        });
+      });
+    },
+    /** Lleva la obra entera a otra tonalidad, reescribiendo cada nota y los
+        cifrados con la grafía de la armadura nueva. */
+    transportarA(spec) {
+      const de = state.score.key;
+      if (spec === de) return;
+      const tonica = (k) => ({ l: k[0].toLowerCase(), pc: (Model.SEMIS[k[0].toLowerCase()] + (k[1] === '#' ? 1 : k[1] === 'b' ? -1 : 0) + 12) % 12 });
+      const a = tonica(de), b = tonica(spec);
+      let semis = (b.pc - a.pc + 12) % 12;
+      if (semis > 6) semis -= 12;
+      let grados = (Model.LETTERS.indexOf(b.l) - Model.LETTERS.indexOf(a.l) + 7) % 7;
+      if (semis < 0 && grados > 0) grados -= 7;
+      if (semis > 0 && grados === 0) grados = 7;
+      snapshot();
+      /* Los cambios de armadura se mueven lo mismo, en quintas: lo que dista
+         la nueva de la de salida. Fuera de ±7 se toma la enarmónica. */
+      const dq = Model.keyBySpec(spec).fifths - Model.keyBySpec(de).fifths;
+      const moverClave = (k) => {
+        let f = Model.keyBySpec(k).fifths + dq;
+        while (f > 7) f -= 12;
+        while (f < -7) f += 12;
+        return Model.KEYS.find((x) => x.fifths === f).spec;
+      };
+      const antes = state.score.measures.map((m, mi) => Model.keyAt(state.score, mi));
+      state.score.measures.forEach((m, mi) => {
+        const deAqui = antes[mi], aAqui = moverClave(deAqui);
+        Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+          if (ev.cifrado) ev.cifrado = transportarCifrado(ev.cifrado, semis, aAqui);
+          if (ev.kind !== 'note') return;
+          // un transpositor mueve su armadura escrita lo mismo que la de la obra
+          const t = Model.transpDe(state.score, v.pent);
+          const deP = Model.keyMovida(deAqui, -t), aP = Model.keyMovida(aAqui, -t);
+          Model.ponerAlturas(ev, Model.alturas(ev).map((n) => {
+            const midi = Model.midiDe(n, deP) + semis;
+            const di = n.di + grados;
+            const nat = (Model.diOctave(di) + 1) * 12 + Model.SEMIS[Model.diLetter(di)];
+            const alt = midi - nat;
+            return { di, acc: alt === Model.keyAlter(aP, Model.diLetter(di)) ? null : (ALT_ACC[alt] || null) };
+          }));
+        }));
+        if (m.key && mi > 0) m.key = aAqui;
+      });
+      state.score.key = spec;
+      Model.reflow(state.score);
+      render();
+      toast('Transportada a ' + Model.keyBySpec(spec).label);
+    },
+    /** Escribe detrás de la nota elegida la letra pulsada, en la octava más
+        cercana a la anterior; con Mayús la añade al acorde. */
+    letra(l, alAcorde) {
+      const found = currentEvent();
+      if (!found) return;
+      const ref = found.ev.kind === 'note' ? Model.alturas(found.ev)[cabezaSel(found.ev)].di : Model.MIDDLE_LINE_DI;
+      let di = ref, mejor = Infinity;
+      for (let d = ref - 6; d <= ref + 6; d++) {
+        if (Model.diLetter(d) === l && Math.abs(d - ref) < mejor) { mejor = Math.abs(d - ref); di = d; }
+      }
+      if (alAcorde) {
+        if (found.ev.kind !== 'note') return;
+        // con Mayús va por encima de la nota elegida, como en MuseScore
+        if (di <= ref) di += 7;
+        mutate((ev) => { Model.anadirAltura(ev, di); state.selectedHead = Model.alturas(ev).findIndex((n) => n.di === di); });
+        return;
+      }
+      snapshot();
+      const ev = Model.note(di, state.pending.dur, 0);
+      const v = Model.vozDe(state.score.measures[found.mi], found.vi);
+      const i = v.events.findIndex((e) => e.id === found.ev.id);
+      // si la elegida es un silencio, la letra lo sustituye
+      if (found.ev.kind === 'rest') { ev.dur = found.ev.dur; ev.dots = found.ev.dots || 0; v.events.splice(i, 1, ev); }
+      else v.events.splice(i + 1, 0, ev);
+      Model.reflow(state.score);
+      state.selectedId = ev.id; state.selectedHead = 0; state.rango = null;
+      render();
+      requestAnimationFrame(() => { if (Radial.isOpen()) Radial.update(radialState(ev)); aLaVista(ev.id); });
+    },
+    insertarCompas(despues) {
+      const found = currentEvent();
+      const mi = found ? found.mi : state.score.measures.length - 1;
+      snapshot();
+      state.score.measures.splice(mi + (despues ? 1 : 0), 0, Model.emptyMeasure());
+      Model.reflow(state.score);
+      render();
+      toast('Compás añadido');
+    },
+    borrarCompas() {
+      const found = currentEvent();
+      if (!found) { toast('Toca una nota del compás que quieres quitar'); return; }
+      if (state.score.measures.length <= 1) return;
+      snapshot();
+      state.score.measures.splice(found.mi, 1);
+      state.selectedId = null; state.rango = null;
+      Radial.close();
+      Model.reflow(state.score);
+      render();
+      toast('Compás ' + (found.mi + 1) + ' quitado');
+    }
+  };
+
+  const ALT_ACC = { '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' };
+  const NOTAS_S = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const NOTAS_B = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  /** Transporta las raíces de un cifrado («F#m7/C#» → «Abm7/Eb»). */
+  function transportarCifrado(txt, semis, spec) {
+    const bemoles = Model.keyBySpec(spec).fifths < 0;
+    return txt.replace(/([A-G])([#b♯♭]?)/g, (m, l, a) => {
+      const pc = (PC[l] + (a === '#' || a === '♯' ? 1 : a === 'b' || a === '♭' ? -1 : 0) + semis + 24) % 12;
+      return (bemoles ? NOTAS_B : NOTAS_S)[pc];
+    });
+  }
+
+  function bindEditar() {
+    const btn = $('#btnEdit');
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      const hay = !!currentEvent();
+      const tramo = seleccion().length;
+      menu([
+        { head: hay ? (tramo > 1 ? tramo + ' figuras elegidas' : 'Lo elegido') : 'Toca una nota para empezar' },
+        { label: 'Seleccionar todo', hint: 'Ctrl+A', fn: edicion.seleccionarTodo },
+        { label: 'Copiar', hint: 'Ctrl+C', fn: edicion.copiar },
+        { label: 'Cortar', hint: 'Ctrl+X', fn: edicion.cortar },
+        { label: 'Pegar detrás', hint: 'Ctrl+V', fn: edicion.pegar },
+        { label: 'Borrar', hint: 'Supr', fn: edicion.borrar },
+        { sep: true },
+        { label: 'Subir un grado', hint: '↑', fn: () => edicion.mover(1) },
+        { label: 'Bajar un grado', hint: '↓', fn: () => edicion.mover(-1) },
+        { label: 'Subir una octava', hint: 'Ctrl+↑', fn: () => edicion.mover(7) },
+        { label: 'Bajar una octava', hint: 'Ctrl+↓', fn: () => edicion.mover(-7) },
+        { label: 'Enarmonía', hint: 'J · Do♯ ↔ Re♭', fn: edicion.enarmonia },
+        { label: 'Transportar la obra…', hint: 'a otra tonalidad', fn: () => menu(Model.KEYS.map((k) => ({
+          label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === state.score.key,
+          fn: () => edicion.transportarA(k.spec)
+        })), btn) },
+        { label: 'Compases…', hint: 'copiar · pegar · duplicar · borrar · transportar', fn: () => {
+          const t = tramoDeCompases();
+          const de = t ? (t.a === t.b ? 'el compás ' + t.a : 'los compases ' + t.a + '–' + t.b) : 'elige una nota';
+          menu([{ head: 'Compases: ' + de },
+            { label: 'Copiar', hint: 'Mayús+flechas para varios', fn: () => compases('copiar') },
+            { label: 'Pegar detrás', hint: portapapeles ? portapapeles.length + ' copiados' : 'nada copiado', fn: () => compases('pegar') },
+            { label: 'Duplicar', fn: () => compases('duplicar') },
+            { label: 'Transportar…', hint: 'semitonos', fn: () => compases('transportar') },
+            { sep: true },
+            { label: 'Borrar', hint: 'se deshace con Ctrl+Z', fn: () => compases('borrar') }
+          ], btn);
+        } },
+        { label: 'Cambiar armadura desde aquí…', hint: 'en el compás de la nota', fn: () => {
+          const f = currentEvent();
+          const mi = f ? f.mi : 0;
+          const actual = Model.keyAt(state.score, mi);
+          const hayCambio = mi > 0 && !!state.score.measures[mi].key;
+          menu([{ head: 'Armadura desde el compás ' + (mi + 1) }].concat(Model.KEYS.map((k) => ({
+            label: `${k.label} <small style="opacity:.55">/ ${k.rel}</small>`, sel: k.spec === actual,
+            fn: () => edicion.armaduraDesde(k.spec)
+          })), hayCambio ? [{ sep: true }, { label: 'Quitar este cambio', fn: () => edicion.armaduraDesde(null) }] : []), btn);
+        } },
+        { sep: true },
+        { label: 'Insertar compás antes', fn: () => edicion.insertarCompas(false) },
+        { label: 'Insertar compás después', fn: () => edicion.insertarCompas(true) },
+        { label: 'Quitar este compás', fn: edicion.borrarCompas },
+        { sep: true },
+        { label: state.score.tab ? 'Tablatura ✓' : 'Tablatura de guitarra', hint: 'bajo el pentagrama',
+          fn: () => menu([{ head: 'Tablatura' }].concat(
+            Object.keys(Tablatura.AFINACIONES).map((id) => ({
+              label: Tablatura.AFINACIONES[id].nombre,
+              sel: !!state.score.tab && state.score.tab.afin === id,
+              fn: () => edicion.tablatura(id)
+            })),
+            [{ sep: true }, { label: 'Quitar la tablatura', sel: !state.score.tab, fn: () => edicion.tablatura(null) }]
+          ), btn) },
+        { label: state.score.diagramas ? 'Diagramas de acordes ✓' : 'Diagramas de acordes', hint: 'encima de cada cifrado',
+          fn: () => {
+            snapshot();
+            if (state.score.diagramas) delete state.score.diagramas; else state.score.diagramas = true;
+            render();
+            if (state.score.diagramas && !state.score.measures.some((m) => Model.voces(m).some((v) => v.events.some((e) => e.cifrado)))) {
+              toast('Escribe cifrados (Signos → cifrado) y saldrá su diagrama encima');
+            }
+          } },
+        { label: 'Instrumentos…', hint: 'añadir · cambiar · transpositores', fn: () => {
+          const sc = state.score;
+          const ps = Model.partes(sc);
+          const libres = 4 - Model.nPent(sc);
+          const anadir = (tipo) => {
+            snapshot();
+            if (!Model.anadirInstrumento(sc, tipo)) { toast('No cabe: el sistema admite cuatro pautas'); return; }
+            Model.reflow(sc); render();
+            toast(Model.INSTRUMENTOS[tipo].nombre + ' añadido debajo');
+          };
+          /* Cambiar el instrumento de una parte: sólo los que llevan las
+             mismas pautas. Las notas se reescriben para que suene igual —en
+             la trompeta en Si♭ un Do de concierto se escribe Re—. */
+          const cambiar = (k) => {
+            const P = ps[k];
+            menu([{ head: 'Pasar ' + (P.nombre || 'la partitura') + ' a…' }].concat(Object.keys(Model.INSTRUMENTOS)
+              .filter((t) => Model.INSTRUMENTOS[t].claves.length === P.n)
+              .map((t) => {
+                const ins = Model.INSTRUMENTOS[t];
+                return { label: ins.nombre, hint: ins.transp ? 'transpositor' : '', sel: P.tipo === t || P.nombre === ins.nombre,
+                  fn: () => {
+                    snapshot();
+                    const error = Model.cambiarInstrumento(sc, k, t);
+                    if (error) { toast(error); return; }
+                    Model.reflow(sc); render();
+                    toast(ins.transp ? ins.nombre + ': escrito transportado, suena igual' : 'Ahora es ' + ins.nombre.toLowerCase());
+                  } };
+              })), btn);
+          };
+          menu([{ head: ps.length > 1 ? 'Instrumentos de la partitura' : 'El instrumento' }]
+            .concat(ps.map((P, k) => ({ label: (P.nombre || sc.instrumento || 'Partitura') + (Model.transpDe(sc, P.desde) ? ' (transpositor)' : ''),
+              hint: 'cambiar…', fn: () => cambiar(k) })))
+            .concat([{ sep: true }, { head: 'Añadir debajo' }])
+            .concat(Object.keys(Model.INSTRUMENTOS).map((t) => {
+              const ins = Model.INSTRUMENTOS[t];
+              const cabe = ins.claves.length <= libres;
+              return { label: 'Añadir ' + ins.nombre.charAt(0).toLowerCase() + ins.nombre.slice(1), hint: cabe ? ins.claves.length + (ins.claves.length > 1 ? ' pautas' : ' pauta') : 'no cabe',
+                       fn: () => anadir(t) };
+            }))
+            .concat(ps.length > 1 ? [{ sep: true }, { label: 'Quitar ' + ps[ps.length - 1].nombre.toLowerCase(), hint: 'con lo que tenga escrito',
+              fn: () => { snapshot(); Model.quitarUltimoInstrumento(sc); Model.reflow(sc); render(); } }] : []), btn);
+        } },
+        { label: 'Sonido…', hint: 'piano · guitarra · bajo', fn: () => {
+          const sc = state.score;
+          const auto = Sound.instrumentoDe(Object.assign({}, sc, { sonido: null }));
+          const nombre = { piano: 'piano', guitarra: 'guitarra', bajo: 'bajo', metal: 'metal (sintetizado)', cana: 'caña (sintetizada)', flauta: 'flauta (sintetizada)', arco: 'cuerda frotada (sintetizada)' };
+          const elegir = (v) => { snapshot(); if (v) sc.sonido = v; else delete sc.sonido; toast('Suena a ' + nombre[Sound.instrumentoDe(sc)]); };
+          menu([{ head: 'Con qué suena' },
+            { label: 'Automático', hint: 'ahora: ' + nombre[auto] + (sc.tab ? ' (hay tablatura)' : ''), sel: !sc.sonido, fn: () => elegir(null) },
+            { label: 'Piano', sel: sc.sonido === 'piano', fn: () => elegir('piano') },
+            { label: 'Guitarra', sel: sc.sonido === 'guitarra', fn: () => elegir('guitarra') },
+            { label: 'Bajo', sel: sc.sonido === 'bajo', fn: () => elegir('bajo') }
+          ], btn);
+        } },
+        { label: 'Letra…', hint: 'Ctrl+L · una sílaba por nota', fn: () => edicion.letraModo(0) },
+        { label: 'Letra, segunda estrofa…', hint: 'debajo de la primera', fn: () => edicion.letraModo(1) },
+        { sep: true },
+        { label: 'Cambiar de cuerda', hint: 'Alt+Mayús+↑↓', fn: () => edicion.cuerda(1) },
+        { label: 'Técnica de guitarra…', hint: 'H · P · bend · vibrato…', fn: () => {
+          const found = currentEvent();
+          const tec = (found && found.ev.tec) || [];
+          const t = (id, label, hint) => ({ label, hint, sel: tec.indexOf(id) >= 0, fn: () => edicion.tecnica(id) });
+          menu([{ head: 'Técnica de la nota' },
+            t('H', 'Ligado ascendente', 'tecla H · hacia la siguiente'),
+            t('P', 'Ligado descendente', 'tecla P · hacia la siguiente'),
+            t('SL', 'Deslizar', 'tecla S · hacia la siguiente'),
+            t('B', 'Bend', 'tecla U · tono entero'),
+            t('V', 'Vibrato', 'tecla V · ~'),
+            t('X', 'Nota muerta', 'tecla X'),
+            t('ARM', 'Armónico', 'tecla N · <12>'),
+            t('PM', 'Palm mute', 'tecla M · P.M.')
+          ], btn);
+        } },
+        { label: 'Vista de la tablatura…', hint: 'sólo TAB · ritmo · cejilla', fn: () => {
+          const tab = state.score.tab || {};
+          menu([{ head: 'Tablatura' },
+            { label: 'Sólo la tablatura', hint: 'sin pentagrama', sel: !!tab.solo, fn: () => edicion.opcionTab('solo') },
+            { label: 'Ritmo bajo la tablatura', hint: 'plicas y barras', sel: !!tab.solo || !!tab.ritmo,
+              fn: () => (tab.solo ? toast('Sin pentagrama el ritmo va siempre') : edicion.opcionTab('ritmo')) },
+            { sep: true }, { head: 'Cejilla' }
+          ].concat([0, 1, 2, 3, 4, 5, 7].map((c) => ({
+            label: c ? 'Traste ' + c : 'Sin cejilla', sel: (tab.capo | 0) === c, fn: () => edicion.opcionTab('capo', c)
+          }))), btn);
+        } },
+        { sep: true },
+        { head: 'Teclado' },
+        { label: 'A–G escribe la nota', hint: 'Mayús: al acorde' },
+        { label: '1–7 figura · . puntillo', hint: 'R silencio' }
+      ], e.currentTarget);
+    });
+  }
+
   function bindKeys() {
     document.addEventListener('keydown', (e) => {
       if (e.target.isContentEditable || ['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
@@ -1563,8 +2279,66 @@
       if (e.target.tagName==='BUTTON') return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'l' && state.selectedId) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.letraModo(0); return;
+      }
+      const ctrl = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (ctrl && !e.altKey && ['a', 'c', 'x', 'v'].includes(k)) {
+        e.preventDefault();
+        ({ a: edicion.seleccionarTodo, c: edicion.copiar, x: edicion.cortar, v: edicion.pegar })[k]();
+        return;
+      }
+      if (e.key === 'Escape' && state.rango) { state.rango = null; render(); }
+      // Mayús + ←/→ alarga el tramo nota a nota
+      if (e.shiftKey && !ctrl && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && state.selectedId) {
+        e.preventDefault();
+        const flat = lineaDe(currentEvent());
+        const i = flat.findIndex((f) => f.ev.id === state.selectedId);
+        const t = flat[i + (e.key === 'ArrowRight' ? 1 : -1)];
+        e.stopImmediatePropagation();
+        if (t) { extenderHasta(t.ev.id); render(); avisoTramo(); }
+        return;
+      }
+      // con un tramo, ↑/↓ lo transportan entero
+      if (state.rango && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        edicion.mover((e.key === 'ArrowUp' ? 1 : -1) * (ctrl ? 7 : 1));
+        return;
+      }
+      if (state.rango && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.borrar(); return;
+      }
+      // A–G escriben la nota (Mayús la añade al acorde); J, enarmonía
+      if (!ctrl && !e.altKey && state.selectedId && /^[a-g]$/.test(k) && !e.target.closest('.pt-search')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        edicion.letra(k, e.shiftKey);
+        return;
+      }
+      if (!ctrl && !e.altKey && k === 'j' && state.selectedId) { e.preventDefault(); edicion.enarmonia(); return; }
+      /* Técnicas de guitarra, con la tablatura encendida, como en Guitar Pro.
+         La B y la X de Guitar Pro no valen: B escribe la nota Si, así que el
+         bend va con la U («up»); la X sí está libre. */
+      const TEC_TECLA = { h: 'H', p: 'P', s: 'SL', u: 'B', v: 'V', x: 'X', n: 'ARM', m: 'PM' };
+      if (!ctrl && !e.altKey && !e.shiftKey && state.score.tab && state.selectedId && TEC_TECLA[k]) {
+        e.preventDefault(); e.stopImmediatePropagation(); edicion.tecnica(TEC_TECLA[k]); return;
+      }
       if (!Radial.isOpen() && (e.key === 'Backspace' || e.key === 'Delete') && state.selectedId) {
         e.preventDefault(); handlers.delete();
+      }
+      /* Flechas, como en MuseScore: ↑/↓ suben o bajan la nota elegida un
+         grado (con Ctrl, una octava); Alt+↑/↓ pasan a la nota de encima o de
+         debajo del acorde; ←/→ van a la nota anterior o siguiente. */
+      // Con el círculo abierto él ya atiende ↑↓←→ sin modificadores; aquí
+      // sólo lo que él no hace (Alt y Ctrl).
+      const conMod = e.altKey || e.ctrlKey || e.metaKey;
+      if (state.selectedId && /^Arrow(Up|Down|Left|Right)$/.test(e.key) && (conMod || !Radial.isOpen())) {
+        e.preventDefault();
+        const arriba = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
+        if (arriba && e.altKey && e.shiftKey) { e.stopImmediatePropagation(); edicion.cuerda(arriba); }
+        else if (arriba && e.altKey) handlers.cabeza(arriba);
+        else if (arriba) handlers.step(arriba * ((e.ctrlKey || e.metaKey) ? 7 : 1));
+        else handlers[e.key === 'ArrowRight' ? 'next' : 'prev']();
       }
     });
   }
@@ -1576,9 +2350,16 @@
     'treble-8v': '<sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change>',
     bass: '<sign>F</sign><line>4</line>',
     alto: '<sign>C</sign><line>3</line>',
-    tenor: '<sign>C</sign><line>4</line>'
+    tenor: '<sign>C</sign><line>4</line>',
+    percussion: '<sign>percussion</sign><line>2</line>'
   };
   /** `n` es el número de pentagrama (1, 2…); 0 significa que sólo hay uno. */
+  /** <transpose> de MusicXML: semitonos y, aparte, cuántas letras. */
+  function transposeXML(semis) {
+    const oct = Math.trunc(semis / 12), resto = semis - oct * 12;
+    const diat = Math.round(resto * 7 / 12) + oct * 7;
+    return `        <transpose><diatonic>${diat}</diatonic><chromatic>${semis}</chromatic></transpose>\n`;
+  }
   const claveXML = (clef, n) =>
     `        <clef${n ? ` number="${n}"` : ''}>${CLAVE_XML[clef.id] || CLAVE_XML.treble}</clef>\n`;
 
@@ -1590,12 +2371,52 @@
   const ligXML = (l) => (l === 'inicio' ? '<slur type="start" number="1"/>'
                        : l === 'fin' ? '<slur type="stop" number="1"/>' : '');
   const dedoXML = (d) => (d ? `<technical><fingering>${xmlEsc(d)}</fingering></technical>` : '');
+  /** Digitación y, con tablatura, cuerda (1 = la aguda) y traste. */
+  const tecnicaXML = (dedo, pos, extra) => {
+    const dentro = (dedo ? `<fingering>${xmlEsc(dedo)}</fingering>` : '') + (extra || '') +
+      (pos ? `<string>${pos.str + 1}</string><fret>${pos.fret}</fret>` : '');
+    return dentro ? '<technical>' + dentro + '</technical>' : '';
+  };
+
+  /* Técnicas de guitarra, como las escribe MuseScore: H y P son pares
+     start/stop entre dos notas, igual que el deslizar (que va en
+     <notations>). [antes] es la técnica de unión que traía la nota anterior. */
+  const UNE = { H: 'hammer-on', P: 'pull-off' };
+  function tecnicasXML(ev, antes) {
+    const tec = ev.tec || [];
+    let tecnico = '', notas = '';
+    if (UNE[antes]) tecnico += `<${UNE[antes]} type="stop" number="1"/>`;
+    ['H', 'P'].forEach((t) => {
+      if (tec.indexOf(t) >= 0) tecnico += `<${UNE[t]} type="start" number="1">${t}</${UNE[t]}>`;
+    });
+    if (tec.indexOf('B') >= 0) tecnico += '<bend><bend-alter>2</bend-alter></bend>';
+    if (tec.indexOf('ARM') >= 0) tecnico += '<harmonic><natural/></harmonic>';
+    if (tec.indexOf('PM') >= 0) tecnico += '<other-technical>P.M.</other-technical>';
+    if (antes === 'SL') notas += '<slide type="stop" number="1"/>';
+    if (tec.indexOf('SL') >= 0) notas += '<slide type="start" number="1"/>';
+    if (tec.indexOf('V') >= 0) notas += '<ornaments><wavy-line type="start" number="1"/><wavy-line type="stop" number="1"/></ornaments>';
+    return { tecnico, notas, cabeza: tec.indexOf('X') >= 0 ? '<notehead>x</notehead>' : '' };
+  }
+  const unionDe = (ev) => (ev.kind === 'note' && ev.tec ? ['H', 'P', 'SL'].find((t) => ev.tec.indexOf(t) >= 0) || null : null);
+
+  /* La letra, una <lyric> por estrofa. <syllabic> dice cómo se une con la
+     sílaba de al lado: begin/middle/end dentro de una palabra, single sola. */
+  function letraXML(ev, guionAntes) {
+    return (ev.letra || []).map((sil, k) => {
+      if (!sil) { guionAntes[k] = false; return ''; }
+      const sigue = sil.endsWith('-');
+      const venia = !!guionAntes[k];
+      guionAntes[k] = sigue;
+      const tipo = venia ? (sigue ? 'middle' : 'end') : (sigue ? 'begin' : 'single');
+      return `<lyric number="${k + 1}"><syllabic>${tipo}</syllabic><text>${xmlEsc(sigue ? sil.slice(0, -1) : sil)}</text></lyric>`;
+    }).join('');
+  }
 
   /** Notas de adorno: van delante y sin duración, que es lo que las define. */
-  function adornosXML(ev, s, marca) {
+  function adornosXML(ev, clave, marca) {
     return (ev.adornos || []).map((a) => {
       const letra = Model.diLetter(a.di);
-      const alt = a.acc == null ? Model.keyAlter(s.key, letra) : ({ '#': 1, b: -1, n: 0 }[a.acc] || 0);
+      const alt = a.acc == null ? Model.keyAlter(clave, letra) : ({ '#': 1, b: -1, n: 0 }[a.acc] || 0);
       return '      <note>' + `<grace${a.barrada ? ' slash="yes"' : ''}/>` +
         `<pitch><step>${letra.toUpperCase()}</step>` + (alt ? `<alter>${alt}</alter>` : '') +
         `<octave>${Model.diOctave(a.di)}</octave></pitch>` + marca +
@@ -1736,14 +2557,18 @@
 
   function importScore(format) {
     const isMidi = format === 'midi';
-    const accept = isMidi ? '.mid,.midi' : '.musicxml,.xml,.mxl';
+    const esGp = format === 'guitarpro';
+    const accept = isMidi ? '.mid,.midi' : esGp ? '.gp,.gp3,.gp4,.gp5,.gpx' : '.musicxml,.xml,.mxl';
     pickFile(accept, async (file) => {
       try {
         const valid = isMidi ? /\.(mid|midi)$/i.test(file.name)
+          : esGp ? GuitarPro.esGuitarPro(file.name)
           : /\.(musicxml|xml|mxl)$/i.test(file.name);
-        if (!valid) throw new Error('Elige un archivo ' + (isMidi ? 'MIDI (.mid o .midi).' : 'MusicXML (.musicxml, .xml o .mxl).'));
+        if (!valid) throw new Error('Elige un archivo ' + (isMidi ? 'MIDI (.mid o .midi).' : esGp ? 'de Guitar Pro (.gp, .gp3, .gp4, .gp5 o .gpx).' : 'MusicXML (.musicxml, .xml o .mxl).'));
+        if (esGp) toast('Leyendo el archivo de Guitar Pro…');
         const result = isMidi
           ? Midi.read(await file.arrayBuffer())
+          : esGp ? await GuitarPro.leer(await file.arrayBuffer())
           : MusicXML.parse(await MusicXML.readAny(file));
         snapshot();
         state.score = result.score;
@@ -1806,6 +2631,10 @@
 
   function exportMusicXML() {
     const s = state.score;
+    // con tablatura, cada nota lleva su cuerda y su traste, como en MuseScore
+    const digi = s.tab && typeof Tablatura !== 'undefined' ? Tablatura.digitar(s) : null;
+    // la parte que lleva la tablatura (la cejilla va sólo en ella)
+    const digiDe = (P) => !!digi && [...Array(P.n).keys()].some((k) => Tablatura.pentsDe(s).includes(P.desde + k));
     const div = Model.Q;
     const ALT = { '#': 1, b: -1, n: 0, '##': 2, bb: -2 };
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -1813,54 +2642,67 @@
       '<score-partwise version="3.1">\n' +
       `  <work><work-title>${xmlEsc(s.title)}</work-title></work>\n` +
       (s.composer ? `  <identification><creator type="composer">${xmlEsc(s.composer)}</creator></identification>\n` : '') +
-      `  <part-list><score-part id="P1"><part-name>${xmlEsc(ScoreInstrument.byId(s.instrumentId).name)}</part-name></score-part></part-list>\n` +
-      '  <part id="P1">\n';
+      '  <part-list>' + Model.partes(s).map((P, k) =>
+        `<score-part id="P${k + 1}"><part-name>${xmlEsc(P.nombre || (typeof ScoreInstrument !== 'undefined' && s.instrumentId ? ScoreInstrument.byId(s.instrumentId).name : 'Música'))}</part-name></score-part>`).join('') + '</part-list>\n';
 
-    const nPent = Model.nPent(s);
-    // El editor añade un compás vacío al final para seguir escribiendo.
-    // Tampoco se deben exportar rellenos vacíos de versiones antiguas.
-    // Conservar, sin embargo, un compás vacío que lleve cambios musicales.
-    const medidasExportables = s.measures.slice();
-    const vacioSinMarcas = m => Model.compasVacio(m) &&
-      !['parcial', 'repite', 'barra', 'volta', 'time', 'clef', 'claves', 'tempo']
-        .some(k => m[k] != null);
-    while (medidasExportables.length > 1 &&
-           vacioSinMarcas(medidasExportables[medidasExportables.length - 1])) {
-      medidasExportables.pop();
-    }
-    medidasExportables.forEach((m, i) => {
+    /* Cada instrumento es una <part> con sus pautas numeradas desde 1. Las
+       de los demás no se tocan: cada parte lleva sólo sus voces. */
+    Model.partes(s).forEach((P, kParte) => {
+    xml += `  <part id="P${kParte + 1}">\n`;
+    const nPent = P.n;
+    const suya = (pent) => pent >= P.desde && pent < P.desde + P.n;
+    const pentasP = Model.pentagramas(s).slice(P.desde, P.desde + P.n);
+    /* Los compases vacíos del final son relleno para completar la última
+       línea en pantalla, no música: exportarlos hacía que cada ida y vuelta
+       sumara compases (33 → 34 en la escala, 79 → 81 en Satie). */
+    // un compás vacío que lleve cambios musicales sí se exporta
+    const vacio = (m) => Model.compasVacio(m) &&
+      !['parcial', 'repite', 'barra', 'volta', 'time', 'clef', 'claves', 'tempo', 'key'].some((k) => m[k] != null);
+    let hasta = s.measures.length;
+    while (hasta > 1 && vacio(s.measures[hasta - 1])) hasta--;
+    s.measures.slice(0, hasta).forEach((m, i) => {
       const cap = Model.capacityAt(s, i);
       xml += `    <measure number="${i + 1}"${m.parcial ? ' implicit="yes"' : ''}>\n`;
       if (m.repite === 'inicio') xml += '      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>\n';
       if (i === 0) {
         xml += '      <attributes>\n' +
           `        <divisions>${div}</divisions>\n` +
-          `        <key><fifths>${Model.keyBySpec(s.key).fifths}</fifths></key>\n` +
+          `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, 0, P.desde)).fifths}</fifths></key>\n` +
           `        <time><beats>${s.time.num}</beats><beat-type>${s.time.den}</beat-type></time>\n` +
           (nPent > 1 ? `        <staves>${nPent}</staves>\n` : '') +
-          Model.pentagramas(s).map((_, p) => claveXML(Model.clefAt(s, 0, p), nPent > 1 ? p + 1 : 0)).join('') +
-          ScoreInstrument.xmlTranspose(s) +
+          pentasP.map((_, p) => claveXML(Model.clefAt(s, 0, p + P.desde), nPent > 1 ? p + 1 : 0)).join('') +
+          // un transpositor: lo que hay que sumar a lo escrito para oírlo
+          (Model.transpDe(s, P.desde) ? transposeXML(Model.transpDe(s, P.desde)) : '') +
+          (s.tab && s.tab.capo && digiDe(P) ? `        <staff-details><capo>${s.tab.capo | 0}</capo></staff-details>\n` : '') +
           '      </attributes>\n' +
-          `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n`;
+          (kParte === 0 ? `      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${s.tempo}</per-minute></metronome></direction-type><sound tempo="${s.tempo}"/></direction>\n` : '');
       } else {
         // cambios de clave a mitad de obra, uno por pentagrama
-        const cambios = Model.pentagramas(s).map((_, p) => {
-          const aqui = p === 0 ? m.clef : (m.claves && m.claves[p]);
+        const cambios = pentasP.map((_, p) => {
+          const g = p + P.desde;
+          const aqui = g === 0 ? m.clef : (m.claves && m.claves[g]);
           return aqui ? claveXML(Model.clefById(aqui), nPent > 1 ? p + 1 : 0) : '';
         }).join('');
         const tc = m.time
           ? `        <time><beats>${m.time.num}</beats><beat-type>${m.time.den}</beat-type></time>\n` : '';
-        if (cambios || tc) xml += '      <attributes>\n' + tc + cambios + '      </attributes>\n';
+        // un cambio de armadura va antes que el de compás, como pide MusicXML
+        const kc = Model.keyAt(s, i, P.desde) !== Model.keyAt(s, i - 1, P.desde)
+          ? `        <key><fifths>${Model.keyBySpec(Model.keyAt(s, i, P.desde)).fifths}</fifths></key>\n` : '';
+        if (cambios || tc || kc) xml += '      <attributes>\n' + kc + tc + cambios + '      </attributes>\n';
       }
 
       /* Cada voz se escribe entera y luego se rebobina el reloj con
          <backup>, que es como MusicXML representa lo simultáneo. */
-      Model.voces(m).forEach((vz, iv) => {
+      Model.voces(m).filter((vz) => suya(vz.pent)).forEach((vz, iv) => {
         let tiedFrom = false;
+        let unionAntes = null;
+        const guionAntes = [];   // por estrofa: la sílaba anterior seguía en esta
         const evs = vz.events.concat(Model.autoRests(m, s.time, vz.vi, cap));
         if (!evs.length) return;
         if (iv > 0) xml += `      <backup><duration>${cap}</duration></backup>\n`;
-        const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent + 1}</staff>` : '');
+        const marca = (nPent > 1 ? `<voice>${vz.vi + 1}</voice><staff>${vz.pent - P.desde + 1}</staff>` : '');
+        // en la pauta de batería las notas no tienen altura: sólo sitio
+        const perc = !!Model.clefAt(s, i, vz.pent).percusion;
       evs.forEach((ev) => {
         const d = Model.evTicks(ev);
         const type = Model.durById(ev.dur).xml;
@@ -1871,15 +2713,17 @@
         } else {
           const prev = tiedFrom;
           tiedFrom = !!ev.tie;
+          const tx = tecnicasXML(ev, unionAntes);
+          unionAntes = unionDe(ev);
           if (ev.cifrado) xml += cifradoXML(ev.cifrado);
           if (ev.matiz) xml += matizXML(ev.matiz);
-          xml += direccionesXML(ev, nPent > 1 ? vz.pent : null);
-          xml += adornosXML(ev, s, marca);
+          xml += direccionesXML(ev, nPent > 1 ? vz.pent - P.desde : null);
+          xml += adornosXML(ev, Model.keyAt(s, i, vz.pent), marca);
           // Un acorde en MusicXML son varias <note> seguidas; de la segunda en
           // adelante llevan <chord/> y comparten la duración de la primera.
           Model.alturas(ev).forEach((n, iN) => {
             const letter = Model.diLetter(n.di);
-            const alter = n.acc == null ? Model.keyAlter(s.key, letter) : (ALT[n.acc] || 0);
+            const alter = n.acc == null ? Model.keyAlter(Model.keyAt(s, i, vz.pent), letter) : (ALT[n.acc] || 0);
             const base = iN === 0;
             const notaciones =
               (base && (prev || ev.tie) ? (prev ? '<tied type="stop"/>' : '') + (ev.tie ? '<tied type="start"/>' : '') : '') +
@@ -1887,11 +2731,14 @@
               (base && ev.lig ? ligXML(ev.lig) : '') +
               (base && ev.orn ? ornXML(ev.orn) : '') +
               (base && ev.art ? artXML(ev.art) : '') +
-              (base && ev.dedo ? dedoXML(ev.dedo) : '');
-            xml += '      <note>' + (base ? '' : '<chord/>') + '<pitch>' +
-              `<step>${letter.toUpperCase()}</step>` +
-              (alter ? `<alter>${alter}</alter>` : '') +
-              `<octave>${Model.diOctave(n.di)}</octave></pitch>` +
+              (base ? tx.notas : '') +
+              tecnicaXML(base ? ev.dedo : null, digi && digi.get(ev.id) && digi.get(ev.id).pos[iN], base ? tx.tecnico : '');
+            xml += '      <note>' + (base ? '' : '<chord/>') +
+              (perc
+                ? `<unpitched><display-step>${letter.toUpperCase()}</display-step><display-octave>${Model.diOctave(n.di)}</display-octave></unpitched>`
+                : '<pitch>' + `<step>${letter.toUpperCase()}</step>` +
+                  (alter ? `<alter>${alter}</alter>` : '') +
+                  `<octave>${Model.diOctave(n.di)}</octave></pitch>`) +
               (base && prev ? '<tie type="stop"/>' : '') + (base && ev.tie ? '<tie type="start"/>' : '') +
               `<duration>${d}</duration>` + marca + `<type>${type}</type>${puntos}` +
               (base && ev.plica ? `<stem>${ev.plica}</stem>` : '') +
@@ -1899,8 +2746,10 @@
               (ev.tup && ev.tup.id
                 ? `<time-modification><actual-notes>${ev.tup.num}</actual-notes><normal-notes>${ev.tup.den}</normal-notes></time-modification>`
                 : '') +
+              (perc && Model.percusionDe(n.di).x ? '<notehead>x</notehead>' : tx.cabeza) +
               (base && ev.barra ? `<beam number="1">${ev.barra}</beam>` : '') +
               (notaciones ? '<notations>' + notaciones + '</notations>' : '') +
+              (base ? letraXML(ev, guionAntes) : '') +
               '</note>\n';
           });
         }
@@ -1913,7 +2762,9 @@
       }
       xml += '    </measure>\n';
     });
-    xml += '  </part>\n</score-partwise>\n';
+    xml += '  </part>\n';
+    });
+    xml += '</score-partwise>\n';
     download(slug(s.title) + '.musicxml', xml, 'application/vnd.recordare.musicxml+xml');
     toast('MusicXML exportado (MuseScore, Sibelius…)');
   }
@@ -1959,8 +2810,8 @@
     render();
   });
 
-
-  // Puerta para que el catálogo deje aquí la partitura que se ha elegido.
+  /* La puerta para lo que llega de fuera —el catálogo—: abre una partitura
+     como si se hubiera importado, con su aviso de lo que no se pudo traer. */
   window.Editor = {
     cargar(score, titulo, aviso) {
       Sound.stop(); Sound.metroStop();

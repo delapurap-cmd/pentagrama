@@ -140,7 +140,7 @@ const MusicXML = (() => {
     const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
     const di = oc * 7 + (STEP_INDEX[st] ?? 0);
     const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
-    const porArmadura = Model.keyAlter(score.key, Model.diLetter(di));
+    const porArmadura = Model.keyAlter(claveLectura || score.key, Model.diLetter(di));
     const tipo = text(node, 'type');
     return {
       di,
@@ -174,7 +174,90 @@ const MusicXML = (() => {
    * Convierte MusicXML en una partitura de Reper.
    * Devuelve { score, report } donde report cuenta lo que quedó fuera.
    */
+  /** Guarda la cuerda que trae la nota (<technical><string>), si la trae. */
+  let hayCuerdasGlobal = null;
+  function cuerdaDe(ev, di, node) {
+    const c = parseInt(node.querySelector('notations > technical > string')?.textContent, 10);
+    if (!c) return;
+    (ev._cuerdas || (ev._cuerdas = {}))[di] = c;
+    if (hayCuerdasGlobal) hayCuerdasGlobal();
+  }
+
+  /* La armadura que rige mientras se lee: cambia a mitad de obra, y las
+     alteraciones escritas se deciden contra la que toca en ese compás. */
+  let claveLectura = null;
+
+  /* Varios instrumentos: cada <part> se lee por separado con el mismo
+     lector de siempre y luego se apilan sus pautas en una sola partitura,
+     hasta cuatro. Lo que no cabe se dice en el informe. */
   function parse(xml) {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const todas = doc.querySelector('parsererror') ? [] : [...doc.querySelectorAll('score-partwise > part')];
+    const conNotas = todas.filter((p) => p.querySelector('note pitch, note unpitched'));
+    if (conNotas.length < 2) return parseUna(xml);
+
+    const nombres = new Map();
+    doc.querySelectorAll('part-list > score-part').forEach((sp) => {
+      nombres.set(sp.getAttribute('id'), (sp.querySelector('part-name')?.textContent || '').trim());
+    });
+    const sueltas = conNotas.map((part) => {
+      const id = part.getAttribute('id');
+      const d2 = doc.cloneNode(true);
+      d2.querySelectorAll('score-partwise > part').forEach((p) => { if (p.getAttribute('id') !== id) p.remove(); });
+      d2.querySelectorAll('part-list > score-part').forEach((p) => { if (p.getAttribute('id') !== id) p.remove(); });
+      return { nombre: nombres.get(id) || id, r: parseUna(new XMLSerializer().serializeToString(d2)) };
+    });
+
+    const suena = (x) => {
+      const clave = Model.pentagramas(x.r.score)[0].clef;
+      if (clave === 'percussion' || /bater|drum|perc/i.test(x.nombre)) return 'bateria';
+      if (/bajo|bass/i.test(x.nombre) && !/contra|double/i.test(x.nombre)) return 'bajo';
+      if (x.r.score.tab || /guit/i.test(x.nombre)) return 'guitarra';
+      if (/trump|tromp|trombon|trombone|horn|trompa|tuba/i.test(x.nombre)) return 'metal';
+      if (/sax|clarin|oboe|oboe|fagot|bassoon/i.test(x.nombre)) return 'cana';
+      if (/flaut|flute|piccolo|flauto/i.test(x.nombre)) return 'flauta';
+      if (/viol|cell|chelo|cello|viola|contrab|double/i.test(x.nombre)) return 'arco';
+      return 'piano';
+    };
+    const base = sueltas[0].r.score;
+    const report = sueltas[0].r.report;
+    report.partName = sueltas.map((x) => x.nombre).join(', ');
+    let total = Model.nPent(base);
+    let claves = Model.pentagramas(base).map((p) => p.clef);
+    const parteDe = (x, n) => {
+      const P = { nombre: x.nombre, n, sonido: suena(x) };
+      if (x.r.score.transp) P.transp = x.r.score.transp;
+      return P;
+    };
+    base.partes = [parteDe(sueltas[0], total)];
+    delete base.transp;
+    if (base.tab) base.tab.pents = [...Array(total).keys()];
+    sueltas.slice(1).forEach((x) => {
+      const sc = x.r.score;
+      const n = Model.nPent(sc);
+      if (total + n > 4) { report.dropped['instrumento sin sitio: ' + x.nombre] = 1; return; }
+      while (base.measures.length < sc.measures.length) base.measures.push(Model.emptyMeasure());
+      sc.measures.forEach((m2, mi) => {
+        const m = base.measures[mi];
+        Model.voces(m2).forEach((v) => {
+          if (!v.events.length) return;
+          (m.voces || (m.voces = [])).push({ pent: total + v.pent, events: v.events });
+        });
+        if (m2.clef) Model.ponerClaveEn(m, total, m2.clef);
+        Object.keys(m2.claves || {}).forEach((p) => Model.ponerClaveEn(m, total + (+p), m2.claves[p]));
+      });
+      if (sc.tab && !base.tab) base.tab = Object.assign({}, sc.tab, { pents: [...Array(n).keys()].map((k) => total + k) });
+      claves = claves.concat(Model.pentagramas(sc).map((p) => p.clef));
+      base.partes.push(parteDe(x, n));
+      report.notes += x.r.report.notes;
+      total += n;
+    });
+    Model.ponerPentagramas(base, total, claves);
+    return { score: base, report };
+  }
+
+  function parseUna(xml) {
+    claveLectura = null;
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('El archivo XML está dañado.');
 
@@ -223,6 +306,15 @@ const MusicXML = (() => {
     let tempo = null;
     let nPent = 1;                      // <staves> de la parte
     const clavesVistas = {};            // pentagrama -> última clave puesta
+    /* Guitarra de MuseScore o Guitar Pro: suele venir con dos pautas, la
+       normal y una de tablatura (clave TAB) con las MISMAS notas. La de
+       tablatura no se importa como pentagrama —saldrían todas repetidas—:
+       se enciende la tablatura del editor y se guarda la cuerda de cada nota. */
+    const pentTab = new Set();
+    let afinacion = null;               // MIDI de cada cuerda, de la 1 a la 6
+    let capoLeido = 0;                  // traste de la cejilla, si la trae
+    let hayCuerdas = false;
+    hayCuerdasGlobal = () => { hayCuerdas = true; };
     /* MusicXML escribe cada voz seguida y rebobina el reloj con <backup>.
        Aquí se agrupa por (pentagrama, voz) en el orden en que aparecen: esa
        es la lista de voces de nuestro modelo. El número de voz de MuseScore
@@ -267,8 +359,8 @@ const MusicXML = (() => {
         const fifths = attrs.querySelector('key > fifths');
         if (fifths) {
           const spec = FIFTHS_TO_KEY[fifths.textContent.trim()];
-          if (spec && !keySet) { score.key = spec; keySet = true; }
-          else if (spec && spec !== score.key) drop('cambios de armadura');
+          if (spec && !keySet) { score.key = spec; keySet = true; claveLectura = spec; }
+          else if (spec && spec !== claveLectura) { measure.key = spec; claveLectura = spec; }
         }
         const t = attrs.querySelector('time');
         if (t) {
@@ -291,8 +383,10 @@ const MusicXML = (() => {
           const line = parseInt(clefEl.querySelector('line')?.textContent, 10) || 0;
           const oct = parseInt(clefEl.querySelector('clef-octave-change')?.textContent, 10) || 0;
           const pent = Math.max(0, (parseInt(clefEl.getAttribute('number'), 10) || 1) - 1);
+          if (sign === 'TAB') { pentTab.add(pent); return; }
           const id = sign === 'F' ? 'bass'
             : sign === 'C' ? (line === 4 ? 'tenor' : 'alto')
+            : sign === 'percussion' ? 'percussion'
             : (oct === -1 ? 'treble-8v' : 'treble');
           if (pent >= MAX_PENT) return;
           nPent = Math.max(nPent, pent + 1);
@@ -302,7 +396,19 @@ const MusicXML = (() => {
             Model.ponerClaveEn(measure, pent, id);
             clavesVistas[pent] = id;
           }
-          if (sign === 'percussion' || sign === 'TAB') drop('claves de percusión y tablatura');
+        });
+        // la afinación viene en <staff-details>: línea 1 es la cuerda más grave
+        attrs.querySelectorAll(':scope > staff-details').forEach((sd) => {
+          const cuerdas = [...sd.querySelectorAll('staff-tuning')].map((st) => {
+            const paso = (st.querySelector('tuning-step')?.textContent || 'E').trim().toUpperCase();
+            const oc = parseInt(st.querySelector('tuning-octave')?.textContent, 10) || 2;
+            const al = parseInt(st.querySelector('tuning-alter')?.textContent, 10) || 0;
+            return { linea: parseInt(st.getAttribute('line'), 10) || 0,
+                     midi: (oc + 1) * 12 + { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[paso] + al };
+          }).sort((a, b) => b.linea - a.linea).map((x) => x.midi);
+          if (cuerdas.length >= 4) afinacion = cuerdas;
+          const cp = parseInt(sd.querySelector('capo')?.textContent, 10);
+          if (cp > 0) capoLeido = cp;
         });
       }
 
@@ -400,19 +506,24 @@ const MusicXML = (() => {
           return;
         }
 
+        // Las notas de la pauta de tablatura repiten las de arriba: fuera.
+        if (pentTab.has((parseInt(text(node, 'staff'), 10) || 1) - 1)) return;
+
         // Un <chord/> no es una nota nueva: es otra cabeza de la anterior.
         if (node.querySelector(':scope > chord')) {
           const base = aqui && aqui.events[aqui.events.length - 1];
-          const p = node.querySelector(':scope > pitch');
+          // la batería trae <unpitched> con la posición en la pauta
+          const p = node.querySelector(':scope > pitch') || node.querySelector(':scope > unpitched');
           if (base && base.kind === 'note' && p) {
-            const st = (p.querySelector('step')?.textContent || 'C').trim().toUpperCase();
-            const oc = parseInt(p.querySelector('octave')?.textContent, 10) || 4;
+            const st = (p.querySelector('step, display-step')?.textContent || 'C').trim().toUpperCase();
+            const oc = parseInt(p.querySelector('octave, display-octave')?.textContent, 10) || 4;
             const al = parseInt(p.querySelector('alter')?.textContent, 10) || 0;
             const d2 = oc * 7 + (STEP_INDEX[st] ?? 0);
             const esc = { sharp: '#', flat: 'b', natural: 'n' }[text(node, 'accidental')];
-            const porArmadura = Model.keyAlter(score.key, Model.diLetter(d2));
+            const porArmadura = Model.keyAlter(claveLectura || score.key, Model.diLetter(d2));
             const acc = esc || (al !== porArmadura ? (al === 1 ? '#' : al === -1 ? 'b' : 'n') : null);
             Model.anadirAltura(base, d2, acc);
+            cuerdaDe(base, d2, node);
           }
           return;
         }
@@ -446,10 +557,10 @@ const MusicXML = (() => {
           return;
         }
 
-        const pitch = node.querySelector(':scope > pitch');
+        const pitch = node.querySelector(':scope > pitch') || node.querySelector(':scope > unpitched');
         if (!pitch) return;
-        const step = (pitch.querySelector('step')?.textContent || 'C').trim().toUpperCase();
-        const octave = parseInt(pitch.querySelector('octave')?.textContent, 10) || 4;
+        const step = (pitch.querySelector('step, display-step')?.textContent || 'C').trim().toUpperCase();
+        const octave = parseInt(pitch.querySelector('octave, display-octave')?.textContent, 10) || 4;
         const alter = parseInt(pitch.querySelector('alter')?.textContent, 10) || 0;
         const di = octave * 7 + (STEP_INDEX[step] ?? 0);
 
@@ -457,7 +568,7 @@ const MusicXML = (() => {
         if (oculto) ev.oculto = true;
         const accEl = text(node, 'accidental');
         const written = { sharp: '#', flat: 'b', natural: 'n' }[accEl];
-        const byKey = Model.keyAlter(score.key, Model.diLetter(di));
+        const byKey = Model.keyAlter(claveLectura || score.key, Model.diLetter(di));
         if (written) ev.acc = written;
         else if (alter !== byKey) ev.acc = alter === 1 ? '#' : alter === -1 ? 'b' : 'n';
 
@@ -480,11 +591,37 @@ const MusicXML = (() => {
         if (lig.includes('start')) ev.lig = 'inicio';
         else if (lig.includes('stop')) ev.lig = 'fin';
 
+        cuerdaDe(ev, di, node);
+        // técnicas de guitarra (las que escribe MuseScore y este editor)
+        {
+          const q = (sel) => node.querySelector(sel);
+          const tec = [];
+          if (q('notations > technical > hammer-on[type="start"]')) tec.push('H');
+          if (q('notations > technical > pull-off[type="start"]')) tec.push('P');
+          if (q('notations > slide[type="start"]')) tec.push('SL');
+          if (q('notations > technical > bend')) tec.push('B');
+          if (q('notations > ornaments > wavy-line')) tec.push('V');
+          if ((q(':scope > notehead')?.textContent || '').trim() === 'x') tec.push('X');
+          if (q('notations > technical > harmonic')) tec.push('ARM');
+          if (/P\.?\s*M/i.test(q('notations > technical > other-technical')?.textContent || '')) tec.push('PM');
+          if (tec.length) ev.tec = (ev.tec || []).concat(tec.filter((t) => !(ev.tec || []).includes(t)));
+        }
         const dedo = node.querySelector('notations > technical > fingering');
         if (dedo) ev.dedo = (dedo.textContent || '').trim().slice(0, 3);
 
         if (adornos.length) { ev.adornos = adornos; adornos = []; }
-        if (node.querySelector(':scope > lyric')) drop('letra');
+        // la letra: una sílaba por estrofa; begin/middle llevan guion a la siguiente
+        node.querySelectorAll(':scope > lyric').forEach((ly) => {
+          const txt = [...ly.querySelectorAll('text')].map((t) => t.textContent).join('').trim();
+          if (!txt) return;
+          const k = Math.max(0, (parseInt(ly.getAttribute('number'), 10) || 1) - 1);
+          if (k > 3) return;
+          const tipo = (ly.querySelector('syllabic')?.textContent || 'single').trim();
+          const lista = ev.letra || [];
+          while (lista.length < k) lista.push('');
+          lista[k] = txt + (tipo === 'begin' || tipo === 'middle' ? '-' : '');
+          ev.letra = lista;
+        });
         if (matizPendiente) { ev.matiz = matizPendiente; matizPendiente = null; }
         if (cifradoPendiente) { ev.cifrado = cifradoPendiente; cifradoPendiente = null; }
         if (pedalPendiente) { ev.pedal = pedalPendiente; pedalPendiente = null; }
@@ -516,7 +653,37 @@ const MusicXML = (() => {
       score.measures.push(measure);
     });
 
+    /* La cuerda de cada cabeza, en el orden de `alturas` (grave → aguda). */
+    if (hayCuerdas || pentTab.size) {
+      const AF = typeof Tablatura !== 'undefined' ? Tablatura.AFINACIONES : {};
+      const afin = Object.keys(AF).find((id) => afinacion && AF[id].cuerdas.join() === afinacion.join()) || 'estandar';
+      score.tab = { afin };
+      if (capoLeido) score.tab.capo = Math.min(12, capoLeido);
+      score.measures.forEach((m) => Model.voces(m).forEach((v) => v.events.forEach((ev) => {
+        if (!ev._cuerdas) return;
+        const lista = Model.alturas(ev).map((n) => (ev._cuerdas[n.di] != null ? ev._cuerdas[n.di] : null));
+        if (lista.some((c) => c != null)) ev.cuerdas = lista;
+        delete ev._cuerdas;
+      })));
+      // la pauta de tablatura no cuenta como pentagrama
+      nPent = Math.max(1, nPent - [...pentTab].filter((p) => p < nPent).length);
+    }
+
     if (mEmpty(score)) throw new Error('El archivo no trae notas que Reper pueda leer.');
+    /* Un transpositor (trompeta en Si♭, saxo alto…) trae lo ESCRITO y un
+       <transpose> que dice cuánto hay que sumar para oírlo. Las notas se
+       quedan escritas; la armadura de la obra se guarda en sonido real, que
+       es la que comparten todas las partes. */
+    const tr = part.querySelector('attributes > transpose');
+    if (tr) {
+      const t = (parseInt(tr.querySelector('chromatic')?.textContent, 10) || 0) +
+        12 * (parseInt(tr.querySelector('octave-change')?.textContent, 10) || 0);
+      if (t) {
+        score.transp = t;
+        score.key = Model.keyMovida(score.key, t);
+        score.measures.forEach((m) => { if (m.key) m.key = Model.keyMovida(m.key, t); });
+      }
+    }
     if (tempo) score.tempo = Math.max(30, Math.min(300, tempo));
     /* Al importar, el tempo que trae el fichero es el ESCRITO. A partir de
        aquí el control de velocidad mueve `tempo` y el mapa se escala en esa

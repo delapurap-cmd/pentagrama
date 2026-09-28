@@ -532,3 +532,21 @@ body.con-ayuda .panel.open{
   .ins-blanca, .ins-negra{ transition: none; }
   .ins-dedo,.ins-cuerda.sonando::after{animation:none}
 }
+
+/* El atributo hidden tiene que mandar: el dock de la ayuda declara su
+   propio display y se quedaba como una barra vacía al pie de la pantalla. */
+.ayuda-dock[hidden]{display:none!important}
+
+/* Tablatura: el hueco tras cada traste es del color de la hoja, también
+   al sonar (si no, se pintaría de verde el rectángulo entero). */
+.sheet-svg .tab-nota rect,
+.sheet-svg .sonando.tab-nota rect { fill: var(--paper) !important; stroke: none !important; }
+@media print { .sheet-svg .tab-nota rect { fill: #fff !important; } }
+
+/* La cajita de la letra, bajo la nota que se está escribiendo */
+.letra-caja {
+  position: fixed; z-index: 60; width: 90px; padding: 4px 6px;
+  font: 15px Georgia, 'Times New Roman', serif; text-align: center;
+  border: 1.5px solid #b0801f; border-radius: 6px; background: #fffdf6; color: #1b1b1b;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18); outline: none;
+}

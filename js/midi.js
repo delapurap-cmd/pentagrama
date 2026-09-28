@@ -43,10 +43,14 @@ const Midi = (() => {
         const clef = Model.clefAt(score, mi, v.pent);
         v.events.forEach((ev) => {
           const d = Model.evTicks(ev);
-          if (ev.kind === 'note') {
+          if (ev.kind === 'note' && clef.percusion) {
+            // la batería va al canal 10, con el número de cada instrumento
+            Model.alturas(ev).forEach((n) => events.push({ midi: Model.percusionDe(n.di).gm, start: tick, end: tick + d, canal: 9 }));
+          } else if (ev.kind === 'note') {
             // Un acorde son varias notas a la vez. La ligadura sólo alarga la
             // nota base, que es la que `tie` describe.
-            const midis = Model.midisOf(ev, score.key, clef).map(m=>ScoreInstrument.concert(score,m));
+            const tr = Model.transpDe(score, v.pent);
+            const midis = Model.midisOf(ev, Model.keyAt(score, mi, v.pent), clef).map((x) => x + tr);
             const midi = midis[0];
             if (carry && carry.midi === midi) carry.end += d;       // ligadura
             else {
@@ -80,8 +84,8 @@ const Midi = (() => {
                   d: [0xff, 0x51, 0x03, (us >> 16) & 255, (us >> 8) & 255, us & 255] });
     });
     events.forEach((n) => {
-      list.push({ t: n.start, d: [0x90, n.midi, 88] });
-      list.push({ t: n.end, d: [0x80, n.midi, 0] });
+      list.push({ t: n.start, d: [0x90 | (n.canal || 0), n.midi, 88] });
+      list.push({ t: n.end, d: [0x80 | (n.canal || 0), n.midi, 0] });
     });
     list.sort((a, b) => a.t - b.t || (b.meta ? 1 : 0) - (a.meta ? 1 : 0)
       || (a.d[0] & 0xf0) - (b.d[0] & 0xf0));
