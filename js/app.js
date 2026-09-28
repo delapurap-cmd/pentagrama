@@ -694,6 +694,7 @@
         { head: 'Partitura' },
         { label: 'Guardar en mis partituras', fn: saveToLibrary },
         { label: 'Abrir MusicXML o MIDI', hint: 'también Guitar Pro', fn: importScore },
+        { label: 'Del catálogo', hint: '226.401 partituras libres', fn: () => Catalogo.abrir() },
         { label: 'Exportar MusicXML', hint: '.musicxml', fn: exportMusicXML },
         { label: 'Exportar MIDI', hint: '.mid', fn: exportMIDI },
         { label: 'Exportar copia', hint: '.json', fn: exportJSON },
@@ -2176,6 +2177,25 @@
     parentLoaded = true;
     render();
   });
+
+  /* La puerta para lo que llega de fuera —el catálogo—: abre una partitura
+     como si se hubiera importado, con su aviso de lo que no se pudo traer. */
+  window.Editor = {
+    cargar(score, titulo, aviso) {
+      Sound.stop(); Sound.metroStop();
+      snapshot();
+      state.score = score;
+      if (titulo && (!state.score.title || state.score.title === 'Sin título')) {
+        state.score.title = titulo;
+      }
+      Model.reflow(state.score);
+      state.selectedId = null;
+      state.playingId = null;
+      Radial.close();
+      render();
+      if (aviso) { state.lastReport = aviso; toast(aviso); }
+    }
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
